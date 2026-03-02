@@ -703,7 +703,9 @@ const CreateClientWizard = ({ onComplete }) => {
     const formDataToSend = new FormData();
 
     formDataToSend.append("mobile", finalMobileNumber);
-    formDataToSend.append("email", formData.contact.email);
+    if (formData.contact.email && formData.contact.email.trim() !== "") {
+      formDataToSend.append("email", formData.contact.email.trim());
+    }
     formDataToSend.append("idNumber", formData.identification.idNumber);
     formDataToSend.append("type", formData.type);
     formDataToSend.append("officialNameAr", officialNameAr);
