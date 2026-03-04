@@ -749,6 +749,75 @@ const CreateClientWizard = ({ onComplete }) => {
   const nextStep = () => currentStep < 7 && setCurrentStep((p) => p + 1);
   const prevStep = () => currentStep > 1 && setCurrentStep((p) => p - 1);
 
+  // --- دوال التحويل بين الهجري والميلادي وحساب العمر ---
+  const convertGregorianToHijri = (gDateStr) => {
+    if (!gDateStr) return "";
+    try {
+      const date = new Date(gDateStr);
+      if (isNaN(date)) return "";
+      const formatter = new Intl.DateTimeFormat("en-US-u-ca-islamic-umalqura", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      });
+      const parts = formatter.formatToParts(date);
+      const y = parts.find((p) => p.type === "year").value;
+      const m = parts.find((p) => p.type === "month").value;
+      const d = parts.find((p) => p.type === "day").value;
+      return `${y}/${m}/${d}`;
+    } catch (e) {
+      return "";
+    }
+  };
+
+  const convertHijriToGregorian = (hDateStr) => {
+    if (!hDateStr) return "";
+    try {
+      const parts = hDateStr.split("/");
+      if (parts.length !== 3) return "";
+      const y = parseInt(parts[0]),
+        m = parseInt(parts[1]),
+        d = parseInt(parts[2]);
+      if (!y || !m || !d) return "";
+
+      // خوارزمية تقريبية دقيقة للتحويل من هجري لميلادي
+      const jd =
+        Math.floor((11 * y + 3) / 30) +
+        354 * y +
+        30 * m -
+        Math.floor((m - 1) / 2) +
+        d +
+        1948440 -
+        385;
+      let l = jd + 68569;
+      const n = Math.floor((4 * l) / 146097);
+      l = l - Math.floor((146097 * n + 3) / 4);
+      const i = Math.floor((4000 * (l + 1)) / 1461001);
+      l = l - Math.floor((1461 * i) / 4) + 31;
+      const j = Math.floor((80 * l) / 2447);
+      const dd = l - Math.floor((2447 * j) / 80);
+      l = Math.floor(j / 11);
+      const mm = j + 2 - 12 * l;
+      const yy = 100 * (n - 49) + i + l;
+
+      const gDate = new Date(yy, mm - 1, dd);
+      return gDate.toISOString().split("T")[0]; // YYYY-MM-DD
+    } catch (e) {
+      return "";
+    }
+  };
+
+  const calculateAge = (gregorianDate) => {
+    if (!gregorianDate) return "";
+    const birthDate = new Date(gregorianDate);
+    if (isNaN(birthDate)) return "";
+    const today = new Date();
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const m = today.getMonth() - birthDate.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) age--;
+    return age.toString();
+  };
+
   // ==========================================
   // الريندر (Render Steps)
   // ==========================================
@@ -951,85 +1020,143 @@ const CreateClientWizard = ({ onComplete }) => {
                       </span>
                     </div>
 
+                    {/* شبكة المدخلات القابلة للتعديل */}
                     <div className="grid grid-cols-2 gap-2 mb-5">
                       {[
-                        { label: "الاسم الأول (عربي)", val: aiResults.firstAr },
-                        { label: "اسم الأب (عربي)", val: aiResults.fatherAr },
-                        { label: "اسم الجد (عربي)", val: aiResults.grandAr },
+                        {
+                          label: "الاسم الأول (عربي)",
+                          keyName: "firstAr",
+                          val: aiResults.firstAr,
+                        },
+                        {
+                          label: "اسم الأب (عربي)",
+                          keyName: "fatherAr",
+                          val: aiResults.fatherAr,
+                        },
+                        {
+                          label: "اسم الجد (عربي)",
+                          keyName: "grandAr",
+                          val: aiResults.grandAr,
+                        },
                         {
                           label: "اسم العائلة (عربي)",
+                          keyName: "familyAr",
                           val: aiResults.familyAr,
                         },
                         {
                           label: "الاسم الأول (إنجليزي)",
+                          keyName: "firstEn",
                           val: aiResults.firstEn,
                           en: true,
                         },
                         {
                           label: "اسم الأب (إنجليزي)",
+                          keyName: "fatherEn",
                           val: aiResults.fatherEn,
                           en: true,
                         },
                         {
                           label: "اسم الجد (إنجليزي)",
+                          keyName: "grandEn",
                           val: aiResults.grandEn,
                           en: true,
                         },
                         {
                           label: "اسم العائلة (إنجليزي)",
+                          keyName: "familyEn",
                           val: aiResults.familyEn,
                           en: true,
                         },
                         {
                           label: "رقم الهوية",
+                          keyName: "idNumber",
                           val: aiResults.idNumber,
                           full: true,
                         },
                         {
-                          label: "تاريخ الميلاد هجري",
+                          label: "تاريخ الميلاد هجري (YYYY/MM/DD)",
+                          keyName: "birthDateHijri",
                           val: aiResults.birthDateHijri,
                           full: true,
                         },
                         {
-                          label: "تاريخ الميلاد ميلادي",
+                          label: "تاريخ الميلاد ميلادي (YYYY-MM-DD)",
+                          keyName: "birthDateGregorian",
                           val: aiResults.birthDateGregorian,
                           full: true,
                         },
-                        { label: "العمر", val: aiResults.age, full: true },
+                        {
+                          label: "العمر",
+                          keyName: "age",
+                          val: aiResults.age,
+                          full: true,
+                        },
                         {
                           label: "مكان الميلاد",
+                          keyName: "placeOfBirth",
                           val: aiResults.placeOfBirth,
                           full: true,
                         },
                         {
                           label: "الجنسية",
+                          keyName: "nationality",
                           val: aiResults.nationality,
                           full: true,
                         },
-                      ].map((field, idx) =>
-                        field.val ? (
-                          <div
-                            key={idx}
-                            className={`p-2.5 rounded-lg border ${field.en ? "bg-amber-50/50 border-amber-200" : "bg-emerald-50/50 border-emerald-200"} ${field.full ? "col-span-2" : ""}`}
-                          >
-                            <div className="flex justify-between items-center mb-1">
-                              <span className="text-[11px] font-bold text-slate-500">
-                                {field.label}
-                              </span>
-                              <span
-                                className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${field.en ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"}`}
-                              >
-                                AI
-                              </span>
-                            </div>
-                            <div
-                              className={`text-sm font-bold text-slate-800 ${field.en || field.label.includes("رقم") ? "dir-ltr text-left" : ""}`}
+                      ].map((field, idx) => (
+                        <div
+                          key={idx}
+                          className={`p-2.5 rounded-lg border focus-within:border-violet-500 focus-within:ring-1 focus-within:ring-violet-200 transition-all ${field.en ? "bg-amber-50/30 border-amber-200" : "bg-emerald-50/30 border-emerald-200"} ${field.full ? "col-span-2" : ""}`}
+                        >
+                          <div className="flex justify-between items-center mb-1">
+                            <span className="text-[11px] font-bold text-slate-500">
+                              {field.label}
+                            </span>
+                            <span
+                              className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${field.en ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"}`}
                             >
-                              {field.val}
-                            </div>
+                              AI
+                            </span>
                           </div>
-                        ) : null,
-                      )}
+                          <input
+                            type="text"
+                            value={field.val || ""}
+                            onChange={(e) => {
+                              const newVal = e.target.value;
+                              setAiResults((prev) => {
+                                let updated = {
+                                  ...prev,
+                                  [field.keyName]: newVal,
+                                };
+                                // العلاقة التبادلية للتواريخ
+                                if (
+                                  field.keyName === "birthDateHijri" &&
+                                  newVal.length >= 8
+                                ) {
+                                  const gregorian =
+                                    convertHijriToGregorian(newVal);
+                                  updated.birthDateGregorian = gregorian;
+                                  updated.age = calculateAge(gregorian);
+                                }
+                                if (field.keyName === "birthDateGregorian") {
+                                  updated.birthDateHijri =
+                                    convertGregorianToHijri(newVal);
+                                  updated.age = calculateAge(newVal);
+                                }
+                                return updated;
+                              });
+                            }}
+                            dir={
+                              field.en ||
+                              field.label.includes("رقم") ||
+                              field.label.includes("YYYY")
+                                ? "ltr"
+                                : "rtl"
+                            }
+                            className={`w-full text-sm font-bold text-slate-800 bg-transparent outline-none ${field.en || field.label.includes("رقم") || field.label.includes("YYYY") ? "text-left" : ""}`}
+                          />
+                        </div>
+                      ))}
                     </div>
 
                     <div className="flex gap-2">
@@ -1599,15 +1726,31 @@ const CreateClientWizard = ({ onComplete }) => {
                   <input
                     type="text"
                     value={formData.identification.birthDateHijri}
-                    onChange={(e) =>
+                    onChange={(e) => {
+                      const hijriVal = e.target.value;
                       handleChange(
                         "identification",
                         "birthDateHijri",
-                        e.target.value,
-                      )
-                    }
-                    placeholder="مثال: 1405/06/15"
-                    className={`w-full p-2.5 rounded-lg text-sm border-2 outline-none focus:border-violet-500 text-left ${aiResults?.birthDateHijri ? "border-emerald-300 bg-emerald-50 font-bold" : "border-slate-200 bg-white"}`}
+                        hijriVal,
+                      );
+
+                      // السحر: تحديث الميلادي والعمر تلقائياً
+                      if (hijriVal.length >= 8) {
+                        const greg = convertHijriToGregorian(hijriVal);
+                        handleChange(
+                          "identification",
+                          "birthDateGregorian",
+                          greg,
+                        );
+                        handleChange(
+                          "identification",
+                          "age",
+                          calculateAge(greg),
+                        );
+                      }
+                    }}
+                    placeholder="YYYY/MM/DD"
+                    className="w-full p-2.5 rounded-lg text-sm border-2 outline-none focus:border-violet-500 text-left border-slate-200 bg-white"
                     dir="ltr"
                   />
                 </div>
@@ -1616,17 +1759,29 @@ const CreateClientWizard = ({ onComplete }) => {
                     تاريخ الميلاد (ميلادي) {isHeirs && "للمتوفى"}
                   </label>
                   <input
-                    type="text"
+                    type="date"
                     value={formData.identification.birthDateGregorian}
-                    onChange={(e) =>
+                    onChange={(e) => {
+                      const gregVal = e.target.value;
                       handleChange(
                         "identification",
                         "birthDateGregorian",
-                        e.target.value,
-                      )
-                    }
-                    placeholder="مثال: 1985/02/05"
-                    className={`w-full p-2.5 rounded-lg text-sm border-2 outline-none focus:border-violet-500 text-left ${aiResults?.birthDateGregorian ? "border-emerald-300 bg-emerald-50 font-bold" : "border-slate-200 bg-white"}`}
+                        gregVal,
+                      );
+
+                      // السحر: تحديث الهجري والعمر تلقائياً
+                      handleChange(
+                        "identification",
+                        "birthDateHijri",
+                        convertGregorianToHijri(gregVal),
+                      );
+                      handleChange(
+                        "identification",
+                        "age",
+                        calculateAge(gregVal),
+                      );
+                    }}
+                    className="w-full p-2.5 rounded-lg text-sm border-2 outline-none focus:border-violet-500 text-left border-slate-200 bg-white"
                     dir="ltr"
                   />
                 </div>

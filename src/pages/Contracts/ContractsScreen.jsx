@@ -1549,16 +1549,17 @@ const ContractsScreen = () => {
         </div>
 
         {/* --- Side Details Panel (Drawer - يمين الشاشة بطول كامل) --- */}
+        {/* --- Side Details Panel (الآن تظهر في المنتصف كـ Modal) --- */}
         {selectedContract && (
-          <>
-            {/* 1. خلفية شفافة داكنة (Backdrop) - عند الضغط عليها تغلق اللوحة */}
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6">
+            {/* 1. خلفية شفافة داكنة (Backdrop) */}
             <div
-              className="fixed inset-0 bg-slate-900/20 backdrop-blur-[2px] z-[90] animate-in fade-in duration-300"
+              className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-300"
               onClick={() => setSelectedContract(null)}
             ></div>
 
-            {/* 2. اللوحة الجانبية (تفتح من اليمين بطول الشاشة) */}
-            <div className="fixed top-0 right-0 h-screen w-[360px] bg-white flex flex-col animate-in slide-in-from-right-full duration-300 z-[100] shadow-2xl border-l border-slate-200">
+            {/* 2. اللوحة المركزية (Modal) واسعة ومريحة */}
+            <div className="relative w-full max-w-4xl h-[90vh] bg-white rounded-2xl flex flex-col animate-in zoom-in-95 duration-300 shadow-2xl overflow-hidden border border-slate-200">
               <div className="p-4 bg-gradient-to-br from-slate-900 to-slate-800 text-white shrink-0">
                 <div className="flex justify-between items-start">
                   <div>
@@ -2200,7 +2201,7 @@ const ContractsScreen = () => {
                 )}
               </div>
             </div>
-          </>
+          </div>
         )}
       </div>
 
