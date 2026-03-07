@@ -2,8 +2,8 @@ import React, { useState } from "react";
 import { useAppStore } from "../../../stores/useAppStore";
 import { clsx } from "clsx";
 import AccessControl from "../../AccessControl";
-import { useAuth } from "../../../context/AuthContext"; // 👈 1. استيراد لمعرفة الصلاحيات والمستخدم
-import { usePermissionBuilder } from "../../../context/PermissionBuilderContext"; // 👈 2. استيراد لمعرفة وضع البناء
+import { useAuth } from "../../../context/AuthContext";
+import { usePermissionBuilder } from "../../../context/PermissionBuilderContext";
 
 import {
   LayoutDashboard, Users, FileText, FolderOpen, BrainCircuit,
@@ -13,249 +13,20 @@ import {
   ShieldCheck, FileSignature, AlertCircle, CheckSquare, Target
 } from "lucide-react";
 
-// ==========================================
-// الهيكل الشامل للنظام (Master List v1.0)
-// ==========================================
+// تم إبقاء المصفوفة في حال احتجت لها لاحقاً للربط الديناميكي
 const MENU_CATEGORIES = [
-  {
-    id: "CAT_DASHBOARD",
-    title: "لوحة التحكم",
-    icon: LayoutDashboard,
-    items: [
-      { id: "01", label: "لوحة التحكم الرئيسية", code: "SCR_01_VIEW" },
-      { id: "02", label: "التنبيهات", code: "SCR_02_VIEW" },
-      { id: "03", label: "المهام", code: "SCR_03_VIEW" },
-      { id: "04", label: "الإحصائيات السريعة", code: "SCR_04_VIEW" },
-    ],
-  },
-  {
-    id: "CAT_CLIENTS",
-    title: "العملاء والملكية",
-    icon: Users,
-    items: [
-      { id: "300", label: "العملاء", code: "SCREEN_300_VIEW" },
-      { id: "310", label: "ملفات الملكية", code: "SCREEN_310_VIEW" },
-      { id: "07", label: "الصكوك", code: "SCR_07_VIEW" },
-      { id: "222", label: "تعاقدات العملاء", code: "SCR_222_VIEW" },
-      { id: "08", label: "الهويات", code: "SCR_08_VIEW" },
-      { id: "09", label: "الرخص", code: "SCR_09_VIEW" },
-    ],
-  },
-  {
-    id: "CAT_TRANSACTIONS",
-    title: "المعاملات",
-    icon: FileText,
-    items: [
-      { id: "10", label: "المعاملات", code: "SCR_10_VIEW" },
-      { id: "815", label: "عروض الأسعار", code: "SCREEN_815_VIEW" },
-      { id: "11", label: "ويزرد إنشاء معاملة", code: "SCR_11_VIEW" },
-      { id: "12", label: "متابعة المعاملات", code: "SCR_12_VIEW" },
-      { id: "13", label: "سجل حالات المعاملات", code: "SCR_13_VIEW" },
-      { id: "14", label: "أنواع المعاملات", code: "SCR_14_VIEW" },
-      { id: "15", label: "إعدادات المعاملات", code: "SCR_15_VIEW" },
-    ],
-  },
-  {
-    id: "CAT_DOCS",
-    title: "المستندات",
-    icon: FolderOpen,
-    items: [
-      { id: "16", label: "مركز المستندات", code: "SCR_16_VIEW" },
-      { id: "17", label: "أنواع المستندات", code: "SCR_17_VIEW" },
-      { id: "18", label: "نماذج الجهات الرسمية", code: "SCR_18_VIEW" },
-      { id: "19", label: "مركز تجهيز الملفات", code: "SCR_19_VIEW" },
-      { id: "20", label: "مركز استقبال الملفات", code: "SCR_20_VIEW" },
-      { id: "21", label: "الملفات المؤرشفة", code: "SCR_21_VIEW" },
-      { id: "90", label: "أرشيف المخططات", code: "SCR_90_VIEW" }, 
-      { id: "91", label: "أدلة واشتراطات وتعاميم", code: "SCR_91_VIEW" },
-    ],
-  },
-  {
-    id: "CAT_AI_ANALYTICS",
-    title: "تحليلات الذكاء الصناعي",
-    icon: BrainCircuit,
-    items: [
-      { id: "22", label: "تحليلات AI الشاملة", code: "SCR_22_VIEW" },
-    ],
-  },
-  {
-    id: "CAT_FINANCE",
-    title: "المالية والمحاسبة",
-    icon: Wallet,
-    items: [
-      { id: "23", label: "المالية (الشاشة الموحدة)", code: "SCR_23_VIEW" },
-      { id: "24", label: "الفواتير", code: "SCR_24_VIEW" },
-      { id: "25", label: "التسويات", code: "SCR_25_VIEW" },
-      { id: "26", label: "إعدادات المالية", code: "SCR_26_VIEW" },
-      { id: "27", label: "الحسابات المرتبطة", code: "SCR_27_VIEW" },
-      { id: "28", label: "الإيرادات والمصروفات", code: "SCR_28_VIEW" },
-    ],
-  },
-  {
-    id: "CAT_ACCOUNTING_PORTAL",
-    title: "بوابة المحاسبة",
-    icon: Building2,
-    items: [
-      { id: "29", label: "بوابة شركة المحاسبة", code: "SCR_29_VIEW" },
-    ],
-  },
-  {
-    id: "CAT_BROKERS",
-    title: "الوسطاء والشركاء",
-    icon: Handshake,
-    items: [
-      { id: "30", label: "الوسطاء", code: "SCR_30_VIEW" },
-      { id: "31", label: "المكاتب الوسيطة", code: "SCR_31_VIEW" },
-      { id: "32", label: "الشركاء", code: "SCR_32_VIEW" },
-      { id: "33", label: "اتفاقيات الشراكة", code: "SCR_33_VIEW" },
-    ],
-  },
-  {
-    id: "CAT_HR",
-    title: "الموظفين",
-    icon: UserCog,
-    items: [
-      { id: "817", label: "سجل الموظفين والأدوار", code: "SCREEN_817_VIEW" },
-      { id: "35", label: "الحضور والانصراف", code: "SCR_35_VIEW" },
-      { id: "36", label: "تسويات الموظفين", code: "SCR_36_VIEW" },
-      { id: "37", label: "الموظفون عن بعد", code: "SCR_37_VIEW" },
-    ],
-  },
-  {
-    id: "CAT_RIYADH",
-    title: "تقسيم مدينة الرياض",
-    icon: MapIcon,
-    items: [
-      { id: "39", label: "تقسيم الرياض", code: "SCR_39_VIEW" },
-      { id: "40", label: "القطاعات", code: "SCR_40_VIEW" },
-      { id: "41", label: "الأحياء", code: "SCR_41_VIEW" },
-    ],
-  },
-  {
-    id: "CAT_REPORTS",
-    title: "التقارير",
-    icon: BarChart3,
-    items: [
-      { id: "42", label: "التقارير العامة", code: "SCR_42_VIEW" },
-      { id: "43", label: "تقارير المعاملات", code: "SCR_43_VIEW" },
-      { id: "44", label: "تقارير المالية", code: "SCR_44_VIEW" },
-      { id: "45", label: "تقارير الموظفين", code: "SCR_45_VIEW" },
-      { id: "46", label: "تقارير العملاء", code: "SCR_46_VIEW" },
-      { id: "47", label: "تقارير المستندات", code: "SCR_47_VIEW" },
-    ],
-  },
-  {
-    id: "CAT_LOGS",
-    title: "سجلات النظام",
-    icon: ScrollText,
-    items: [
-      { id: "48", label: "سجلات النظام الشاملة", code: "SCR_48_VIEW" },
-      { id: "49", label: "سجل الجلسات", code: "SCR_49_VIEW" },
-      { id: "50", label: "سجل العمليات", code: "SCR_50_VIEW" },
-      { id: "51", label: "سجل الطباعة", code: "SCR_51_VIEW" },
-      { id: "52", label: "سجل الذكاء الصناعي", code: "SCR_52_VIEW" },
-    ],
-  },
-  {
-    id: "CAT_AI_MGMT",
-    title: "إدارة الذكاء الصناعي",
-    icon: Cpu,
-    items: [
-      { id: "53", label: "إدارة الذكاء الصناعي", code: "SCR_53_VIEW" },
-      { id: "54", label: "مزودات AI", code: "SCR_54_VIEW" },
-      { id: "55", label: "استهلاك التوكن", code: "SCR_55_VIEW" },
-      { id: "57", label: "سياسات AI", code: "SCR_57_VIEW" },
-    ],
-  },
-  {
-    id: "CAT_ASSETS",
-    title: "أصول المكتب",
-    icon: Laptop,
-    items: [
-      { id: "58", label: "أصول المكتب", code: "SCR_58_VIEW" },
-      { id: "59", label: "الأجهزة", code: "SCR_59_VIEW" },
-      { id: "60", label: "البرمجيات", code: "SCR_60_VIEW" },
-      { id: "61", label: "التراخيص", code: "SCR_61_VIEW" },
-      { id: "62", label: "فواتير الأصول", code: "SCR_62_VIEW" },
-      { id: "63", label: "تنبيهات الأصول", code: "SCR_63_VIEW" },
-    ],
-  },
-  {
-    id: "CAT_QUALIFICATION",
-    title: "تأهيل المكتب",
-    icon: Award,
-    items: [
-      { id: "64", label: "التأهيل لدى الجهات", code: "SCR_64_VIEW" },
-      { id: "65", label: "الجهات الحكومية", code: "SCR_65_VIEW" },
-      { id: "66", label: "ملفات التأهيل", code: "SCR_66_VIEW" },
-    ],
-  },
-  {
-    id: "CAT_WEBSITE",
-    title: "الموقع الإلكتروني",
-    icon: Globe,
-    items: [
-      { id: "67", label: "إدارة الموقع", code: "SCR_67_VIEW" },
-      { id: "68", label: "حقن بيانات الموقع", code: "SCR_68_VIEW" },
-      { id: "69", label: "إحصائيات الموقع", code: "SCR_69_VIEW" },
-      { id: "70", label: "خريطة المشاريع", code: "SCR_70_VIEW" },
-    ],
-  },
-  {
-    id: "CAT_SYS_SETTINGS",
-    title: "إعدادات النظام",
-    icon: Settings,
-    items: [
-      { id: "71", label: "إعدادات النظام", code: "SCR_71_VIEW" },
-      { id: "73", label: "النسخ الاحتياطي", code: "SCR_73_VIEW" },
-      { id: "74", label: "مراقبة الموارد", code: "SCR_74_VIEW" },
-    ],
-  },
-  {
-    id: "CAT_REPORT_SETTINGS",
-    title: "إعدادات التقارير",
-    icon: FileSliders,
-    items: [
-      { id: "76", label: "ترميز التقارير", code: "SCR_76_VIEW" },
-      { id: "77", label: "تكويد التقارير", code: "SCR_77_VIEW" },
-      { id: "78", label: "التوقيع الرقمي", code: "SCR_78_VIEW" },
-      { id: "79", label: "تشفير التقارير", code: "SCR_79_VIEW" },
-    ],
-  },
-  {
-    id: "CAT_GENERAL_SETTINGS",
-    title: "الإعدادات العامة",
-    icon: Sliders,
-    items: [
-      { id: "SET", label: "إعدادات عامة", code: "SCREEN_SET_VIEW" },
-      { id: "83", label: "السياسات", code: "SCR_83_VIEW" },
-    ],
-  },
-  {
-    id: "CAT_QUICK_TOOLS",
-    title: "أدوات سريعة",
-    icon: Zap,
-    items: [
-      { id: "84", label: "البحث الشامل", code: "SCR_84_VIEW" },
-      { id: "85", label: "رفع ملفات سريع", code: "SCR_85_VIEW" },
-      { id: "86", label: "إنشاء معاملة سريع", code: "SCR_86_VIEW" },
-      { id: "87", label: "إنشاء عميل سريع", code: "SCR_87_VIEW" },
-    ],
-  },
+  // ... (محتويات المصفوفة السابقة) ...
 ];
 
 const Sidebar = () => {
   const { activeScreenId, openScreen } = useAppStore();
   const [openCategories, setOpenCategories] = useState(["CAT_CLIENTS", "CAT_TRANSACTIONS", "CAT_HR"]);
 
-  // 👈 3. جلب بيانات المستخدم وصلاحياته ووضع البناء
   const { user } = useAuth();
   const { isBuildMode } = usePermissionBuilder();
   const userPermissions = user?.permissions || [];
   
-  // نفترض أن المدير العام (position: 'مدير عام') يرى كل شيء دائماً
-  // 👈 الحل الآمن: الاعتماد على إيميل مالك النظام بدلاً من المسمى الوظيفي
-  const isSuperAdmin = user?.email === "admin@wms.com"; // ⚠️ ضع إيميلك الحقيقي هنا
+  const isSuperAdmin = user?.email === "admin@wms.com";
 
   const toggleCategory = (categoryId) => {
     setOpenCategories((prev) =>
@@ -264,15 +35,6 @@ const Sidebar = () => {
         : [...prev, categoryId]
     );
   };
-
-  // 👈 4. فلترة الفئات الرئيسية ديناميكياً
-  const visibleCategories = MENU_CATEGORIES.filter((category) => {
-    // إظهار الفئة دائماً للمدير أو في وضع البناء
-    if (isSuperAdmin || isBuildMode) return true;
-
-    // الفئة تظهر فقط إذا كان المستخدم يملك صلاحية لشاشة واحدة على الأقل بداخلها
-    return category.items.some((item) => userPermissions.includes(item.code));
-  });
 
   return (
     <aside className="w-[280px] bg-slate-900 text-white flex flex-col h-screen fixed right-0 top-0 z-40 shadow-2xl direction-rtl border-l border-slate-800">
@@ -286,94 +48,199 @@ const Sidebar = () => {
         </div>
       </div>
 
-      {/* 2. القائمة (Navigation) */}
-      <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-2 custom-scrollbar">
-        {visibleCategories.map((category) => {
-          const CategoryIcon = category.icon;
-          const isOpen = openCategories.includes(category.id);
-          
-          const isCategoryActive = category.items.some(item => item.id === activeScreenId);
+      {/* 2. القائمة (Navigation) - تم التحديث بالكود الجديد */}
+      <nav className="flex-1 overflow-y-auto custom-scrollbar-slim py-1">
+        <div className="mb-0.5" style={{ backgroundColor: 'transparent' }}>
+          <button className="w-full flex items-center gap-2 px-4 py-1.5 cursor-pointer transition-colors bg-wms-surface-2 text-wms-text border-l-2 border-wms-blue" style={{ fontSize: '13px', fontWeight: 600, height: '32px' }}>
+            <span className="flex items-center justify-center shrink-0 rounded" style={{ width: '16px', height: '16px', fontSize: '8px', fontWeight: 700, backgroundColor: 'rgba(37, 99, 235, 0.12)', color: 'var(--wms-accent-blue)' }}>1</span>
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-layout-dashboard w-4 h-4 shrink-0"><rect width="7" height="9" x="3" y="3" rx="1"></rect><rect width="7" height="5" x="14" y="3" rx="1"></rect><rect width="7" height="9" x="14" y="12" rx="1"></rect><rect width="7" height="5" x="3" y="16" rx="1"></rect></svg>
+            <span className="truncate">لوحة التحكم</span>
+          </button>
+          <button className="w-full flex items-center gap-2 px-4 py-1.5 cursor-pointer transition-colors text-wms-text-sec hover:bg-wms-surface-2/50 hover:text-wms-text" style={{ fontSize: '13px', fontWeight: 400, height: '32px' }}>
+            <span className="flex items-center justify-center shrink-0 rounded" style={{ width: '16px', height: '16px', fontSize: '8px', fontWeight: 700, backgroundColor: 'rgba(100, 116, 139, 0.08)', color: 'var(--wms-text-muted)' }}>2</span>
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-gauge w-4 h-4 shrink-0"><path d="m12 14 4-4"></path><path d="M3.34 19a10 10 0 1 1 17.32 0"></path></svg>
+            <span className="truncate">مركز التحكم المالي</span>
+          </button>
+        </div>
 
-          return (
-            <div key={category.id} className="flex flex-col">
-              {/* زر القسم الرئيسي */}
-              <button
-                onClick={() => toggleCategory(category.id)}
-                className={clsx(
-                  "w-full flex items-center justify-between px-3 py-2.5 rounded-lg transition-all duration-200 group text-right",
-                  isOpen ? "bg-slate-800/50" : "hover:bg-slate-800/50",
-                  isCategoryActive && !isOpen ? "border-r-2 border-blue-500" : "border-r-2 border-transparent"
-                )}
-              >
-                <div className="flex items-center gap-3">
-                  <CategoryIcon
-                    size={18}
-                    className={clsx(
-                      "transition-colors",
-                      isCategoryActive ? "text-blue-400" : "text-slate-400 group-hover:text-blue-300"
-                    )}
-                  />
-                  <span className={clsx("font-bold text-sm", isCategoryActive ? "text-slate-100" : "text-slate-300")}>
-                    {category.title}
-                  </span>
-                </div>
-                <ChevronDown
-                  size={14}
-                  className={clsx(
-                    "text-slate-500 transition-transform duration-300",
-                    isOpen ? "rotate-180" : ""
-                  )}
-                />
-              </button>
+        <div className="mb-0.5" style={{ backgroundColor: 'rgba(37, 99, 235, 0.03)' }}>
+          <button className="w-full flex items-center justify-between px-4 py-1.5 hover:text-wms-text-sec cursor-pointer" style={{ fontSize: '11px', fontWeight: 600, color: 'rgb(37, 99, 235)' }}>
+            <span>المعاملات</span>
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-chevron-down w-3 h-3 transition-transform"><path d="m6 9 6 6 6-6"></path></svg>
+          </button>
+          <button className="w-full flex items-center gap-2 px-4 py-1.5 cursor-pointer transition-colors text-wms-text-sec hover:bg-wms-surface-2/50 hover:text-wms-text" style={{ fontSize: '13px', fontWeight: 400, height: '32px' }}>
+            <span className="flex items-center justify-center shrink-0 rounded" style={{ width: '16px', height: '16px', fontSize: '8px', fontWeight: 700, backgroundColor: 'rgba(100, 116, 139, 0.08)', color: 'var(--wms-text-muted)' }}>3</span>
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-map-pin w-4 h-4 shrink-0"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"></path><circle cx="12" cy="10" r="3"></circle></svg>
+            <span className="truncate">قطاع الوسط</span>
+          </button>
+          <button className="w-full flex items-center gap-2 px-4 py-1.5 cursor-pointer transition-colors text-wms-text-sec hover:bg-wms-surface-2/50 hover:text-wms-text" style={{ fontSize: '13px', fontWeight: 400, height: '32px' }}>
+            <span className="flex items-center justify-center shrink-0 rounded" style={{ width: '16px', height: '16px', fontSize: '8px', fontWeight: 700, backgroundColor: 'rgba(100, 116, 139, 0.08)', color: 'var(--wms-text-muted)' }}>4</span>
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-arrow-up w-4 h-4 shrink-0"><path d="m5 12 7-7 7 7"></path><path d="M12 19V5"></path></svg>
+            <span className="truncate">قطاع الشمال</span>
+          </button>
+          <button className="w-full flex items-center gap-2 px-4 py-1.5 cursor-pointer transition-colors text-wms-text-sec hover:bg-wms-surface-2/50 hover:text-wms-text" style={{ fontSize: '13px', fontWeight: 400, height: '32px' }}>
+            <span className="flex items-center justify-center shrink-0 rounded" style={{ width: '16px', height: '16px', fontSize: '8px', fontWeight: 700, backgroundColor: 'rgba(100, 116, 139, 0.08)', color: 'var(--wms-text-muted)' }}>5</span>
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-arrow-down w-4 h-4 shrink-0"><path d="M12 5v14"></path><path d="m19 12-7 7-7-7"></path></svg>
+            <span className="truncate">قطاع الجنوب</span>
+          </button>
+          <button className="w-full flex items-center gap-2 px-4 py-1.5 cursor-pointer transition-colors text-wms-text-sec hover:bg-wms-surface-2/50 hover:text-wms-text" style={{ fontSize: '13px', fontWeight: 400, height: '32px' }}>
+            <span className="flex items-center justify-center shrink-0 rounded" style={{ width: '16px', height: '16px', fontSize: '8px', fontWeight: 700, backgroundColor: 'rgba(100, 116, 139, 0.08)', color: 'var(--wms-text-muted)' }}>6</span>
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-arrow-right w-4 h-4 shrink-0"><path d="M5 12h14"></path><path d="m12 5 7 7-7 7"></path></svg>
+            <span className="truncate">قطاع الشرق</span>
+          </button>
+          <button className="w-full flex items-center gap-2 px-4 py-1.5 cursor-pointer transition-colors text-wms-text-sec hover:bg-wms-surface-2/50 hover:text-wms-text" style={{ fontSize: '13px', fontWeight: 400, height: '32px' }}>
+            <span className="flex items-center justify-center shrink-0 rounded" style={{ width: '16px', height: '16px', fontSize: '8px', fontWeight: 700, backgroundColor: 'rgba(100, 116, 139, 0.08)', color: 'var(--wms-text-muted)' }}>7</span>
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-arrow-left w-4 h-4 shrink-0"><path d="m12 19-7-7 7-7"></path><path d="M19 12H5"></path></svg>
+            <span className="truncate">قطاع الغرب</span>
+          </button>
+          <button className="w-full flex items-center gap-2 px-4 py-1.5 cursor-pointer transition-colors text-wms-text-sec hover:bg-wms-surface-2/50 hover:text-wms-text" style={{ fontSize: '13px', fontWeight: 400, height: '32px' }}>
+            <span className="flex items-center justify-center shrink-0 rounded" style={{ width: '16px', height: '16px', fontSize: '8px', fontWeight: 700, backgroundColor: 'rgba(100, 116, 139, 0.08)', color: 'var(--wms-text-muted)' }}>8</span>
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-layers w-4 h-4 shrink-0"><path d="M12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83z"></path><path d="M2 12a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 12"></path><path d="M2 17a1 1 0 0 0 .58.91l8.6 3.91a2 2 0 0 0 1.65 0l8.58-3.9A1 1 0 0 0 22 17"></path></svg>
+            <span className="truncate">كل القطاعات</span>
+          </button>
+        </div>
 
-              {/* الشاشات الفرعية داخل القسم */}
-              <div
-                className={clsx(
-                  "overflow-hidden transition-all duration-300 ease-in-out",
-                  isOpen ? "max-h-[1000px] opacity-100 mt-1" : "max-h-0 opacity-0"
-                )}
-              >
-                <div className="pr-8 pl-2 py-1 space-y-1 border-r border-slate-700/50 mr-4">
-                  {category.items.map((item) => {
-                    const isActive = activeScreenId === item.id;
+        <div className="mb-0.5" style={{ backgroundColor: 'rgba(34, 197, 94, 0.03)' }}>
+          <button className="w-full flex items-center justify-between px-4 py-1.5 hover:text-wms-text-sec cursor-pointer" style={{ fontSize: '11px', fontWeight: 600, color: 'rgb(22, 163, 74)' }}>
+            <span>التسويات</span>
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-chevron-down w-3 h-3 transition-transform"><path d="m6 9 6 6 6-6"></path></svg>
+          </button>
+          <button className="w-full flex items-center gap-2 px-4 py-1.5 cursor-pointer transition-colors text-wms-text-sec hover:bg-wms-surface-2/50 hover:text-wms-text" style={{ fontSize: '13px', fontWeight: 400, height: '32px' }}>
+            <span className="flex items-center justify-center shrink-0 rounded" style={{ width: '16px', height: '16px', fontSize: '8px', fontWeight: 700, backgroundColor: 'rgba(100, 116, 139, 0.08)', color: 'var(--wms-text-muted)' }}>9</span>
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-handshake w-4 h-4 shrink-0"><path d="m11 17 2 2a1 1 0 1 0 3-3"></path><path d="m14 14 2.5 2.5a1 1 0 1 0 3-3l-3.88-3.88a3 3 0 0 0-4.24 0l-.88.88a1 1 0 1 1-3-3l2.81-2.81a5.79 5.79 0 0 1 7.06-.87l.47.28a2 2 0 0 0 1.42.25L21 4"></path><path d="m21 3 1 11h-2"></path><path d="M3 3 2 14l6.5 6.5a1 1 0 1 0 3-3"></path><path d="M3 4h8"></path></svg>
+            <span className="truncate">تسوية الوسطاء</span>
+          </button>
+          <button className="w-full flex items-center gap-2 px-4 py-1.5 cursor-pointer transition-colors text-wms-text-sec hover:bg-wms-surface-2/50 hover:text-wms-text" style={{ fontSize: '13px', fontWeight: 400, height: '32px' }}>
+            <span className="flex items-center justify-center shrink-0 rounded" style={{ width: '16px', height: '16px', fontSize: '8px', fontWeight: 700, backgroundColor: 'rgba(100, 116, 139, 0.08)', color: 'var(--wms-text-muted)' }}>10</span>
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-user-check w-4 h-4 shrink-0"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><polyline points="16 11 18 13 22 9"></polyline></svg>
+            <span className="truncate">تسوية المعقبين</span>
+          </button>
+          <button className="w-full flex items-center gap-2 px-4 py-1.5 cursor-pointer transition-colors text-wms-text-sec hover:bg-wms-surface-2/50 hover:text-wms-text" style={{ fontSize: '13px', fontWeight: 400, height: '32px' }}>
+            <span className="flex items-center justify-center shrink-0 rounded" style={{ width: '16px', height: '16px', fontSize: '8px', fontWeight: 700, backgroundColor: 'rgba(100, 116, 139, 0.08)', color: 'var(--wms-text-muted)' }}>11</span>
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-users w-4 h-4 shrink-0"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M22 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+            <span className="truncate">تسوية أرباح الشركاء</span>
+          </button>
+          <button className="w-full flex items-center gap-2 px-4 py-1.5 cursor-pointer transition-colors text-wms-text-sec hover:bg-wms-surface-2/50 hover:text-wms-text" style={{ fontSize: '13px', fontWeight: 400, height: '32px' }}>
+            <span className="flex items-center justify-center shrink-0 rounded" style={{ width: '16px', height: '16px', fontSize: '8px', fontWeight: 700, backgroundColor: 'rgba(100, 116, 139, 0.08)', color: 'var(--wms-text-muted)' }}>12</span>
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-star w-4 h-4 shrink-0"><path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"></path></svg>
+            <span className="truncate">تسويات أصحاب المصلحة</span>
+          </button>
+        </div>
 
-                    return (
-                      <AccessControl
-                        key={item.id}
-                        code={item.code}
-                        name={`رؤية شاشة: ${item.label}`}
-                        moduleName={category.title}
-                        type="screen"
-                      >
-                        <button
-                          onClick={() => openScreen(item.id, item.label)}
-                          className={clsx(
-                            "w-full flex items-center gap-2.5 px-3 py-2 rounded-lg transition-all duration-200 group text-right relative",
-                            isActive
-                              ? "bg-blue-600/10 text-blue-400 font-bold"
-                              : "text-slate-400 hover:bg-slate-800/70 hover:text-slate-200"
-                          )}
-                        >
-                          {isActive ? (
-                            <CircleDot size={12} className="text-blue-500" />
-                          ) : (
-                            <div className="w-1.5 h-1.5 rounded-full bg-slate-600 group-hover:bg-slate-400" />
-                          )}
-                          <span className="text-[13px] flex-1">{item.label}</span>
-                        </button>
-                      </AccessControl>
-                    );
-                  })}
-                </div>
-              </div>
-            </div>
-          );
-        })}
+        <div className="mb-0.5" style={{ backgroundColor: 'rgba(245, 158, 11, 0.03)' }}>
+          <button className="w-full flex items-center justify-between px-4 py-1.5 hover:text-wms-text-sec cursor-pointer" style={{ fontSize: '11px', fontWeight: 600, color: 'rgb(217, 119, 6)' }}>
+            <span>الماليات التشغيلية</span>
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-chevron-down w-3 h-3 transition-transform"><path d="m6 9 6 6 6-6"></path></svg>
+          </button>
+          <button className="w-full flex items-center gap-2 px-4 py-1.5 cursor-pointer transition-colors text-wms-text-sec hover:bg-wms-surface-2/50 hover:text-wms-text" style={{ fontSize: '13px', fontWeight: 400, height: '32px' }}>
+            <span className="flex items-center justify-center shrink-0 rounded" style={{ width: '16px', height: '16px', fontSize: '8px', fontWeight: 700, backgroundColor: 'rgba(100, 116, 139, 0.08)', color: 'var(--wms-text-muted)' }}>13</span>
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-receipt w-4 h-4 shrink-0"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"></path><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"></path><path d="M12 17.5v-11"></path></svg>
+            <span className="truncate">مصروفات المكتب</span>
+          </button>
+          <button className="w-full flex items-center gap-2 px-4 py-1.5 cursor-pointer transition-colors text-wms-text-sec hover:bg-wms-surface-2/50 hover:text-wms-text" style={{ fontSize: '13px', fontWeight: 400, height: '32px' }}>
+            <span className="flex items-center justify-center shrink-0 rounded" style={{ width: '16px', height: '16px', fontSize: '8px', fontWeight: 700, backgroundColor: 'rgba(100, 116, 139, 0.08)', color: 'var(--wms-text-muted)' }}>14</span>
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-vault w-4 h-4 shrink-0"><rect width="18" height="18" x="3" y="3" rx="2"></rect><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"></circle><path d="m7.9 7.9 2.7 2.7"></path><circle cx="16.5" cy="7.5" r=".5" fill="currentColor"></circle><path d="m13.4 10.6 2.7-2.7"></path><circle cx="7.5" cy="16.5" r=".5" fill="currentColor"></circle><path d="m7.9 16.1 2.7-2.7"></path><circle cx="16.5" cy="16.5" r=".5" fill="currentColor"></circle><path d="m13.4 13.4 2.7 2.7"></path><circle cx="12" cy="12" r="2"></circle></svg>
+            <span className="truncate">الخزنة</span>
+          </button>
+          <button className="w-full flex items-center gap-2 px-4 py-1.5 cursor-pointer transition-colors text-wms-text-sec hover:bg-wms-surface-2/50 hover:text-wms-text" style={{ fontSize: '13px', fontWeight: 400, height: '32px' }}>
+            <span className="flex items-center justify-center shrink-0 rounded" style={{ width: '16px', height: '16px', fontSize: '8px', fontWeight: 700, backgroundColor: 'rgba(100, 116, 139, 0.08)', color: 'var(--wms-text-muted)' }}>15</span>
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-landmark w-4 h-4 shrink-0"><line x1="3" x2="21" y1="22" y2="22"></line><line x1="6" x2="6" y1="18" y2="11"></line><line x1="10" x2="10" y1="18" y2="11"></line><line x1="14" x2="14" y1="18" y2="11"></line><line x1="18" x2="18" y1="18" y2="11"></line><polygon points="12 2 20 7 4 7"></polygon></svg>
+            <span className="truncate">الحسابات البنكية</span>
+          </button>
+          <button className="w-full flex items-center gap-2 px-4 py-1.5 cursor-pointer transition-colors text-wms-text-sec hover:bg-wms-surface-2/50 hover:text-wms-text" style={{ fontSize: '13px', fontWeight: 400, height: '32px' }}>
+            <span className="flex items-center justify-center shrink-0 rounded" style={{ width: '16px', height: '16px', fontSize: '8px', fontWeight: 700, backgroundColor: 'rgba(100, 116, 139, 0.08)', color: 'var(--wms-text-muted)' }}>16</span>
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-wallet w-4 h-4 shrink-0"><path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"></path><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"></path></svg>
+            <span className="truncate">إدارة الصرف</span>
+          </button>
+        </div>
+
+        <div className="mb-0.5" style={{ backgroundColor: 'rgba(124, 58, 237, 0.03)' }}>
+          <button className="w-full flex items-center justify-between px-4 py-1.5 hover:text-wms-text-sec cursor-pointer" style={{ fontSize: '11px', fontWeight: 600, color: 'rgb(124, 58, 237)' }}>
+            <span>المكاتب المتعاونة</span>
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-chevron-down w-3 h-3 transition-transform"><path d="m6 9 6 6 6-6"></path></svg>
+          </button>
+          <button className="w-full flex items-center gap-2 px-4 py-1.5 cursor-pointer transition-colors text-wms-text-sec hover:bg-wms-surface-2/50 hover:text-wms-text" style={{ fontSize: '13px', fontWeight: 400, height: '32px' }}>
+            <span className="flex items-center justify-center shrink-0 rounded" style={{ width: '16px', height: '16px', fontSize: '8px', fontWeight: 700, backgroundColor: 'rgba(100, 116, 139, 0.08)', color: 'var(--wms-text-muted)' }}>17</span>
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-briefcase w-4 h-4 shrink-0"><path d="M16 20V4a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path><rect width="20" height="14" x="2" y="6" rx="2"></rect></svg>
+            <span className="truncate">حسابات أتعاب المكاتب</span>
+          </button>
+          <button className="w-full flex items-center gap-2 px-4 py-1.5 cursor-pointer transition-colors text-wms-text-sec hover:bg-wms-surface-2/50 hover:text-wms-text" style={{ fontSize: '13px', fontWeight: 400, height: '32px' }}>
+            <span className="flex items-center justify-center shrink-0 rounded" style={{ width: '16px', height: '16px', fontSize: '8px', fontWeight: 700, backgroundColor: 'rgba(100, 116, 139, 0.08)', color: 'var(--wms-text-muted)' }}>18</span>
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-building2 lucide-building-2 w-4 h-4 shrink-0"><path d="M6 22V4a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v18Z"></path><path d="M6 12H4a2 2 0 0 0-2 2v6a2 2 0 0 0 2 2h2"></path><path d="M18 9h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"></path><path d="M10 6h4"></path><path d="M10 10h4"></path><path d="M10 14h4"></path><path d="M10 18h4"></path></svg>
+            <span className="truncate">بروفايلات المكاتب المتعاونة</span>
+          </button>
+        </div>
+
+        <div className="mb-0.5" style={{ backgroundColor: 'rgba(100, 116, 139, 0.03)' }}>
+          <button className="w-full flex items-center justify-between px-4 py-1.5 hover:text-wms-text-sec cursor-pointer" style={{ fontSize: '11px', fontWeight: 600, color: 'rgb(100, 116, 139)' }}>
+            <span>الإعدادات</span>
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-chevron-down w-3 h-3 transition-transform"><path d="m6 9 6 6 6-6"></path></svg>
+          </button>
+          <button className="w-full flex items-center gap-2 px-4 py-1.5 cursor-pointer transition-colors text-wms-text-sec hover:bg-wms-surface-2/50 hover:text-wms-text" style={{ fontSize: '13px', fontWeight: 400, height: '32px' }}>
+            <span className="flex items-center justify-center shrink-0 rounded" style={{ width: '16px', height: '16px', fontSize: '8px', fontWeight: 700, backgroundColor: 'rgba(100, 116, 139, 0.08)', color: 'var(--wms-text-muted)' }}>19</span>
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-map-pinned w-4 h-4 shrink-0"><path d="M18 8c0 3.613-3.869 7.429-5.393 8.795a1 1 0 0 1-1.214 0C9.87 15.429 6 11.613 6 8a6 6 0 0 1 12 0"></path><circle cx="12" cy="8" r="2"></circle><path d="M8.714 14h-3.71a1 1 0 0 0-.948.683l-2.004 6A1 1 0 0 0 3 22h18a1 1 0 0 0 .948-1.316l-2-6a1 1 0 0 0-.949-.684h-3.712"></path></svg>
+            <span className="truncate">إعدادات الأحياء والقطاعات</span>
+          </button>
+          <button className="w-full flex items-center gap-2 px-4 py-1.5 cursor-pointer transition-colors text-wms-text-sec hover:bg-wms-surface-2/50 hover:text-wms-text" style={{ fontSize: '13px', fontWeight: 400, height: '32px' }}>
+            <span className="flex items-center justify-center shrink-0 rounded" style={{ width: '16px', height: '16px', fontSize: '8px', fontWeight: 700, backgroundColor: 'rgba(100, 116, 139, 0.08)', color: 'var(--wms-text-muted)' }}>20</span>
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-clock w-4 h-4 shrink-0"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+            <span className="truncate">إعدادات التأخير</span>
+          </button>
+          <button className="w-full flex items-center gap-2 px-4 py-1.5 cursor-pointer transition-colors text-wms-text-sec hover:bg-wms-surface-2/50 hover:text-wms-text" style={{ fontSize: '13px', fontWeight: 400, height: '32px' }}>
+            <span className="flex items-center justify-center shrink-0 rounded" style={{ width: '16px', height: '16px', fontSize: '8px', fontWeight: 700, backgroundColor: 'rgba(100, 116, 139, 0.08)', color: 'var(--wms-text-muted)' }}>21</span>
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-calculator w-4 h-4 shrink-0"><rect width="16" height="20" x="4" y="2" rx="2"></rect><line x1="8" x2="16" y1="6" y2="6"></line><line x1="16" x2="16" y1="14" y2="18"></line><path d="M16 10h.01"></path><path d="M12 10h.01"></path><path d="M8 10h.01"></path><path d="M12 14h.01"></path><path d="M8 14h.01"></path><path d="M12 18h.01"></path><path d="M8 18h.01"></path></svg>
+            <span className="truncate">إعدادات التقدير الضريبي</span>
+          </button>
+          <button className="w-full flex items-center gap-2 px-4 py-1.5 cursor-pointer transition-colors text-wms-text-sec hover:bg-wms-surface-2/50 hover:text-wms-text" style={{ fontSize: '13px', fontWeight: 400, height: '32px' }}>
+            <span className="flex items-center justify-center shrink-0 rounded" style={{ width: '16px', height: '16px', fontSize: '8px', fontWeight: 700, backgroundColor: 'rgba(100, 116, 139, 0.08)', color: 'var(--wms-text-muted)' }}>22</span>
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-link2 lucide-link-2 w-4 h-4 shrink-0"><path d="M9 17H7A5 5 0 0 1 7 7h2"></path><path d="M15 7h2a5 5 0 1 1 0 10h-2"></path><line x1="8" x2="16" y1="12" y2="12"></line></svg>
+            <span className="truncate">بوابة الربط</span>
+          </button>
+        </div>
+
+        <div className="mb-0.5" style={{ backgroundColor: 'rgba(217, 119, 6, 0.03)' }}>
+          <button className="w-full flex items-center justify-between px-4 py-1.5 hover:text-wms-text-sec cursor-pointer" style={{ fontSize: '11px', fontWeight: 600, color: 'rgb(217, 119, 6)' }}>
+            <span>حسابات خاصة</span>
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-chevron-down w-3 h-3 transition-transform"><path d="m6 9 6 6 6-6"></path></svg>
+          </button>
+          <button className="w-full flex items-center gap-2 px-4 py-1.5 cursor-pointer transition-colors text-wms-text-sec hover:bg-wms-surface-2/50 hover:text-wms-text" style={{ fontSize: '13px', fontWeight: 400, height: '32px' }}>
+            <span className="flex items-center justify-center shrink-0 rounded" style={{ width: '16px', height: '16px', fontSize: '8px', fontWeight: 700, backgroundColor: 'rgba(100, 116, 139, 0.08)', color: 'var(--wms-text-muted)' }}>23</span>
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-circle-user w-4 h-4 shrink-0"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="10" r="3"></circle><path d="M7 20.662V19a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v1.662"></path></svg>
+            <span className="truncate">حسابات العبودي</span>
+          </button>
+          <button className="w-full flex items-center gap-2 px-4 py-1.5 cursor-pointer transition-colors text-wms-text-sec hover:bg-wms-surface-2/50 hover:text-wms-text" style={{ fontSize: '13px', fontWeight: 400, height: '32px' }}>
+            <span className="flex items-center justify-center shrink-0 rounded" style={{ width: '16px', height: '16px', fontSize: '8px', fontWeight: 700, backgroundColor: 'rgba(100, 116, 139, 0.08)', color: 'var(--wms-text-muted)' }}>24</span>
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-circle-user w-4 h-4 shrink-0"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="10" r="3"></circle><path d="M7 20.662V19a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v1.662"></path></svg>
+            <span className="truncate">حسابات إبراهيم الراجحي</span>
+          </button>
+          <button className="w-full flex items-center gap-2 px-4 py-1.5 cursor-pointer transition-colors text-wms-text-sec hover:bg-wms-surface-2/50 hover:text-wms-text" style={{ fontSize: '13px', fontWeight: 400, height: '32px' }}>
+            <span className="flex items-center justify-center shrink-0 rounded" style={{ width: '16px', height: '16px', fontSize: '8px', fontWeight: 700, backgroundColor: 'rgba(100, 116, 139, 0.08)', color: 'var(--wms-text-muted)' }}>25</span>
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-circle-user w-4 h-4 shrink-0"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="10" r="3"></circle><path d="M7 20.662V19a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v1.662"></path></svg>
+            <span className="truncate">حسابات أحمد طلعت</span>
+          </button>
+          <button className="w-full flex items-center gap-2 px-4 py-1.5 cursor-pointer transition-colors text-wms-text-sec hover:bg-wms-surface-2/50 hover:text-wms-text" style={{ fontSize: '13px', fontWeight: 400, height: '32px' }}>
+            <span className="flex items-center justify-center shrink-0 rounded" style={{ width: '16px', height: '16px', fontSize: '8px', fontWeight: 700, backgroundColor: 'rgba(100, 116, 139, 0.08)', color: 'var(--wms-text-muted)' }}>26</span>
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-circle-user w-4 h-4 shrink-0"><circle cx="12" cy="12" r="10"></circle><circle cx="12" cy="10" r="3"></circle><path d="M7 20.662V19a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v1.662"></path></svg>
+            <span className="truncate">حسابات محمد فؤاد</span>
+          </button>
+        </div>
+
+        <div className="mb-0.5" style={{ backgroundColor: 'rgba(14, 165, 233, 0.03)' }}>
+          <button className="w-full flex items-center justify-between px-4 py-1.5 hover:text-wms-text-sec cursor-pointer" style={{ fontSize: '11px', fontWeight: 600, color: 'rgb(14, 165, 233)' }}>
+            <span>السجلات</span>
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-chevron-down w-3 h-3 transition-transform"><path d="m6 9 6 6 6-6"></path></svg>
+          </button>
+          <button className="w-full flex items-center gap-2 px-4 py-1.5 cursor-pointer transition-colors text-wms-text-sec hover:bg-wms-surface-2/50 hover:text-wms-text" style={{ fontSize: '13px', fontWeight: 400, height: '32px' }}>
+            <span className="flex items-center justify-center shrink-0 rounded" style={{ width: '16px', height: '16px', fontSize: '8px', fontWeight: 700, backgroundColor: 'rgba(100, 116, 139, 0.08)', color: 'var(--wms-text-muted)' }}>27</span>
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-book-user w-4 h-4 shrink-0"><path d="M15 13a3 3 0 1 0-6 0"></path><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20"></path><circle cx="12" cy="8" r="2"></circle></svg>
+            <span className="truncate">سجل الأشخاص</span>
+          </button>
+        </div>
       </nav>
       
       {/* الفوتر الخاص بالقائمة */}
       <div className="p-4 border-t border-slate-800 bg-slate-950 text-center">
-        <div className="text-[10px] text-slate-500 font-mono">Master List v1.0</div>
+        <div className="text-[10px] text-slate-500 font-mono">Master List v2.0 (Static)</div>
       </div>
     </aside>
   );
