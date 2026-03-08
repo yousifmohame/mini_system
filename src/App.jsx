@@ -2,7 +2,7 @@ import React from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { useAppStore } from "./stores/useAppStore";
-import { Toaster } from "sonner"; 
+import { Toaster } from "sonner";
 
 // --- Components (Layout & Shell) ---
 import Sidebar from "./components/layout/shell/Sidebar";
@@ -14,10 +14,11 @@ import ServerSettings from "./components/ServerSettings";
 // --- Pages / Screens ---
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
-
+import TransactionsPage from "./pages/TransactionsPage"; // 👈 استيراد صفحة المعاملات الجديدة
+import BrokerSettlementsPage from "./pages/BrokerSettlementsPage";
 
 // --- Icons & Context ---
-import { Wrench } from "lucide-react"; // 👈 استيراد أيقونة شاشة الصيانة
+import { Wrench } from "lucide-react";
 import SystemHeader from "./components/layout/shell/SystemHeader";
 import { PermissionBuilderProvider } from "./context/PermissionBuilderContext";
 import PermissionBuilderToolbar from "./components/PermissionBuilderToolbar";
@@ -37,12 +38,15 @@ const ComingSoonScreen = ({ screenId }) => (
       <div className="w-20 h-20 bg-blue-50 border-8 border-white shadow-sm text-blue-600 rounded-full flex items-center justify-center mx-auto mb-6 relative z-10">
         <Wrench size={32} className="animate-[spin_4s_linear_infinite]" />
       </div>
-      
-      <h2 className="text-2xl font-black text-slate-800 mb-2">هذه الشاشة قيد التطوير</h2>
+
+      <h2 className="text-2xl font-black text-slate-800 mb-2">
+        هذه الشاشة قيد التطوير
+      </h2>
       <p className="text-slate-500 mb-6 text-sm leading-relaxed">
-        نحن نعمل بجد لإتاحة هذه الميزة في التحديثات القادمة للنظام. شكراً لثقتكم وتفهمكم.
+        نحن نعمل بجد لإتاحة هذه الميزة في التحديثات القادمة للنظام. شكراً لثقتكم
+        وتفهمكم.
       </p>
-      
+
       <div className="inline-flex flex-col gap-1 items-center">
         <div className="px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-xs font-bold uppercase tracking-widest font-mono border border-slate-200">
           Coming Soon
@@ -63,7 +67,9 @@ const AppContent = () => {
     return (
       <div className="flex h-screen items-center justify-center bg-gray-50 flex-col gap-4">
         <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
-        <p className="text-gray-500 text-sm font-medium">جاري تحميل النظام...</p>
+        <p className="text-gray-500 text-sm font-medium">
+          جاري تحميل النظام...
+        </p>
       </div>
     );
   }
@@ -72,46 +78,78 @@ const AppContent = () => {
     return <Login />;
   }
 
-  // 👈 قائمة بأكواد الشاشات التي قمت ببرمجتها بالفعل
-  const implementedScreens = ["DASH"];
-  // فحص هل الشاشة المطلوبة مبرمجة أم لا
+  // 👈 إضافة TXN_LIST إلى قائمة الشاشات المبرمجة
+  const implementedScreens = ["DASH", "TXN_LIST", "BROKER_SETTLEMENTS"];
   const isImplemented = implementedScreens.includes(activeScreenId);
 
   return (
-    <div className="flex h-screen bg-gray-50 direction-rtl font-sans text-right" dir="rtl">
+    <div
+      className="flex h-screen bg-gray-50 direction-rtl font-sans text-right"
+      dir="rtl"
+    >
       <Sidebar />
 
       {/* المحتوى الرئيسي */}
-      {/* 👈 تم تعديل الهامش إلى mr-[280px] ليتطابق مع السايدبار الجديد */}
       <div className="flex-1 flex flex-col mr-[280px] h-screen overflow-hidden bg-[#f3f4f6]">
         {/* ================= Header ================= */}
         <SystemHeader />
-        
+
         {/* ================= Tabs Strip ================= */}
         <GlobalScreenTabs />
-        
+
         {/* ================= Main Content Viewport ================= */}
         <main className="flex-1 relative overflow-hidden flex flex-col">
-          {activeScreenId !== "DASH" && (
-            <div className="shrink-0">
-              <ScreenHeader screenId={activeScreenId} />
-            </div>
-          )}
+          {/* إخفاء الهيدر الافتراضي عن شاشة المعاملات لأنها تمتلك هيدر خاص بها */}
+          {activeScreenId !== "DASH" &&
+            activeScreenId !== "TXN_LIST" &&
+            activeScreenId !== "BROKER_SETTLEMENTS" && (
+              <div className="shrink-0">
+                <ScreenHeader screenId={activeScreenId} />
+              </div>
+            )}
 
-          <div className="flex-1 overflow-auto p-0 pb-8 scroll-smooth relative h-full">
-            
+          <div
+            className={`flex-1 overflow-auto scroll-smooth relative h-full ${activeScreenId === "TXN_LIST" ? "p-0" : "p-0 pb-8"}`}
+          >
             {/* --- الشاشات المبرمجة --- */}
-            <div className={activeScreenId === "DASH" ? "block h-full" : "hidden"}><Dashboard /></div>
-                      {/* --- 👈 السحر هنا: شاشة Fallback لأي كود غير مبرمج --- */}
+
+            {/* 1. لوحة التحكم */}
+            <div
+              className={activeScreenId === "DASH" ? "block h-full" : "hidden"}
+            >
+              <Dashboard />
+            </div>
+
+            {/* 2. صفحة المعاملات (النظام الداخلي) */}
+            <div
+              className={
+                activeScreenId === "TXN_LIST" ? "block h-full" : "hidden"
+              }
+            >
+              <TransactionsPage />
+            </div>
+
+            <div
+              className={
+                activeScreenId === "BROKER_SETTLEMENTS"
+                  ? "block h-full"
+                  : "hidden"
+              }
+            >
+              <BrokerSettlementsPage />
+            </div>
+
+            {/* --- شاشة Fallback لأي كود غير مبرمج --- */}
             {!isImplemented && (
               <div className="block h-full">
                 <ComingSoonScreen screenId={activeScreenId} />
               </div>
             )}
-
           </div>
         </main>
-        <SystemFooter />
+
+        {/* إخفاء الفوتر الافتراضي من صفحة المعاملات لتأخذ المساحة كاملة */}
+        {activeScreenId !== "TXN_LIST" && <SystemFooter />}
       </div>
 
       <Toaster richColors position="top-center" />

@@ -105,19 +105,39 @@ export const useAppStore = create((set, get) => ({
   // ==========================================
 
   // 👈 تم التحديث: نقبل dynamicTitle من السايدبار لفتح الشاشات غير المبرمجة
-  openScreen: (screenId, dynamicTitle = "شاشة جديدة") =>
+  // 👈 تم التحديث: نقبل dynamicTitle و props (مثل sector)
+  openScreen: (
+    screenId,
+    dynamicTitle = "شاشة جديدة",
+    props = {}, // 👈 أضفنا props هنا
+  ) =>
     set((state) => {
-      // 1. إذا كانت الشاشة في ثوابت النظام خذها، وإلا اصنع لها إعداداً وهمياً باسمها الحقيقي
       const screenConfig = SCREENS[screenId] || {
         id: screenId,
         title: dynamicTitle,
       };
 
-      const isAlreadyOpen = state.openScreens.find((s) => s.id === screenId);
+      const isAlreadyOpenIndex = state.openScreens.findIndex(
+        (s) => s.id === screenId,
+      );
 
-      // أ) إذا كانت مفتوحة مسبقاً، قم بتنشيطها فقط
-      if (isAlreadyOpen) {
-        return { activeScreenId: screenId };
+      // أ) إذا كانت مفتوحة مسبقاً، قم بتنشيطها "وتحديث الـ props الخاصة بها"
+      if (isAlreadyOpenIndex !== -1) {
+        const updatedScreens = [...state.openScreens];
+        // تحديث الـ props (مثل تحديث القطاع من 'وسط' إلى 'شمال' دون إغلاق الشاشة)
+        updatedScreens[isAlreadyOpenIndex] = {
+          ...updatedScreens[isAlreadyOpenIndex],
+          title:
+            dynamicTitle !== "شاشة جديدة"
+              ? dynamicTitle
+              : updatedScreens[isAlreadyOpenIndex].title,
+          props: { ...updatedScreens[isAlreadyOpenIndex].props, ...props }, // 👈 تحديث الـ props
+        };
+
+        return {
+          openScreens: updatedScreens,
+          activeScreenId: screenId,
+        };
       }
 
       // ب) إذا كانت شاشة جديدة:
@@ -125,14 +145,14 @@ export const useAppStore = create((set, get) => ({
       const hasExistingTabs = !!state.screenTabs[screenId];
 
       return {
-        // إضافتها للشريط العلوي
+        // إضافتها للشريط العلوي مع الـ props
         openScreens: [
           ...state.openScreens,
-          { id: screenId, title: screenConfig.title, isClosable: true },
+          { id: screenId, title: screenConfig.title, isClosable: true, props }, // 👈 حفظ الـ props هنا
         ],
         activeScreenId: screenId,
 
-        // تهيئة التاب الداخلي الأساسي لها إذا لم يكن موجوداً
+        // تهيئة التاب الداخلي الأساسي
         screenTabs: {
           ...state.screenTabs,
           ...(hasExistingTabs
@@ -154,7 +174,6 @@ export const useAppStore = create((set, get) => ({
         },
       };
     }),
-
   // إغلاق شاشة بالكامل من الشريط العلوي (Global)
   closeScreen: (screenId) =>
     set((state) => {

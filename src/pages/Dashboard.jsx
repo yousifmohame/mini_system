@@ -46,6 +46,7 @@ const Dashboard = () => {
     stakeholderId: "",
     receiverId: "",
     engOfficeBrokerId: "",
+    totalFees: "",
   };
   const [transactionFormData, setTransactionFormData] = useState(
     initialTransactionFormState,
@@ -132,6 +133,16 @@ const Dashboard = () => {
       enabled: isCollectionModalOpen,
     });
 
+  // 🚀 جلب إحصائيات لوحة القيادة للمعاملات الخاصة من الباك إند
+  const { data: dashboardStats = {}, isLoading: isLoadingStats } = useQuery({
+    queryKey: ["private-dashboard-stats"],
+    queryFn: async () => {
+      const res = await api.get("/private-transactions/dashboard-stats");
+      // نعتمد على هيكل البيانات الذي أنشأناه في الباك إند
+      return res.data?.data || {};
+    },
+  });
+
   // ==================================================
   // 3. دوال التعامل مع المدخلات
   // ==================================================
@@ -178,7 +189,7 @@ const Dashboard = () => {
     },
     onSuccess: () => {
       toast.success("تم تسجيل المعاملة بنجاح!");
-      queryClient.invalidateQueries(["dashboard-stats"]);
+      queryClient.invalidateQueries(["private-dashboard-stats"]); // 🚀 تحديث الإحصائيات
       queryClient.invalidateQueries(["private-transactions-simple"]);
       setIsNewTransactionModalOpen(false);
       setTransactionFormData(initialTransactionFormState);
@@ -214,7 +225,6 @@ const Dashboard = () => {
         (tx) => tx.id === collectionFormData.transactionId,
       );
       if (selectedTx) {
-        // افترض أن API المعاملات يرجع totalFees و paidAmount و remainingAmount
         setSelectedTransactionDetails({
           totalFees: selectedTx.totalFees || 0,
           paidAmount: selectedTx.paidAmount || 0,
@@ -240,7 +250,6 @@ const Dashboard = () => {
         }
       });
 
-      // نفترض وجود Endpoint جديد لتسجيل الدفعات
       const res = await api.post(
         "/private-transactions/payments",
         formDataToSend,
@@ -252,7 +261,7 @@ const Dashboard = () => {
     },
     onSuccess: () => {
       toast.success("تم تسجيل التحصيل بنجاح!");
-      queryClient.invalidateQueries(["dashboard-stats"]);
+      queryClient.invalidateQueries(["private-dashboard-stats"]); // 🚀 تحديث الإحصائيات
       queryClient.invalidateQueries(["private-transactions-simple"]);
       setIsCollectionModalOpen(false);
       setCollectionFormData(initialCollectionFormState);
@@ -534,30 +543,16 @@ const Dashboard = () => {
         <div className="p-4 space-y-4">
           {/* الإحصائيات العلوية */}
           <div className="flex items-center gap-5 px-4 py-2.5 bg-wms-surface-1 border border-wms-border rounded-lg">
+            {/* إجمالي المعاملات */}
             <div className="flex items-center gap-2">
               <div
                 className="w-7 h-7 rounded-md flex items-center justify-center shrink-0"
                 style={{ backgroundColor: "var(--wms-accent-blue)20" }}
               >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="24"
-                  height="24"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className="lucide lucide-file-text w-3.5 h-3.5"
+                <FilePlus
+                  className="w-3.5 h-3.5"
                   style={{ color: "var(--wms-accent-blue)" }}
-                >
-                  <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"></path>
-                  <path d="M14 2v4a2 2 0 0 0 2 2h4"></path>
-                  <path d="M10 9H8"></path>
-                  <path d="M16 13H8"></path>
-                  <path d="M16 17H8"></path>
-                </svg>
+                />
               </div>
               <div>
                 <div
@@ -575,28 +570,9 @@ const Dashboard = () => {
                       color: "var(--wms-accent-blue)",
                     }}
                   >
-                    1,247
-                  </span>
-                  <span
-                    className="flex items-center gap-0.5"
-                    style={{ fontSize: "10px" }}
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      width="24"
-                      height="24"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      className="lucide lucide-arrow-up-right w-2.5 h-2.5 text-wms-success"
-                    >
-                      <path d="M7 7h10v10"></path>
-                      <path d="M7 17 17 7"></path>
-                    </svg>
-                    <span style={{ color: "var(--wms-success)" }}>+12%</span>
+                    {isLoadingStats
+                      ? "..."
+                      : (dashboardStats.totalCount || 0).toLocaleString()}
                   </span>
                 </div>
               </div>
@@ -604,33 +580,22 @@ const Dashboard = () => {
 
             <div className="flex items-center gap-2">
               <div className="w-px h-8 bg-wms-border"></div>
+              {/* إجمالي المبالغ */}
               <div
                 className="w-7 h-7 rounded-md flex items-center justify-center shrink-0"
                 style={{ backgroundColor: "var(--wms-success)20" }}
               >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="24"
-                  height="24"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className="lucide lucide-dollar-sign w-3.5 h-3.5"
+                <Banknote
+                  className="w-3.5 h-3.5"
                   style={{ color: "var(--wms-success)" }}
-                >
-                  <line x1="12" x2="12" y1="2" y2="22"></line>
-                  <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path>
-                </svg>
+                />
               </div>
               <div>
                 <div
                   className="text-wms-text-muted"
                   style={{ fontSize: "10px" }}
                 >
-                  صافي الأرباح
+                  إجمالي المبالغ
                 </div>
                 <div className="flex items-center gap-1.5">
                   <span
@@ -641,28 +606,12 @@ const Dashboard = () => {
                       color: "var(--wms-success)",
                     }}
                   >
-                    ٣٤٥,٦٠٠ ر.س
-                  </span>
-                  <span
-                    className="flex items-center gap-0.5"
-                    style={{ fontSize: "10px" }}
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      width="24"
-                      height="24"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      className="lucide lucide-arrow-up-right w-2.5 h-2.5 text-wms-success"
-                    >
-                      <path d="M7 7h10v10"></path>
-                      <path d="M7 17 17 7"></path>
-                    </svg>
-                    <span style={{ color: "var(--wms-success)" }}>+8.2%</span>
+                    {isLoadingStats
+                      ? "..."
+                      : (
+                          dashboardStats.totalProfits || 0
+                        ).toLocaleString()}{" "}
+                    ر.س
                   </span>
                 </div>
               </div>
@@ -670,28 +619,15 @@ const Dashboard = () => {
 
             <div className="flex items-center gap-2">
               <div className="w-px h-8 bg-wms-border"></div>
+              {/* الوسطاء النشطون */}
               <div
                 className="w-7 h-7 rounded-md flex items-center justify-center shrink-0"
                 style={{ backgroundColor: "var(--chart-4)20" }}
               >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="24"
-                  height="24"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className="lucide lucide-users w-3.5 h-3.5"
+                <User
+                  className="w-3.5 h-3.5"
                   style={{ color: "var(--chart-4)" }}
-                >
-                  <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
-                  <circle cx="9" cy="7" r="4"></circle>
-                  <path d="M22 21v-2a4 4 0 0 0-3-3.87"></path>
-                  <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-                </svg>
+                />
               </div>
               <div>
                 <div
@@ -709,28 +645,9 @@ const Dashboard = () => {
                       color: "var(--chart-4)",
                     }}
                   >
-                    23
-                  </span>
-                  <span
-                    className="flex items-center gap-0.5"
-                    style={{ fontSize: "10px" }}
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      width="24"
-                      height="24"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      className="lucide lucide-arrow-up-right w-2.5 h-2.5 text-wms-success"
-                    >
-                      <path d="M7 7h10v10"></path>
-                      <path d="M7 17 17 7"></path>
-                    </svg>
-                    <span style={{ color: "var(--wms-success)" }}>+3</span>
+                    {isLoadingStats
+                      ? "..."
+                      : (dashboardStats.activeBrokers || 0).toLocaleString()}
                   </span>
                 </div>
               </div>
@@ -738,56 +655,22 @@ const Dashboard = () => {
 
             <div className="flex items-center gap-2">
               <div className="w-px h-8 bg-wms-border"></div>
+              {/* السيولة المحصلة */}
               <div
                 className="w-7 h-7 rounded-md flex items-center justify-center shrink-0"
                 style={{ backgroundColor: "var(--wms-warning)20" }}
               >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="24"
-                  height="24"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className="lucide lucide-vault w-3.5 h-3.5"
+                <CreditCard
+                  className="w-3.5 h-3.5"
                   style={{ color: "var(--wms-warning)" }}
-                >
-                  <rect width="18" height="18" x="3" y="3" rx="2"></rect>
-                  <circle cx="7.5" cy="7.5" r=".5" fill="currentColor"></circle>
-                  <path d="m7.9 7.9 2.7 2.7"></path>
-                  <circle
-                    cx="16.5"
-                    cy="7.5"
-                    r=".5"
-                    fill="currentColor"
-                  ></circle>
-                  <path d="m13.4 10.6 2.7-2.7"></path>
-                  <circle
-                    cx="7.5"
-                    cy="16.5"
-                    r=".5"
-                    fill="currentColor"
-                  ></circle>
-                  <path d="m7.9 16.1 2.7-2.7"></path>
-                  <circle
-                    cx="16.5"
-                    cy="16.5"
-                    r=".5"
-                    fill="currentColor"
-                  ></circle>
-                  <path d="m13.4 13.4 2.7 2.7"></path>
-                  <circle cx="12" cy="12" r="2"></circle>
-                </svg>
+                />
               </div>
               <div>
                 <div
                   className="text-wms-text-muted"
                   style={{ fontSize: "10px" }}
                 >
-                  رصيد الخزنة
+                  السيولة المحصلة
                 </div>
                 <div className="flex items-center gap-1.5">
                   <span
@@ -798,394 +681,215 @@ const Dashboard = () => {
                       color: "var(--wms-warning)",
                     }}
                   >
-                    ٢٠٠,٤٠٠ ر.س
-                  </span>
-                  <span
-                    className="flex items-center gap-0.5"
-                    style={{ fontSize: "10px" }}
-                  >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      width="24"
-                      height="24"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      className="lucide lucide-arrow-down-right w-2.5 h-2.5 text-wms-danger"
-                    >
-                      <path d="m7 7 10 10"></path>
-                      <path d="M17 7v10H7"></path>
-                    </svg>
-                    <span style={{ color: "var(--wms-danger)" }}>-2.1%</span>
+                    {isLoadingStats
+                      ? "..."
+                      : (
+                          dashboardStats.vaultBalance || 0
+                        ).toLocaleString()}{" "}
+                    ر.س
                   </span>
                 </div>
-              </div>
-            </div>
-          </div>
-
-          {/* قسم التذكيرات */}
-          <div
-            className="rounded-lg overflow-hidden"
-            style={{
-              backgroundColor: "var(--wms-surface-1)",
-              border: "1px solid var(--wms-border)",
-            }}
-          >
-            <div
-              className="flex items-center justify-between px-3 py-2"
-              style={{ borderBottom: "1px solid var(--wms-border)" }}
-            >
-              <div className="flex items-center gap-2">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="24"
-                  height="24"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className="lucide lucide-bell w-4 h-4"
-                  style={{ color: "var(--wms-danger)" }}
-                >
-                  <path d="M10.268 21a2 2 0 0 0 3.464 0"></path>
-                  <path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326"></path>
-                </svg>
-                <span
-                  className="text-wms-text"
-                  style={{ fontSize: "12px", fontWeight: 700 }}
-                >
-                  التذكيرات والمتابعات
-                </span>
-                <span
-                  className="px-1.5 py-0.5 rounded"
-                  style={{
-                    fontSize: "9px",
-                    fontWeight: 700,
-                    backgroundColor: "rgba(100, 116, 139, 0.12)",
-                    color: "var(--wms-text-muted)",
-                  }}
-                >
-                  6
-                </span>
-              </div>
-              <button className="text-wms-text-muted hover:text-wms-text cursor-pointer">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="24"
-                  height="24"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className="lucide lucide-x w-3.5 h-3.5"
-                >
-                  <path d="M18 6 6 18"></path>
-                  <path d="m6 6 12 12"></path>
-                </svg>
-              </button>
-            </div>
-            <div
-              className="p-2 space-y-1.5"
-              style={{ maxHeight: "320px", overflowY: "auto" }}
-            >
-              <div
-                className="flex items-start gap-2 p-2 rounded-md transition-colors hover:opacity-90 cursor-pointer"
-                style={{
-                  backgroundColor: "rgba(220, 38, 38, 0.06)",
-                  border: "1px solid rgba(220, 38, 38, 0.15)",
-                }}
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="24"
-                  height="24"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className="lucide lucide-triangle-alert w-3.5 h-3.5 mt-0.5 shrink-0"
-                  style={{ color: "var(--wms-danger)" }}
-                >
-                  <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"></path>
-                  <path d="M12 9v4"></path>
-                  <path d="M12 17h.01"></path>
-                </svg>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span
-                      style={{
-                        fontSize: "11px",
-                        fontWeight: 700,
-                        color: "var(--wms-danger)",
-                      }}
-                    >
-                      تحصيل متأخر
-                    </span>
-                    <span
-                      className="px-1.5 py-0.5 rounded-full"
-                      style={{
-                        fontSize: "9px",
-                        fontWeight: 700,
-                        backgroundColor: "rgba(220, 38, 38, 0.15)",
-                        color: "var(--wms-danger)",
-                      }}
-                    >
-                      متأخر 12 يوم
-                    </span>
-                  </div>
-                  <div
-                    className="text-wms-text-sec truncate"
-                    style={{ fontSize: "10px" }}
-                  >
-                    TX-0003 — سعود الحربي — متبقي 85,000 ريال
-                  </div>
-                  <span
-                    className="text-wms-blue hover:underline"
-                    style={{ fontSize: "9px" }}
-                  >
-                    TX-0003
-                  </span>
-                </div>
-                <span
-                  className="font-mono shrink-0"
-                  style={{
-                    fontSize: "11px",
-                    fontWeight: 700,
-                    color: "var(--wms-danger)",
-                  }}
-                >
-                  85,000
-                </span>
-                <button
-                  className="shrink-0 text-wms-text-muted hover:text-wms-text cursor-pointer"
-                  title="تجاهل"
-                >
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="24"
-                    height="24"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    className="lucide lucide-x w-3 h-3"
-                  >
-                    <path d="M18 6 6 18"></path>
-                    <path d="m6 6 12 12"></path>
-                  </svg>
-                </button>
               </div>
             </div>
           </div>
 
           {/* الجداول والإحصائيات */}
           <div className="grid grid-cols-3 gap-3">
-            <div className="col-span-2 bg-wms-surface-1 border border-wms-border rounded-lg">
+            <div className="col-span-2 bg-wms-surface-1 border border-wms-border rounded-lg overflow-hidden">
               <div className="flex items-center justify-between px-3 py-2 border-b border-wms-border">
                 <span
                   className="text-wms-text"
                   style={{ fontSize: "13px", fontWeight: 600 }}
                 >
-                  آخر المعاملات
+                  آخر المعاملات الداخلية
                 </span>
                 <span
                   className="text-wms-text-muted"
                   style={{ fontSize: "11px" }}
                 >
-                  آخر 30 يوم
+                  حسب الأحدث
                 </span>
               </div>
-              <table className="w-full" style={{ fontSize: "12px" }}>
-                <thead>
-                  <tr style={{ backgroundColor: "var(--wms-surface-2)" }}>
-                    <th
-                      className="text-right px-3 py-1.5 text-wms-text-sec"
-                      style={{ fontWeight: 600, fontSize: "11px" }}
-                    >
-                      رقم المعاملة
-                    </th>
-                    <th
-                      className="text-right px-3 py-1.5 text-wms-text-sec"
-                      style={{ fontWeight: 600, fontSize: "11px" }}
-                    >
-                      النوع
-                    </th>
-                    <th
-                      className="text-right px-3 py-1.5 text-wms-text-sec"
-                      style={{ fontWeight: 600, fontSize: "11px" }}
-                    >
-                      المالك
-                    </th>
-                    <th
-                      className="text-right px-3 py-1.5 text-wms-text-sec"
-                      style={{ fontWeight: 600, fontSize: "11px" }}
-                    >
-                      القطاع
-                    </th>
-                    <th
-                      className="text-right px-3 py-1.5 text-wms-text-sec"
-                      style={{ fontWeight: 600, fontSize: "11px" }}
-                    >
-                      المبلغ
-                    </th>
-                    <th
-                      className="text-right px-3 py-1.5 text-wms-text-sec"
-                      style={{ fontWeight: 600, fontSize: "11px" }}
-                    >
-                      الحالة
-                    </th>
-                    <th
-                      className="text-right px-3 py-1.5 text-wms-text-sec"
-                      style={{ fontWeight: 600, fontSize: "11px" }}
-                    >
-                      التاريخ
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr
-                    className="border-b border-wms-border/50 hover:bg-wms-surface-2/30 transition-colors"
-                    style={{ backgroundColor: "transparent" }}
-                  >
-                    <td
-                      className="px-3 py-1.5 text-wms-blue font-mono"
-                      style={{ fontSize: "11px" }}
-                    >
-                      TXN-2401
-                    </td>
-                    <td className="px-3 py-1.5 text-wms-text-sec">بيع</td>
-                    <td className="px-3 py-1.5 text-wms-text">محمد أحمد</td>
-                    <td className="px-3 py-1.5 text-wms-text-sec">وسط</td>
-                    <td className="px-3 py-1.5 text-wms-text font-mono">
-                      ٤٥,٠٠٠
-                    </td>
-                    <td className="px-3 py-1.5">
-                      <span
-                        className="inline-block px-2 py-0.5 rounded-full"
-                        style={{
-                          backgroundColor: "rgba(34, 197, 94, 0.15)",
-                          color: "var(--wms-success)",
-                          fontSize: "10px",
-                          fontWeight: 600,
-                        }}
+
+              <div className="overflow-x-auto max-h-[300px] custom-scrollbar-slim">
+                <table
+                  className="w-full text-right"
+                  style={{ fontSize: "12px" }}
+                >
+                  <thead className="sticky top-0 z-10">
+                    <tr style={{ backgroundColor: "var(--wms-surface-2)" }}>
+                      <th
+                        className="px-3 py-2 text-wms-text-sec"
+                        style={{ fontWeight: 600, fontSize: "11px" }}
                       >
-                        محصّل
-                      </span>
-                    </td>
-                    <td
-                      className="px-3 py-1.5 text-wms-text-muted font-mono"
-                      style={{ fontSize: "11px" }}
-                    >
-                      1447/02/15
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+                        رقم المعاملة
+                      </th>
+                      <th
+                        className="px-3 py-2 text-wms-text-sec"
+                        style={{ fontWeight: 600, fontSize: "11px" }}
+                      >
+                        النوع
+                      </th>
+                      <th
+                        className="px-3 py-2 text-wms-text-sec"
+                        style={{ fontWeight: 600, fontSize: "11px" }}
+                      >
+                        المالك
+                      </th>
+                      <th
+                        className="px-3 py-2 text-wms-text-sec"
+                        style={{ fontWeight: 600, fontSize: "11px" }}
+                      >
+                        القطاع
+                      </th>
+                      <th
+                        className="px-3 py-2 text-wms-text-sec"
+                        style={{ fontWeight: 600, fontSize: "11px" }}
+                      >
+                        المبلغ
+                      </th>
+                      <th
+                        className="px-3 py-2 text-wms-text-sec"
+                        style={{ fontWeight: 600, fontSize: "11px" }}
+                      >
+                        الحالة
+                      </th>
+                      <th
+                        className="px-3 py-2 text-wms-text-sec"
+                        style={{ fontWeight: 600, fontSize: "11px" }}
+                      >
+                        التاريخ
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {isLoadingStats ? (
+                      <tr>
+                        <td
+                          colSpan="7"
+                          className="text-center py-4 text-slate-400"
+                        >
+                          جاري التحميل...
+                        </td>
+                      </tr>
+                    ) : dashboardStats.recentTransactions &&
+                      dashboardStats.recentTransactions.length > 0 ? (
+                      dashboardStats.recentTransactions.map((tx) => (
+                        <tr
+                          key={tx.id}
+                          className="border-b border-wms-border/50 hover:bg-wms-surface-2/30 transition-colors"
+                        >
+                          <td
+                            className="px-3 py-2 text-wms-blue font-mono font-bold"
+                            style={{ fontSize: "11px" }}
+                          >
+                            {tx.ref}
+                          </td>
+                          <td className="px-3 py-2 text-wms-text-sec font-bold">
+                            {tx.type}
+                          </td>
+                          <td className="px-3 py-2 text-wms-text">
+                            {tx.client}
+                          </td>
+                          <td className="px-3 py-2 text-wms-text-sec">
+                            {tx.sector || tx.district}
+                          </td>
+                          <td className="px-3 py-2 text-wms-text font-mono font-bold">
+                            {tx.value?.toLocaleString()}
+                          </td>
+                          <td className="px-3 py-2">
+                            <span
+                              className="inline-block px-2 py-0.5 rounded-md"
+                              style={{
+                                backgroundColor:
+                                  tx.status === "مكتملة"
+                                    ? "rgba(34, 197, 94, 0.15)"
+                                    : "rgba(59, 130, 246, 0.15)",
+                                color:
+                                  tx.status === "مكتملة"
+                                    ? "var(--wms-success)"
+                                    : "var(--wms-accent-blue)",
+                                fontSize: "10px",
+                                fontWeight: 600,
+                              }}
+                            >
+                              {tx.status}
+                            </span>
+                          </td>
+                          <td
+                            className="px-3 py-2 text-wms-text-muted font-mono"
+                            style={{ fontSize: "11px" }}
+                          >
+                            {tx.date}
+                          </td>
+                        </tr>
+                      ))
+                    ) : (
+                      <tr>
+                        <td
+                          colSpan="7"
+                          className="text-center py-4 text-slate-400"
+                        >
+                          لا توجد معاملات مسجلة حتى الآن
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
 
+            {/* ملخص المبالغ والمديونيات */}
             <div className="bg-wms-surface-1 border border-wms-border rounded-lg">
               <div className="px-3 py-2 border-b border-wms-border">
                 <span
                   className="text-wms-text"
                   style={{ fontSize: "13px", fontWeight: 600 }}
                 >
-                  ملخص القطاعات
+                  التدفق النقدي
                 </span>
               </div>
-              <div className="p-2 space-y-1">
-                <div className="flex items-center justify-between px-2 py-2 rounded-md hover:bg-wms-surface-2/50">
-                  <div>
-                    <div
-                      className="text-wms-text"
-                      style={{ fontSize: "13px", fontWeight: 500 }}
-                    >
-                      الوسط
-                    </div>
-                    <div
-                      className="text-wms-text-muted"
-                      style={{ fontSize: "11px" }}
-                    >
-                      312 معاملة
-                    </div>
-                  </div>
-                  <div
-                    className="text-wms-text font-mono"
-                    style={{ fontSize: "12px", fontWeight: 600 }}
-                  >
-                    ٢,٣٤٠,٠٠٠
-                  </div>
-                </div>
-              </div>
-              <div
-                className="mx-2 mb-2 p-2 rounded-md"
-                style={{ backgroundColor: "rgba(59, 130, 246, 0.08)" }}
-              >
-                <div className="flex justify-between">
-                  <span
-                    className="text-wms-text-muted"
-                    style={{ fontSize: "11px" }}
-                  >
-                    إجمالي الإيرادات
+              <div className="p-3 space-y-3">
+                <div className="flex justify-between items-center bg-blue-50/50 p-2 rounded border border-blue-100">
+                  <span className="text-slate-600 text-xs font-bold">
+                    إجمالي المطالبات
                   </span>
-                  <span
-                    className="text-wms-blue font-mono"
-                    style={{ fontSize: "12px", fontWeight: 700 }}
-                  >
-                    ٩,٥٠٠,٠٠٠ ر.س
+                  <span className="font-mono font-bold text-blue-700">
+                    {isLoadingStats
+                      ? "..."
+                      : (
+                          dashboardStats.totalProfits || 0
+                        ).toLocaleString()}{" "}
+                    ر.س
                   </span>
                 </div>
-              </div>
-            </div>
-          </div>
-
-          {/* الشريط المالي السريع */}
-          <div className="flex items-center gap-4 px-4 py-2.5 bg-wms-surface-1 border border-wms-border rounded-lg flex-wrap">
-            <span
-              className="text-wms-text-sec shrink-0"
-              style={{ fontSize: "11px", fontWeight: 600 }}
-            >
-              النظرة المالية
-            </span>
-            <div className="w-px h-7 bg-wms-border"></div>
-            <div>
-              <div className="text-wms-text-muted" style={{ fontSize: "9px" }}>
-                إجمالي المعاملات
-              </div>
-              <div
-                className="font-mono"
-                style={{
-                  fontSize: "13px",
-                  fontWeight: 700,
-                  color: "var(--wms-accent-blue)",
-                }}
-              >
-                1,247
-              </div>
-            </div>
-            <div>
-              <div className="text-wms-text-muted" style={{ fontSize: "9px" }}>
-                المعاملات النشطة
-              </div>
-              <div
-                className="font-mono"
-                style={{
-                  fontSize: "13px",
-                  fontWeight: 700,
-                  color: "var(--wms-success)",
-                }}
-              >
-                342
+                <div className="flex justify-between items-center bg-emerald-50/50 p-2 rounded border border-emerald-100">
+                  <span className="text-slate-600 text-xs font-bold">
+                    المبالغ المحصلة
+                  </span>
+                  <span className="font-mono font-bold text-emerald-700">
+                    {isLoadingStats
+                      ? "..."
+                      : (
+                          dashboardStats.vaultBalance || 0
+                        ).toLocaleString()}{" "}
+                    ر.س
+                  </span>
+                </div>
+                <div className="flex justify-between items-center bg-amber-50/50 p-2 rounded border border-amber-100">
+                  <span className="text-slate-600 text-xs font-bold">
+                    المتبقي (المديونيات)
+                  </span>
+                  <span className="font-mono font-bold text-amber-700">
+                    {isLoadingStats
+                      ? "..."
+                      : (
+                          (dashboardStats.totalProfits || 0) -
+                          (dashboardStats.vaultBalance || 0)
+                        ).toLocaleString()}{" "}
+                    ر.س
+                  </span>
+                </div>
               </div>
             </div>
           </div>
@@ -1365,6 +1069,31 @@ const Dashboard = () => {
                     <ChevronDown className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
                   </div>
                 </div>
+              </div>
+
+              {/* === القسم الجديد: مبلغ المعاملة (المالية) === */}
+              <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100 mb-4">
+                <div className="flex items-center justify-between mb-2">
+                  <label
+                    className="text-slate-700 flex items-center gap-1.5"
+                    style={{ fontSize: "12px", fontWeight: 700 }}
+                  >
+                    <Banknote className="w-4 h-4 text-blue-600" />
+                    إجمالي أتعاب المعاملة (ر.س){" "}
+                    <span className="text-red-500">*</span>
+                  </label>
+                </div>
+                <input
+                  type="number"
+                  required
+                  value={transactionFormData.totalFees}
+                  onChange={(e) =>
+                    handleTransactionChange("totalFees", e.target.value)
+                  }
+                  className="w-full bg-white border border-blue-200 rounded-lg px-4 text-blue-700 font-mono focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all text-lg font-bold"
+                  placeholder="مثال: 4500"
+                  style={{ height: "42px" }}
+                />
               </div>
 
               {/* 5. الحي والقطاع */}
@@ -1570,7 +1299,10 @@ const Dashboard = () => {
                     <select
                       value={transactionFormData.followUpAgentId}
                       onChange={(e) =>
-                        handleChange("followUpAgentId", e.target.value)
+                        handleTransactionChange(
+                          "followUpAgentId",
+                          e.target.value,
+                        )
                       }
                       className="w-full flex items-center justify-between bg-slate-50 border border-slate-200 rounded-md px-3 text-right cursor-pointer hover:border-blue-300 transition-colors appearance-none focus:outline-none focus:border-blue-500 text-slate-700"
                       style={{ height: "34px", fontSize: "12px" }}
@@ -1599,7 +1331,7 @@ const Dashboard = () => {
                     <select
                       value={transactionFormData.stakeholderId}
                       onChange={(e) =>
-                        handleChange("stakeholderId", e.target.value)
+                        handleTransactionChange("stakeholderId", e.target.value)
                       }
                       className="w-full flex items-center justify-between bg-slate-50 border border-slate-200 rounded-md px-3 text-right cursor-pointer hover:border-blue-300 transition-colors appearance-none focus:outline-none focus:border-blue-500 text-slate-700"
                       style={{ height: "34px", fontSize: "12px" }}
@@ -1626,7 +1358,7 @@ const Dashboard = () => {
                     <select
                       value={transactionFormData.receiverId}
                       onChange={(e) =>
-                        handleChange("receiverId", e.target.value)
+                        handleTransactionChange("receiverId", e.target.value)
                       }
                       className="w-full flex items-center justify-between bg-slate-50 border border-slate-200 rounded-md px-3 text-right cursor-pointer hover:border-blue-300 transition-colors appearance-none focus:outline-none focus:border-blue-500 text-slate-700"
                       style={{ height: "34px", fontSize: "12px" }}
@@ -1654,7 +1386,10 @@ const Dashboard = () => {
                   <select
                     value={transactionFormData.engOfficeBrokerId}
                     onChange={(e) =>
-                      handleChange("engOfficeBrokerId", e.target.value)
+                      handleTransactionChange(
+                        "engOfficeBrokerId",
+                        e.target.value,
+                      )
                     }
                     className="w-full flex items-center justify-between bg-slate-50 border border-slate-200 rounded-md px-3 text-right cursor-pointer hover:border-blue-300 transition-colors appearance-none focus:outline-none focus:border-blue-500 text-slate-700"
                     style={{ height: "34px", fontSize: "12px" }}
