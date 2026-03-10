@@ -20,6 +20,8 @@ import {
   RefreshCw,
 } from "lucide-react";
 
+const EMPTY_ARRAY = [];
+
 const Dashboard = () => {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -120,7 +122,7 @@ const Dashboard = () => {
   // ==================================================
   // Data Fetching (Queries)
   // ==================================================
-  const { data: clients = [], isLoading: isLoadingClients } = useQuery({
+  const { data: clients = EMPTY_ARRAY } = useQuery({
     queryKey: ["clients-simple"],
     queryFn: async () => {
       const res = await api.get("/clients/simple");
@@ -128,7 +130,7 @@ const Dashboard = () => {
     },
     enabled: isNewTransactionModalOpen || isCollectionModalOpen,
   });
-  const { data: riyadhZones = [], isLoading: isLoadingZones } = useQuery({
+  const { data: riyadhZones = EMPTY_ARRAY } = useQuery({
     queryKey: ["riyadhZones"],
     queryFn: async () => {
       const res = await api.get("/riyadh-zones");
@@ -136,7 +138,7 @@ const Dashboard = () => {
     },
     enabled: isNewTransactionModalOpen,
   });
-  const { data: plans = [] } = useQuery({
+  const { data: plans = EMPTY_ARRAY } = useQuery({
     queryKey: ["riyadh-plans-simple"],
     queryFn: async () => {
       const res = await api.get("/riyadh-streets/plans");
@@ -167,7 +169,7 @@ const Dashboard = () => {
     },
   });
 
-  const { data: privateTransactions = [], isLoading: isLoadingTransactions } =
+  const { data: privateTransactionsData, isLoading: isLoadingTransactions } =
     useQuery({
       queryKey: ["private-transactions-simple"],
       queryFn: async () => {
@@ -176,13 +178,20 @@ const Dashboard = () => {
       },
       enabled: isCollectionModalOpen,
     });
+
+  // ✅ FIXED: Memoize to prevent reference changes on every render
+  const privateTransactions = useMemo(
+    () => privateTransactionsData?.data || privateTransactionsData || EMPTY_ARRAY,
+    [privateTransactionsData]
+  );
+
   const { data: dashboardStats = {}, isLoading: isLoadingStats } = useQuery({
-    queryKey: ["private-dashboard-stats"],
-    queryFn: async () => {
-      const res = await api.get("/private-transactions/dashboard-stats");
-      return res.data?.data || {};
-    },
-  });
+  queryKey: ["private-dashboard-stats"],
+  queryFn: async () => {
+    const res = await api.get("/private-transactions/dashboard-stats");
+    return res.data?.data || {};
+  },
+});
 
   // Filtering persons based on roles for dropdowns
   const brokers = useMemo(
@@ -271,13 +280,31 @@ const Dashboard = () => {
       const selectedTx = privateTransactions.find(
         (tx) => (tx.dbId || tx.id) === collectionFormData.transactionId,
       );
-      if (selectedTx)
-        setSelectedTransactionDetails({
+
+      if (selectedTx) {
+        const newDetails = {
           totalFees: selectedTx.totalPrice ?? selectedTx.totalFees ?? 0,
           paidAmount: selectedTx.collectionAmount ?? selectedTx.paidAmount ?? 0,
           remainingAmount: selectedTx.remainingAmount ?? 0,
+        };
+
+        // Only update state if values actually changed
+        setSelectedTransactionDetails((prev) => {
+          if (
+            prev?.totalFees === newDetails.totalFees &&
+            prev?.paidAmount === newDetails.paidAmount &&
+            prev?.remainingAmount === newDetails.remainingAmount
+          ) {
+            return prev; // No change needed - prevents infinite loop
+          }
+          return newDetails;
         });
-    } else setSelectedTransactionDetails(null);
+      } else {
+        setSelectedTransactionDetails(null);
+      }
+    } else {
+      setSelectedTransactionDetails(null);
+    }
   }, [collectionFormData.transactionId, privateTransactions]);
 
   const calculatePercentageAmount = (percentage) => {
