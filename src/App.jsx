@@ -220,13 +220,13 @@ const AppContent = () => {
               <OfficeExpensesPage />
             </div>
 
-            <div
+            {/* <div
               className={
                 activeScreenId === "TREASURY" ? "block h-full" : "hidden"
               }
             >
               <TreasuryPage />
-            </div>
+            </div> */}
             <div
               className={
                 activeScreenId === "BANK_ACCOUNTS" ? "block h-full" : "hidden"

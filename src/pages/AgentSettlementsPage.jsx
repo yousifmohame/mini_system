@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/axios";
 import { toast } from "sonner";
@@ -111,24 +111,31 @@ const AgentSettlementsPage = () => {
     },
   });
 
-  const financials = dashboardData?.financials || {
-    bankBalance: 0,
-    cashBalance: 0,
-    taxEstimate: 0,
-    undelivered: 0,
-    availableBalance: 0,
-  };
+  // 💡 حماية البيانات بالـ useMemo لمنع الـ Re-renders
+  const financials = useMemo(
+    () =>
+      dashboardData?.financials || {
+        bankBalance: 0,
+        cashBalance: 0,
+        taxEstimate: 0,
+        undelivered: 0,
+        availableBalance: 0,
+      },
+    [dashboardData],
+  );
 
   // 4. فلترة صارمة للمعقبين (Strict Filter)
-  const brokers = (dashboardData?.brokers || [])
-    .filter((broker) => {
-      const personInfo = persons.find((p) => p.id === broker.id);
-      return personInfo && personInfo.role === "معقب";
-    })
-    .map((broker) => {
-      const personInfo = persons.find((p) => p.id === broker.id);
-      return { ...broker, name: personInfo.name };
-    });
+  const brokers = useMemo(() => {
+    return (dashboardData?.brokers || [])
+      .filter((broker) => {
+        const personInfo = persons.find((p) => p.id === broker.id);
+        return personInfo && personInfo.role === "معقب";
+      })
+      .map((broker) => {
+        const personInfo = persons.find((p) => p.id === broker.id);
+        return { ...broker, name: personInfo.name };
+      });
+  }, [dashboardData, persons]);
 
   // ==========================================
   // 5. جلب بيانات المعقب المحدد بداخل المودال
@@ -145,7 +152,7 @@ const AgentSettlementsPage = () => {
       );
       return res.data?.data || [];
     },
-    enabled: !!selectedBroker && isBrokerModalOpen, // الجلب بمجرد الفتح لضمان جاهزية الأرقام
+    enabled: !!selectedBroker && isBrokerModalOpen,
   });
 
   const { data: brokerSettlements = [], isLoading: isLoadingBrokerStl } =
@@ -176,54 +183,50 @@ const AgentSettlementsPage = () => {
   );
 
   // ==========================================
-  // 💡 حل مشكلة تأخر ظهور الأرقام: الحساب كـ State مع Effect
+  // 💡 الحل الجذري لمشكلة الـ Loop: استخدام useMemo بدلاً من useState + useEffect
   // ==========================================
-  const [modalTotals, setModalTotals] = useState({
-    totalFees: 0,
-    paidAmount: 0,
-    remainingAmount: 0,
-  });
-
-  useEffect(() => {
-    if (brokerTransactions.length > 0) {
-      const totals = brokerTransactions.reduce(
-        (acc, tx) => {
-          acc.totalFees += parseFloat(tx.totalFees) || 0;
-          acc.paidAmount += parseFloat(tx.paidAmount) || 0;
-          acc.remainingAmount += parseFloat(tx.remainingAmount) || 0;
-          return acc;
-        },
-        { totalFees: 0, paidAmount: 0, remainingAmount: 0 },
-      );
-      setModalTotals(totals);
-    } else {
-      setModalTotals({ totalFees: 0, paidAmount: 0, remainingAmount: 0 });
+  const modalTotals = useMemo(() => {
+    if (!brokerTransactions || brokerTransactions.length === 0) {
+      return { totalFees: 0, paidAmount: 0, remainingAmount: 0 };
     }
-  }, [brokerTransactions, selectedBroker]);
+    return brokerTransactions.reduce(
+      (acc, tx) => {
+        acc.totalFees += parseFloat(tx.totalFees) || 0;
+        acc.paidAmount += parseFloat(tx.paidAmount) || 0;
+        acc.remainingAmount += parseFloat(tx.remainingAmount) || 0;
+        return acc;
+      },
+      { totalFees: 0, paidAmount: 0, remainingAmount: 0 },
+    );
+  }, [brokerTransactions]);
 
-  // مجاميع الصفحة كاملة
-  const totals = brokers.reduce(
-    (acc, curr) => {
-      acc.fees += curr.totalFees;
-      acc.received += curr.received;
-      acc.remaining += curr.remaining;
-      return acc;
-    },
-    { fees: 0, received: 0, remaining: 0 },
-  );
+  // مجاميع الصفحة كاملة محمية بـ useMemo
+  const totals = useMemo(() => {
+    return brokers.reduce(
+      (acc, curr) => {
+        acc.fees += curr.totalFees;
+        acc.received += curr.received;
+        acc.remaining += curr.remaining;
+        return acc;
+      },
+      { fees: 0, received: 0, remaining: 0 },
+    );
+  }, [brokers]);
 
-  const currentAgentStats = brokers.find(
-    (b) => b.id === selectedBroker?.id,
-  ) || {
-    totalFees: 0,
-    received: 0,
-    remaining: 0,
-    txCount: 0,
-    statusText: "غير محدد",
-  };
+  const currentAgentStats = useMemo(() => {
+    return (
+      brokers.find((b) => b.id === selectedBroker?.id) || {
+        totalFees: 0,
+        received: 0,
+        remaining: 0,
+        txCount: 0,
+        statusText: "غير محدد",
+      }
+    );
+  }, [brokers, selectedBroker]);
 
   // ==========================================
-  // دوال فتح المودالات مع تنظيف الداتا (Reset Forms)
+  // دوال فتح المودالات مع تنظيف الداتا
   // ==========================================
   const handleOpenPrevSettlement = () => {
     setPrevForm(initialPrevForm);
@@ -237,6 +240,7 @@ const AgentSettlementsPage = () => {
     setDeliverForm(initialDeliverForm);
     setIsDeliverSettlementOpen(true);
   };
+
   const handleOpenBrokerModal = (broker) => {
     setSelectedBroker({ id: broker.id, name: broker.name });
     setActiveTab("overview");
@@ -498,10 +502,8 @@ const AgentSettlementsPage = () => {
                     {broker.statusText}
                   </span>
                 </td>
-                {/* عمود الأزرار (معاينة + حذف) */}
                 <td className="px-3">
                   <div className="flex items-center justify-end gap-1.5">
-                    {/* زر المعاينة */}
                     <button
                       onClick={() => handleOpenBrokerModal(broker)}
                       className="p-1.5 rounded-md hover:bg-blue-50 cursor-pointer transition-colors text-[var(--wms-accent-blue)]"
@@ -509,15 +511,9 @@ const AgentSettlementsPage = () => {
                     >
                       <Eye className="w-3.5 h-3.5" />
                     </button>
-
-                    {/* زر الحذف */}
                     <button
                       onClick={() => {
-                        if (
-                          window.confirm(
-                            `هل أنت متأكد من أنك تريد حذف جميع التسويات والمدفوعات الخاصة بـ "${broker.name}"؟\n\nتنبيه: هذا الإجراء لا يمكن التراجع عنه!`,
-                          )
-                        ) {
+                        if (window.confirm(`هل أنت متأكد من الحذف؟`)) {
                           deleteBrokerMutation.mutate(broker.id);
                         }
                       }}
@@ -548,7 +544,6 @@ const AgentSettlementsPage = () => {
       </div>
 
       {/* ======================= MODALS ======================= */}
-
       {/* 1. Modal: تسجيل تسويات سابقة */}
       {isPrevSettlementOpen && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
@@ -561,9 +556,6 @@ const AgentSettlementsPage = () => {
                 <span className="text-[var(--wms-text)] font-bold">
                   تسجيل رصيد افتتاحي (تسويات سابقة)
                 </span>
-                <div className="text-[var(--wms-text-muted)] text-[10px]">
-                  لإدخال مديونيات قديمة على النظام
-                </div>
               </div>
               <button
                 onClick={() => setIsPrevSettlementOpen(false)}
@@ -573,27 +565,25 @@ const AgentSettlementsPage = () => {
               </button>
             </div>
             <div className="p-5 space-y-4">
-              <div>
+              <div className="relative">
                 <label className="block mb-1.5 text-[var(--wms-text-sec)] text-[11px] font-bold">
                   الاسم (معقب) *
                 </label>
-                <div className="relative">
-                  <select
-                    value={prevForm.targetId}
-                    onChange={(e) =>
-                      setPrevForm({ ...prevForm, targetId: e.target.value })
-                    }
-                    className="w-full bg-[var(--wms-surface-2)] border border-[var(--wms-border)] rounded-md px-2 h-[34px] text-[12px] outline-none appearance-none cursor-pointer"
-                  >
-                    <option value="">اختر المعقب...</option>
-                    {agentsList.map((e) => (
-                      <option key={e.id} value={e.id}>
-                        {e.name}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown className="absolute left-2 top-[10px] w-3.5 h-3.5 text-gray-400 pointer-events-none" />
-                </div>
+                <select
+                  value={prevForm.targetId}
+                  onChange={(e) =>
+                    setPrevForm({ ...prevForm, targetId: e.target.value })
+                  }
+                  className="w-full bg-[var(--wms-surface-2)] border border-[var(--wms-border)] rounded-md px-2 h-[34px] text-[12px] outline-none appearance-none cursor-pointer"
+                >
+                  <option value="">اختر المعقب...</option>
+                  {agentsList.map((e) => (
+                    <option key={e.id} value={e.id}>
+                      {e.name}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="absolute left-2 top-[10px] w-3.5 h-3.5 text-gray-400 pointer-events-none" />
               </div>
               <div>
                 <label className="block mb-1.5 text-[var(--wms-text-sec)] text-[11px] font-bold">
@@ -676,7 +666,6 @@ const AgentSettlementsPage = () => {
                     setPrevForm({ ...prevForm, notes: e.target.value })
                   }
                   className="w-full bg-[var(--wms-surface-2)] border rounded-md px-3 py-2 outline-none h-[50px] resize-none"
-                  placeholder="ملاحظات..."
                 ></textarea>
               </div>
             </div>
@@ -780,11 +769,10 @@ const AgentSettlementsPage = () => {
                     setRecordForm({ ...recordForm, notes: e.target.value })
                   }
                   className="w-full bg-[var(--wms-surface-2)] border rounded-md px-3 py-2 outline-none h-[60px] resize-none text-[12px]"
-                  placeholder="ملاحظات إضافية..."
                 ></textarea>
               </div>
             </div>
-            <div className="flex justify-end gap-2 px-5 py-3 border-t">
+            <div className="flex justify-end gap-2 px-5 py-3 border-t bg-gray-50">
               <button
                 onClick={() => setIsRecordSettlementOpen(false)}
                 className="px-4 py-1.5 rounded-md bg-[var(--wms-surface-2)] text-[12px]"
@@ -829,7 +817,7 @@ const AgentSettlementsPage = () => {
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <div className="p-5 space-y-4">
+            <div className="p-5 space-y-4 overflow-y-auto custom-scrollbar-slim">
               <div className="relative">
                 <label className="block mb-1.5 text-[var(--wms-text-sec)] text-[11px] font-bold">
                   المستلم (المعقب) *
@@ -839,7 +827,7 @@ const AgentSettlementsPage = () => {
                   onChange={(e) =>
                     setDeliverForm({ ...deliverForm, targetId: e.target.value })
                   }
-                  className="w-full bg-[var(--wms-surface-2)] border border-[var(--wms-border)] rounded-md px-2 h-[34px] text-[12px] outline-none appearance-none cursor-pointer"
+                  className="w-full bg-[var(--wms-surface-2)] border border-[var(--wms-border)] rounded-md px-3 h-[34px] text-[12px] outline-none appearance-none cursor-pointer"
                 >
                   <option value="">اختر المعقب...</option>
                   {agentsList.map((e) => (
@@ -905,7 +893,7 @@ const AgentSettlementsPage = () => {
                 </div>
                 <div className="relative">
                   <label className="block mb-1.5 text-[var(--wms-text-sec)] text-[11px] font-bold">
-                    المسلِّم (الموظف)
+                    بواسطة (موظف)
                   </label>
                   <select
                     value={deliverForm.deliveredById}
@@ -917,7 +905,7 @@ const AgentSettlementsPage = () => {
                     }
                     className="w-full bg-[var(--wms-surface-2)] border rounded-md px-2 h-[34px] text-[12px] outline-none appearance-none cursor-pointer"
                   >
-                    <option value="">اختر המوظف...</option>
+                    <option value="">اختر الموظف...</option>
                     {employeesList.map((e) => (
                       <option key={e.id} value={e.id}>
                         {e.name}
@@ -941,10 +929,10 @@ const AgentSettlementsPage = () => {
               </div>
               <div>
                 <label className="block mb-1.5 text-[var(--wms-text-sec)] text-[11px] font-bold">
-                  مرفق (إيصال التحويل / الشيك)
+                  مرفق (إيصال التحويل)
                 </label>
                 <label className="flex items-center justify-center gap-2 p-3 border-2 border-dashed border-[var(--wms-border)] rounded-lg text-[var(--wms-text-muted)] cursor-pointer hover:border-blue-500 bg-gray-50 text-[12px]">
-                  <Upload className="w-4 h-4" />
+                  <Upload className="w-4 h-4 text-blue-500" />
                   <span>
                     {deliverForm.file
                       ? deliverForm.file.name
@@ -963,7 +951,7 @@ const AgentSettlementsPage = () => {
                 </label>
               </div>
             </div>
-            <div className="flex justify-end gap-2 px-5 py-3 border-t">
+            <div className="flex justify-end gap-2 px-5 py-3 border-t bg-gray-50">
               <button
                 onClick={() => setIsDeliverSettlementOpen(false)}
                 className="px-4 py-1.5 rounded-md bg-[var(--wms-surface-2)] text-[12px]"
@@ -990,9 +978,7 @@ const AgentSettlementsPage = () => {
         </div>
       )}
 
-      {/* ========================================================= */}
       {/* 4. Modal: كشف الحساب والمعاينة الشاملة للمعقب */}
-      {/* ========================================================= */}
       {isBrokerModalOpen && (
         <div
           className="fixed inset-0 bg-black/50 z-[40] flex items-center justify-center p-4"
@@ -1002,7 +988,6 @@ const AgentSettlementsPage = () => {
             className="bg-white border border-[var(--wms-border)] rounded-xl shadow-2xl flex flex-col animate-in zoom-in-95 duration-200"
             style={{ width: "75vw", height: "88vh" }}
           >
-            {/* Header المودال */}
             <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--wms-border)] shrink-0">
               <div className="flex items-center gap-3">
                 <div
@@ -1066,7 +1051,7 @@ const AgentSettlementsPage = () => {
                   style={{ fontSize: "12px", fontWeight: "bold" }}
                 >
                   <Download className="w-3.5 h-3.5" />
-                  <span>تصدير كشف حساب PDF</span>
+                  <span>تصدير PDF</span>
                 </button>
                 <button
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-[var(--wms-surface-2)] border border-[var(--wms-border)] text-[var(--wms-text-sec)] cursor-pointer hover:bg-[var(--wms-surface-2)]/80 transition-colors"
@@ -1087,7 +1072,6 @@ const AgentSettlementsPage = () => {
               </div>
             </div>
 
-            {/* Tabs */}
             <div className="flex border-b border-[var(--wms-border)] px-5 shrink-0 bg-gray-50/50">
               <button
                 onClick={() => setActiveTab("overview")}
@@ -1119,7 +1103,6 @@ const AgentSettlementsPage = () => {
               </button>
             </div>
 
-            {/* Content Area */}
             <div
               className="flex-1 overflow-y-auto p-8 custom-scrollbar-slim"
               style={{ backgroundColor: "rgb(249, 250, 251)" }}
@@ -1142,7 +1125,7 @@ const AgentSettlementsPage = () => {
                 </div>
               ) : (
                 <div className="space-y-4 max-w-[900px] mx-auto animate-in fade-in duration-300">
-                  {/* === نظرة عامة === */}
+                  {/* نظرة عامة */}
                   {activeTab === "overview" && (
                     <div className="bg-white rounded-lg border border-gray-200 p-6 shadow-sm">
                       <div
@@ -1184,7 +1167,6 @@ const AgentSettlementsPage = () => {
                           <span>أُعد بواسطة: النظام</span>
                         </div>
                       </div>
-
                       <div className="grid grid-cols-5 gap-3 mb-4">
                         <div
                           className="p-3 rounded-lg text-center"
@@ -1319,7 +1301,6 @@ const AgentSettlementsPage = () => {
                           </div>
                         </div>
                       </div>
-
                       <div className="grid grid-cols-3 gap-3">
                         <div
                           className="p-3 rounded-lg"
@@ -1460,7 +1441,6 @@ const AgentSettlementsPage = () => {
                           </div>
                         </div>
                       </div>
-
                       <div
                         className="flex items-start gap-2 mt-4 p-2.5 rounded-md"
                         style={{
@@ -1482,7 +1462,7 @@ const AgentSettlementsPage = () => {
                     </div>
                   )}
 
-                  {/* === المعاملات === */}
+                  {/* المعاملات */}
                   {activeTab === "transactions" && (
                     <div className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm opacity-80 hover:opacity-100 transition-opacity">
                       <div className="flex items-center gap-2 mb-4 bg-gray-50 p-3 rounded border border-gray-100">
@@ -1492,7 +1472,7 @@ const AgentSettlementsPage = () => {
                         </span>
                       </div>
                       <table className="w-full text-[11px] border-collapse">
-                        <thead>
+                        <thead className="sticky top-0 z-10 bg-[var(--wms-surface-2)]">
                           <tr>
                             <th className="text-right px-2 py-1.5 font-bold text-gray-500 bg-gray-100 border-b border-gray-200">
                               المرجع
@@ -1565,7 +1545,7 @@ const AgentSettlementsPage = () => {
                     </div>
                   )}
 
-                  {/* === سجل المستحقات === */}
+                  {/* سجل التسويات */}
                   {activeTab === "settlements" && (
                     <div className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm">
                       <div className="flex items-center gap-2 mb-4 bg-gray-50 p-3 rounded border border-gray-100">
@@ -1652,7 +1632,7 @@ const AgentSettlementsPage = () => {
                     </div>
                   )}
 
-                  {/* === سجل المسحوبات (المدفوع) === */}
+                  {/* سجل المدفوعات */}
                   {activeTab === "payments" && (
                     <div className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm">
                       <div className="flex items-center gap-2 mb-4 bg-green-50 p-3 rounded border border-green-100">
@@ -1725,8 +1705,8 @@ const AgentSettlementsPage = () => {
                           )}
                         </tbody>
                         {brokerPayments.length > 0 && (
-                          <tfoot>
-                            <tr className="bg-green-50/50">
+                          <tfoot className="bg-green-50/50">
+                            <tr>
                               <td
                                 colSpan="4"
                                 className="px-3 py-3 font-bold text-[12px] text-left text-gray-700"

@@ -1,7 +1,11 @@
 import React, { useState, useEffect, useRef } from "react";
+
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+
 import api from "../../api/axios";
+
 import { toast } from "sonner";
+
 import {
   Landmark,
   ChevronLeft,
@@ -70,7 +74,7 @@ import {
   User,
   Columns2,
   List,
-  Trash2,
+  Trash2
 } from "lucide-react";
 
 import { QRCodeSVG } from "qrcode.react";
