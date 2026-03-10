@@ -29,6 +29,7 @@ import {
   Link2,
   CircleUser,
   BookUser,
+  Workflow,
 } from "lucide-react";
 
 const Sidebar = () => {
@@ -250,6 +251,11 @@ const Sidebar = () => {
               screenId="COOP_PROFILES"
               title="بروفايلات المكاتب"
               icon={Building2}
+            />
+            <NavItem
+              screenId="REMOTE_WORK"
+              title="حسابات العمل عن بعد"
+              icon={Workflow}
             />
           </div>
         </div>

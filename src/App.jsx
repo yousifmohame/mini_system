@@ -28,6 +28,7 @@ import DisbursementsPage from "./pages/DisbursementsPage";
 import PersonsDirectoryPage from "./pages/PersonsDirectoryPage";
 import RiyadhDivisionScreen from "./pages/Riyadh/RiyadhDivisionScreen";
 import FinancialDashboardPage from "./pages/FinancialDashboardPage";
+import RemoteWorkAccountsPage from "./pages/RemoteWorkAccountsPage";
 
 // --- Icons & Context ---
 import { Wrench } from "lucide-react";
@@ -107,6 +108,7 @@ const AppContent = () => {
     "PEOPLE_RECORDS",
     "SET_ZONES",
     "FINANCE_DASH",
+    "REMOTE_WORK",
   ];
   const isImplemented = implementedScreens.includes(activeScreenId);
 
@@ -220,13 +222,13 @@ const AppContent = () => {
               <OfficeExpensesPage />
             </div>
 
-            {/* <div
+            <div
               className={
                 activeScreenId === "TREASURY" ? "block h-full" : "hidden"
               }
             >
               <TreasuryPage />
-            </div> */}
+            </div>
             <div
               className={
                 activeScreenId === "BANK_ACCOUNTS" ? "block h-full" : "hidden"
@@ -265,6 +267,14 @@ const AppContent = () => {
               }
             >
               <FinancialDashboardPage />
+            </div>
+
+            <div
+              className={
+                activeScreenId === "REMOTE_WORK" ? "block h-full" : "hidden"
+              }
+            >
+              <RemoteWorkAccountsPage />
             </div>
 
             {/* --- شاشة Fallback لأي كود غير مبرمج --- */}

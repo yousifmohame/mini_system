@@ -122,22 +122,27 @@ const Dashboard = () => {
   // ==================================================
   // Data Fetching (Queries)
   // ==================================================
-  const { data: clients = EMPTY_ARRAY } = useQuery({
-    queryKey: ["clients-simple"],
-    queryFn: async () => {
-      const res = await api.get("/clients/simple");
-      return Array.isArray(res.data) ? res.data : res.data?.data || [];
+  const { data: clients = EMPTY_ARRAY, isLoading: isLoadingClients } = useQuery(
+    {
+      queryKey: ["clients-simple"],
+      queryFn: async () => {
+        const res = await api.get("/clients/simple");
+        return Array.isArray(res.data) ? res.data : res.data?.data || [];
+      },
+      enabled: isNewTransactionModalOpen || isCollectionModalOpen,
     },
-    enabled: isNewTransactionModalOpen || isCollectionModalOpen,
-  });
-  const { data: riyadhZones = EMPTY_ARRAY } = useQuery({
-    queryKey: ["riyadhZones"],
-    queryFn: async () => {
-      const res = await api.get("/riyadh-zones");
-      return res.data?.data || [];
-    },
-    enabled: isNewTransactionModalOpen,
-  });
+  );
+
+  // 💡 التعديل هنا: إضافة isLoading: isLoadingZones
+  const { data: riyadhZones = EMPTY_ARRAY, isLoading: isLoadingZones } =
+    useQuery({
+      queryKey: ["riyadhZones"],
+      queryFn: async () => {
+        const res = await api.get("/riyadh-zones");
+        return res.data?.data || [];
+      },
+      enabled: isNewTransactionModalOpen,
+    });
   const { data: plans = EMPTY_ARRAY } = useQuery({
     queryKey: ["riyadh-plans-simple"],
     queryFn: async () => {
@@ -181,17 +186,18 @@ const Dashboard = () => {
 
   // ✅ FIXED: Memoize to prevent reference changes on every render
   const privateTransactions = useMemo(
-    () => privateTransactionsData?.data || privateTransactionsData || EMPTY_ARRAY,
-    [privateTransactionsData]
+    () =>
+      privateTransactionsData?.data || privateTransactionsData || EMPTY_ARRAY,
+    [privateTransactionsData],
   );
 
   const { data: dashboardStats = {}, isLoading: isLoadingStats } = useQuery({
-  queryKey: ["private-dashboard-stats"],
-  queryFn: async () => {
-    const res = await api.get("/private-transactions/dashboard-stats");
-    return res.data?.data || {};
-  },
-});
+    queryKey: ["private-dashboard-stats"],
+    queryFn: async () => {
+      const res = await api.get("/private-transactions/dashboard-stats");
+      return res.data?.data || {};
+    },
+  });
 
   // Filtering persons based on roles for dropdowns
   const brokers = useMemo(
