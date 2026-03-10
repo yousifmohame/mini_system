@@ -28,7 +28,7 @@ import {
   Trash2,
 } from "lucide-react";
 
-const BrokerSettlementsPage = () => {
+const AgentSettlementsPage = () => {
   const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -39,17 +39,17 @@ const BrokerSettlementsPage = () => {
   const [isRecordSettlementOpen, setIsRecordSettlementOpen] = useState(false);
   const [isDeliverSettlementOpen, setIsDeliverSettlementOpen] = useState(false);
   const [isExportOpen, setIsExportOpen] = useState(false);
-  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
-  const [isViewTransactionsOpen, setIsViewTransactionsOpen] = useState(false);
-  const [selectedBroker, setSelectedBroker] = useState(null);
+
+  // نافذة المعاينة الموحدة الشاملة
   const [isBrokerModalOpen, setIsBrokerModalOpen] = useState(false);
+  const [selectedBroker, setSelectedBroker] = useState(null);
   const [activeTab, setActiveTab] = useState("overview");
 
   // ==========================================
   // Forms States (For Reset)
   // ==========================================
   const initialPrevForm = {
-    type: "وسيط",
+    type: "معقب",
     targetId: "",
     periodDate: "",
     totalSettled: "",
@@ -58,14 +58,14 @@ const BrokerSettlementsPage = () => {
     notes: "",
   };
   const initialRecordForm = {
-    type: "وسيط",
+    type: "معقب",
     targetId: "",
     amount: "",
     source: "",
     notes: "",
   };
   const initialDeliverForm = {
-    type: "وسيط",
+    type: "معقب",
     targetId: "",
     amount: "",
     method: "نقدي",
@@ -80,7 +80,7 @@ const BrokerSettlementsPage = () => {
   const [deliverForm, setDeliverForm] = useState(initialDeliverForm);
 
   // ==========================================
-  // 💡 1. جلب بيانات سجل الأشخاص الشامل
+  // 1. جلب بيانات سجل الأشخاص الشامل
   // ==========================================
   const { data: persons = [], isLoading: isLoadingPersons } = useQuery({
     queryKey: ["persons-directory"],
@@ -90,9 +90,9 @@ const BrokerSettlementsPage = () => {
     },
   });
 
-  // 💡 2. فلترة الأشخاص حسب الدور
-  const brokersList = useMemo(
-    () => persons.filter((p) => p.role === "وسيط"),
+  // 2. فلترة الأشخاص حسب الدور
+  const agentsList = useMemo(
+    () => persons.filter((p) => p.role === "معقب"),
     [persons],
   );
   const employeesList = useMemo(
@@ -101,12 +101,12 @@ const BrokerSettlementsPage = () => {
   );
 
   // ==========================================
-  // جلب إحصائيات الصفحة من الباك إند
+  // 3. جلب إحصائيات الصفحة من الباك إند (المعقبين فقط)
   // ==========================================
   const { data: dashboardData, isLoading } = useQuery({
-    queryKey: ["settlements-dashboard"],
+    queryKey: ["agent-settlements-dashboard"],
     queryFn: async () => {
-      const res = await api.get("/private-settlements/dashboard?type=وسيط");
+      const res = await api.get("/private-settlements/dashboard?type=معقب");
       return res.data;
     },
   });
@@ -119,11 +119,11 @@ const BrokerSettlementsPage = () => {
     availableBalance: 0,
   };
 
-  // 💡 3. فلترة صارمة للوسطاء (Strict Filter)
+  // 4. فلترة صارمة للمعقبين (Strict Filter)
   const brokers = (dashboardData?.brokers || [])
     .filter((broker) => {
       const personInfo = persons.find((p) => p.id === broker.id);
-      return personInfo && personInfo.role === "وسيط";
+      return personInfo && personInfo.role === "معقب";
     })
     .map((broker) => {
       const personInfo = persons.find((p) => p.id === broker.id);
@@ -131,29 +131,29 @@ const BrokerSettlementsPage = () => {
     });
 
   // ==========================================
-  // جلب تفاصيل المودال (معاملات، تسويات، مدفوعات)
+  // 5. جلب بيانات المعقب المحدد بداخل المودال
   // ==========================================
   const {
     data: brokerTransactions = [],
     isLoading: isLoadingBrokerTx,
     refetch: refetchTx,
   } = useQuery({
-    queryKey: ["broker-transactions", selectedBroker?.id],
+    queryKey: ["agent-transactions", selectedBroker?.id],
     queryFn: async () => {
       const res = await api.get(
-        `/private-settlements/broker/${selectedBroker.id}/transactions?role=broker`,
+        `/private-settlements/broker/${selectedBroker.id}/transactions?role=agent`,
       );
       return res.data?.data || [];
     },
-    enabled: !!selectedBroker && (isBrokerModalOpen || isViewTransactionsOpen),
+    enabled: !!selectedBroker && isBrokerModalOpen, // الجلب بمجرد الفتح لضمان جاهزية الأرقام
   });
 
   const { data: brokerSettlements = [], isLoading: isLoadingBrokerStl } =
     useQuery({
-      queryKey: ["broker-settlements", selectedBroker?.id],
+      queryKey: ["agent-settlements", selectedBroker?.id],
       queryFn: async () => {
         const res = await api.get(
-          `/private-settlements/broker/${selectedBroker.id}/settlements`,
+          `/private-settlements/broker/${selectedBroker.id}/settlements?role=agent`,
         );
         return res.data?.data || [];
       },
@@ -163,10 +163,10 @@ const BrokerSettlementsPage = () => {
 
   const { data: brokerPayments = [], isLoading: isLoadingBrokerPay } = useQuery(
     {
-      queryKey: ["broker-payments", selectedBroker?.id],
+      queryKey: ["agent-payments", selectedBroker?.id],
       queryFn: async () => {
         const res = await api.get(
-          `/private-settlements/broker/${selectedBroker.id}/payments`,
+          `/private-settlements/broker/${selectedBroker.id}/payments?role=agent`,
         );
         return res.data?.data || [];
       },
@@ -201,6 +201,7 @@ const BrokerSettlementsPage = () => {
     }
   }, [brokerTransactions, selectedBroker]);
 
+  // مجاميع الصفحة كاملة
   const totals = brokers.reduce(
     (acc, curr) => {
       acc.fees += curr.totalFees;
@@ -211,8 +212,8 @@ const BrokerSettlementsPage = () => {
     { fees: 0, received: 0, remaining: 0 },
   );
 
-  const currentBrokerStats = brokers.find(
-    (p) => p.id === selectedBroker?.id,
+  const currentAgentStats = brokers.find(
+    (b) => b.id === selectedBroker?.id,
   ) || {
     totalFees: 0,
     received: 0,
@@ -240,7 +241,7 @@ const BrokerSettlementsPage = () => {
     setSelectedBroker({ id: broker.id, name: broker.name });
     setActiveTab("overview");
     setIsBrokerModalOpen(true);
-    refetchTx(); // لضمان جلب الداتا فوراً
+    refetchTx();
   };
 
   // ==========================================
@@ -249,8 +250,8 @@ const BrokerSettlementsPage = () => {
   const prevMutation = useMutation({
     mutationFn: async (data) => api.post("/private-settlements/previous", data),
     onSuccess: () => {
-      toast.success("تم الحفظ بنجاح");
-      queryClient.invalidateQueries(["settlements-dashboard"]);
+      toast.success("تم حفظ التسوية السابقة");
+      queryClient.invalidateQueries(["agent-settlements-dashboard"]);
       setIsPrevSettlementOpen(false);
     },
   });
@@ -258,8 +259,8 @@ const BrokerSettlementsPage = () => {
   const recordMutation = useMutation({
     mutationFn: async (data) => api.post("/private-settlements/record", data),
     onSuccess: () => {
-      toast.success("تم الحفظ بنجاح");
-      queryClient.invalidateQueries(["settlements-dashboard"]);
+      toast.success("تم تسجيل المستحق بنجاح");
+      queryClient.invalidateQueries(["agent-settlements-dashboard"]);
       setIsRecordSettlementOpen(false);
     },
   });
@@ -268,13 +269,10 @@ const BrokerSettlementsPage = () => {
     mutationFn: async (brokerId) =>
       api.delete(`/private-settlements/broker/${brokerId}`),
     onSuccess: () => {
-      toast.success("تم مسح السجل المالي بنجاح");
-      queryClient.invalidateQueries(["settlements-dashboard"]);
-      setIsBrokerModalOpen(false);
+      toast.success("تم مسح السجل المالي للشخص بنجاح");
+      queryClient.invalidateQueries(["agent-settlements-dashboard"]);
     },
-    onError: () => {
-      toast.error("حدث خطأ أثناء محاولة الحذف");
-    },
+    onError: () => toast.error("حدث خطأ أثناء محاولة الحذف"),
   });
 
   const deliverMutation = useMutation({
@@ -286,8 +284,8 @@ const BrokerSettlementsPage = () => {
       });
     },
     onSuccess: () => {
-      toast.success("تم التسليم بنجاح");
-      queryClient.invalidateQueries(["settlements-dashboard"]);
+      toast.success("تم تسليم المبلغ بنجاح");
+      queryClient.invalidateQueries(["agent-settlements-dashboard"]);
       setIsDeliverSettlementOpen(false);
     },
   });
@@ -345,7 +343,7 @@ const BrokerSettlementsPage = () => {
           <span className="text-[var(--wms-text-muted)] text-[16px]">=</span>
           <div className="px-3 py-1.5 rounded-md bg-blue-500/10">
             <div className="text-[var(--wms-text-muted)] text-[10px]">
-              الرصيد المتاح للتسوية
+              الرصيد المتاح للشركة
             </div>
             <div className="font-mono text-[17px] font-bold text-[var(--wms-accent-blue)]">
               {financials.availableBalance.toLocaleString()}
@@ -359,7 +357,7 @@ const BrokerSettlementsPage = () => {
         <div className="flex items-center gap-2">
           <div>
             <div className="text-[var(--wms-text-muted)] text-[10px]">
-              إجمالي الأتعاب
+              إجمالي المستحقات
             </div>
             <div className="font-mono text-[15px] font-bold text-[var(--wms-accent-blue)]">
               {totals.fees.toLocaleString()}
@@ -370,7 +368,7 @@ const BrokerSettlementsPage = () => {
           <div className="w-px h-6 bg-[var(--wms-border)]"></div>
           <div>
             <div className="text-[var(--wms-text-muted)] text-[10px]">
-              المبالغ المستلمة
+              المبالغ المسلمة
             </div>
             <div className="font-mono text-[15px] font-bold text-[var(--wms-success)]">
               {totals.received.toLocaleString()}
@@ -381,7 +379,7 @@ const BrokerSettlementsPage = () => {
           <div className="w-px h-6 bg-[var(--wms-border)]"></div>
           <div>
             <div className="text-[var(--wms-text-muted)] text-[10px]">
-              المبالغ المتبقية
+              المتبقي للمعقبين
             </div>
             <div className="font-mono text-[15px] font-bold text-[var(--wms-danger)]">
               {totals.remaining.toLocaleString()}
@@ -392,7 +390,7 @@ const BrokerSettlementsPage = () => {
           <div className="w-px h-6 bg-[var(--wms-border)]"></div>
           <div>
             <div className="text-[var(--wms-text-muted)] text-[10px]">
-              عدد الوسطاء
+              عدد المعقبين
             </div>
             <div className="font-mono text-[15px] font-bold text-[var(--wms-warning)]">
               {brokers.length}
@@ -430,31 +428,14 @@ const BrokerSettlementsPage = () => {
           className="flex items-center gap-1.5 px-3 rounded-md bg-[var(--wms-accent-blue)] text-white cursor-pointer hover:opacity-90 h-[32px] text-[12px]"
         >
           <HandCoins className="w-3.5 h-3.5" />
-          <span>تسجيل تسوية</span>
+          <span>تسجيل مستحق لمعقب</span>
         </button>
         <button
           onClick={handleOpenDeliverSettlement}
           className="flex items-center gap-1.5 px-3 rounded-md bg-[var(--wms-success)] text-white cursor-pointer hover:opacity-90 h-[32px] text-[12px]"
         >
           <Send className="w-3.5 h-3.5" />
-          <span>تسليم تسوية لوسيط</span>
-        </button>
-        <button
-          onClick={() => {
-            setSelectedBroker(null);
-            setIsViewTransactionsOpen(true);
-          }}
-          className="flex items-center gap-1.5 px-3 rounded-md bg-[var(--wms-surface-1)] border border-[var(--wms-border)] text-[var(--wms-text-sec)] hover:bg-[var(--wms-surface-2)] cursor-pointer h-[32px] text-[12px]"
-        >
-          <Eye className="w-3.5 h-3.5 text-blue-600" />
-          <span>عرض المعاملات</span>
-        </button>
-        <button
-          onClick={() => setIsExportOpen(true)}
-          className="flex items-center gap-1.5 px-3 rounded-md bg-[var(--wms-surface-1)] border border-[var(--wms-border)] text-[var(--wms-text-sec)] hover:bg-[var(--wms-surface-2)] cursor-pointer h-[32px] text-[12px]"
-        >
-          <Download className="w-3.5 h-3.5 text-green-600" />
-          <span>تصدير</span>
+          <span>تسليم مبلغ لمعقب</span>
         </button>
       </div>
 
@@ -464,16 +445,16 @@ const BrokerSettlementsPage = () => {
           <thead>
             <tr className="bg-[var(--wms-surface-2)] h-[36px]">
               <th className="text-right px-3 text-[var(--wms-text-sec)] font-semibold text-[11px]">
-                اسم الوسيط
+                اسم المعقب
               </th>
               <th className="text-right px-3 text-[var(--wms-text-sec)] font-semibold text-[11px]">
-                عدد المعاملات
+                حركات مسجلة
               </th>
               <th className="text-right px-3 text-[var(--wms-text-sec)] font-semibold text-[11px]">
-                إجمالي الأتعاب
+                إجمالي المستحق
               </th>
               <th className="text-right px-3 text-[var(--wms-text-sec)] font-semibold text-[11px]">
-                المبالغ المستلمة
+                المبالغ المسلمة
               </th>
               <th className="text-right px-3 text-[var(--wms-text-sec)] font-semibold text-[11px]">
                 المتبقي
@@ -482,7 +463,7 @@ const BrokerSettlementsPage = () => {
                 حالة التسوية
               </th>
               <th className="text-right px-3 text-[var(--wms-text-sec)] font-semibold text-[11px]">
-                معاينة
+                إجراءات
               </th>
             </tr>
           </thead>
@@ -492,20 +473,21 @@ const BrokerSettlementsPage = () => {
                 key={broker.id}
                 className="border-b border-[var(--wms-border)]/30 hover:bg-[var(--wms-surface-2)]/40 transition-colors h-[36px]"
               >
-                <td className="px-3 text-[var(--wms-text)] font-semibold">
+                <td className="px-3 text-[var(--wms-text)] font-semibold flex items-center gap-1.5 mt-1.5">
+                  <User className="w-3.5 h-3.5 text-blue-500" />
                   {broker.name}
                 </td>
                 <td className="px-3 font-mono text-[var(--wms-text-sec)]">
                   {broker.txCount}
                 </td>
-                <td className="px-3 font-mono text-[var(--wms-text)]">
+                <td className="px-3 font-mono text-[var(--wms-text)] font-bold">
                   {broker.totalFees.toLocaleString()}
                 </td>
                 <td className="px-3 font-mono text-[var(--wms-success)]">
                   {broker.received.toLocaleString()}
                 </td>
                 <td
-                  className={`px-3 font-mono ${broker.remaining === 0 ? "text-[var(--wms-success)]" : "text-[var(--wms-danger)]"}`}
+                  className={`px-3 font-mono font-bold ${broker.remaining === 0 ? "text-[var(--wms-success)]" : "text-[var(--wms-danger)]"}`}
                 >
                   {broker.remaining.toLocaleString()}
                 </td>
@@ -516,8 +498,10 @@ const BrokerSettlementsPage = () => {
                     {broker.statusText}
                   </span>
                 </td>
+                {/* عمود الأزرار (معاينة + حذف) */}
                 <td className="px-3">
                   <div className="flex items-center justify-end gap-1.5">
+                    {/* زر المعاينة */}
                     <button
                       onClick={() => handleOpenBrokerModal(broker)}
                       className="p-1.5 rounded-md hover:bg-blue-50 cursor-pointer transition-colors text-[var(--wms-accent-blue)]"
@@ -525,11 +509,13 @@ const BrokerSettlementsPage = () => {
                     >
                       <Eye className="w-3.5 h-3.5" />
                     </button>
+
+                    {/* زر الحذف */}
                     <button
                       onClick={() => {
                         if (
                           window.confirm(
-                            `هل أنت متأكد من مسح وتصفير حساب الوسيط "${broker.name}" بالكامل؟\n\nتنبيه: هذا الإجراء لا يمكن التراجع عنه!`,
+                            `هل أنت متأكد من أنك تريد حذف جميع التسويات والمدفوعات الخاصة بـ "${broker.name}"؟\n\nتنبيه: هذا الإجراء لا يمكن التراجع عنه!`,
                           )
                         ) {
                           deleteBrokerMutation.mutate(broker.id);
@@ -553,7 +539,7 @@ const BrokerSettlementsPage = () => {
             {brokers.length === 0 && (
               <tr>
                 <td colSpan="7" className="text-center py-8 text-gray-500">
-                  لا توجد حسابات مسجلة للوسطاء
+                  لا توجد بيانات للمعقبين حالياً
                 </td>
               </tr>
             )}
@@ -576,7 +562,7 @@ const BrokerSettlementsPage = () => {
                   تسجيل رصيد افتتاحي (تسويات سابقة)
                 </span>
                 <div className="text-[var(--wms-text-muted)] text-[10px]">
-                  رصيد افتتاحي / تاريخي مختصر
+                  لإدخال مديونيات قديمة على النظام
                 </div>
               </div>
               <button
@@ -587,25 +573,27 @@ const BrokerSettlementsPage = () => {
               </button>
             </div>
             <div className="p-5 space-y-4">
-              <div className="relative">
+              <div>
                 <label className="block mb-1.5 text-[var(--wms-text-sec)] text-[11px] font-bold">
-                  الاسم (وسيط) *
+                  الاسم (معقب) *
                 </label>
-                <select
-                  value={prevForm.targetId}
-                  onChange={(e) =>
-                    setPrevForm({ ...prevForm, targetId: e.target.value })
-                  }
-                  className="w-full bg-[var(--wms-surface-2)] border border-[var(--wms-border)] rounded-md px-2 h-[34px] text-[12px] outline-none appearance-none cursor-pointer"
-                >
-                  <option value="">اختر الوسيط...</option>
-                  {brokersList.map((e) => (
-                    <option key={e.id} value={e.id}>
-                      {e.name}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown className="absolute left-2 top-[26px] w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+                <div className="relative">
+                  <select
+                    value={prevForm.targetId}
+                    onChange={(e) =>
+                      setPrevForm({ ...prevForm, targetId: e.target.value })
+                    }
+                    className="w-full bg-[var(--wms-surface-2)] border border-[var(--wms-border)] rounded-md px-2 h-[34px] text-[12px] outline-none appearance-none cursor-pointer"
+                  >
+                    <option value="">اختر المعقب...</option>
+                    {agentsList.map((e) => (
+                      <option key={e.id} value={e.id}>
+                        {e.name}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="absolute left-2 top-[10px] w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+                </div>
               </div>
               <div>
                 <label className="block mb-1.5 text-[var(--wms-text-sec)] text-[11px] font-bold">
@@ -623,7 +611,7 @@ const BrokerSettlementsPage = () => {
               <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="block mb-1.5 text-[var(--wms-text-sec)] text-[11px] font-bold">
-                    إجمالي أتعاب سابقة
+                    إجمالي مستحق
                   </label>
                   <input
                     type="number"
@@ -645,7 +633,7 @@ const BrokerSettlementsPage = () => {
                 </div>
                 <div>
                   <label className="block mb-1.5 text-[var(--wms-text-sec)] text-[11px] font-bold">
-                    إجمالي مسلّم (دفعات)
+                    إجمالي مُسلّم
                   </label>
                   <input
                     type="number"
@@ -667,7 +655,7 @@ const BrokerSettlementsPage = () => {
                 </div>
                 <div>
                   <label className="block mb-1.5 text-[var(--wms-text-sec)] text-[11px] font-bold">
-                    صافي المتبقي له
+                    المتبقي له
                   </label>
                   <input
                     type="number"
@@ -688,10 +676,11 @@ const BrokerSettlementsPage = () => {
                     setPrevForm({ ...prevForm, notes: e.target.value })
                   }
                   className="w-full bg-[var(--wms-surface-2)] border rounded-md px-3 py-2 outline-none h-[50px] resize-none"
+                  placeholder="ملاحظات..."
                 ></textarea>
               </div>
             </div>
-            <div className="flex justify-end gap-2 px-5 py-3 border-t border-[var(--wms-border)]">
+            <div className="flex justify-end gap-2 px-5 py-3 border-t">
               <button
                 onClick={() => setIsPrevSettlementOpen(false)}
                 className="px-4 py-1.5 rounded-md bg-[var(--wms-surface-2)] text-[12px]"
@@ -714,7 +703,7 @@ const BrokerSettlementsPage = () => {
         </div>
       )}
 
-      {/* 2. Modal: تسجيل تسوية جديدة (مستحق) */}
+      {/* 2. Modal: تسجيل مستحق (إضافة تسوية) */}
       {isRecordSettlementOpen && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div
@@ -723,7 +712,7 @@ const BrokerSettlementsPage = () => {
           >
             <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--wms-border)]">
               <span className="text-[var(--wms-text)] font-bold text-[15px]">
-                تسجيل تسوية (أتعاب لوسيط)
+                تسجيل مستحق لمعقب
               </span>
               <button
                 onClick={() => setIsRecordSettlementOpen(false)}
@@ -735,17 +724,17 @@ const BrokerSettlementsPage = () => {
             <div className="p-5 space-y-4">
               <div className="relative">
                 <label className="block mb-1.5 text-[var(--wms-text-sec)] text-[11px] font-bold">
-                  اسم الوسيط *
+                  اسم المعقب *
                 </label>
                 <select
                   value={recordForm.targetId}
                   onChange={(e) =>
                     setRecordForm({ ...recordForm, targetId: e.target.value })
                   }
-                  className="w-full bg-[var(--wms-surface-2)] border border-[var(--wms-border)] rounded-md px-3 h-[34px] text-[12px] outline-none appearance-none cursor-pointer"
+                  className="w-full bg-[var(--wms-surface-2)] border border-[var(--wms-border)] rounded-md px-2 h-[34px] text-[12px] outline-none appearance-none cursor-pointer"
                 >
-                  <option value="">اختر الوسيط...</option>
-                  {brokersList.map((e) => (
+                  <option value="">اختر المعقب...</option>
+                  {agentsList.map((e) => (
                     <option key={e.id} value={e.id}>
                       {e.name}
                     </option>
@@ -755,7 +744,7 @@ const BrokerSettlementsPage = () => {
               </div>
               <div>
                 <label className="block mb-1.5 text-[var(--wms-text-sec)] text-[11px] font-bold">
-                  المبلغ المستحق له *
+                  المبلغ المستحق *
                 </label>
                 <input
                   type="number"
@@ -769,7 +758,7 @@ const BrokerSettlementsPage = () => {
               </div>
               <div>
                 <label className="block mb-1.5 text-[var(--wms-text-sec)] text-[11px] font-bold">
-                  مصدر التسوية / البيان
+                  البيان / المصدر
                 </label>
                 <input
                   type="text"
@@ -778,7 +767,7 @@ const BrokerSettlementsPage = () => {
                     setRecordForm({ ...recordForm, source: e.target.value })
                   }
                   className="w-full bg-[var(--wms-surface-2)] border rounded-md px-3 h-[34px] outline-none text-[12px]"
-                  placeholder="مثال: عمولة تسويق مشروع الرياض"
+                  placeholder="مثال: تعقيب رخصة بناء"
                 />
               </div>
               <div>
@@ -795,7 +784,7 @@ const BrokerSettlementsPage = () => {
                 ></textarea>
               </div>
             </div>
-            <div className="flex justify-end gap-2 px-5 py-3 border-t border-[var(--wms-border)]">
+            <div className="flex justify-end gap-2 px-5 py-3 border-t">
               <button
                 onClick={() => setIsRecordSettlementOpen(false)}
                 className="px-4 py-1.5 rounded-md bg-[var(--wms-surface-2)] text-[12px]"
@@ -814,7 +803,7 @@ const BrokerSettlementsPage = () => {
                 {recordMutation.isPending ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
                 ) : (
-                  "تسجيل التسوية"
+                  "إضافة المستحق"
                 )}
               </button>
             </div>
@@ -822,7 +811,7 @@ const BrokerSettlementsPage = () => {
         </div>
       )}
 
-      {/* 3. Modal: صرف مبلغ */}
+      {/* 3. Modal: صرف مبلغ للمعقب */}
       {isDeliverSettlementOpen && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
           <div
@@ -831,7 +820,7 @@ const BrokerSettlementsPage = () => {
           >
             <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--wms-border)]">
               <span className="text-[var(--wms-text)] font-bold text-[15px]">
-                صرف مبلغ لوسيط
+                صرف مبلغ لمعقب
               </span>
               <button
                 onClick={() => setIsDeliverSettlementOpen(false)}
@@ -843,17 +832,17 @@ const BrokerSettlementsPage = () => {
             <div className="p-5 space-y-4">
               <div className="relative">
                 <label className="block mb-1.5 text-[var(--wms-text-sec)] text-[11px] font-bold">
-                  الوسيط المستلم *
+                  المستلم (المعقب) *
                 </label>
                 <select
                   value={deliverForm.targetId}
                   onChange={(e) =>
                     setDeliverForm({ ...deliverForm, targetId: e.target.value })
                   }
-                  className="w-full bg-[var(--wms-surface-2)] border border-[var(--wms-border)] rounded-md px-3 h-[34px] text-[12px] outline-none appearance-none cursor-pointer"
+                  className="w-full bg-[var(--wms-surface-2)] border border-[var(--wms-border)] rounded-md px-2 h-[34px] text-[12px] outline-none appearance-none cursor-pointer"
                 >
-                  <option value="">اختر الوسيط...</option>
-                  {brokersList.map((e) => (
+                  <option value="">اختر المعقب...</option>
+                  {agentsList.map((e) => (
                     <option key={e.id} value={e.id}>
                       {e.name}
                     </option>
@@ -882,21 +871,21 @@ const BrokerSettlementsPage = () => {
                 <div className="flex gap-2">
                   <button
                     onClick={() =>
-                      setDeliverForm({ ...deliverForm, method: "تحويل بنكي" })
-                    }
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md font-semibold text-[11px] ${deliverForm.method === "تحويل بنكي" ? "bg-[var(--wms-accent-blue)] text-white" : "bg-[var(--wms-surface-2)] text-[var(--wms-text-sec)]"}`}
-                  >
-                    <CreditCard className="w-3.5 h-3.5" />
-                    <span>تحويل بنكي</span>
-                  </button>
-                  <button
-                    onClick={() =>
                       setDeliverForm({ ...deliverForm, method: "نقدي" })
                     }
                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md font-semibold text-[11px] ${deliverForm.method === "نقدي" ? "bg-[var(--wms-accent-blue)] text-white" : "bg-[var(--wms-surface-2)] text-[var(--wms-text-sec)]"}`}
                   >
                     <Banknote className="w-3.5 h-3.5" />
                     <span>نقدي</span>
+                  </button>
+                  <button
+                    onClick={() =>
+                      setDeliverForm({ ...deliverForm, method: "تحويل بنكي" })
+                    }
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md font-semibold text-[11px] ${deliverForm.method === "تحويل بنكي" ? "bg-[var(--wms-accent-blue)] text-white" : "bg-[var(--wms-surface-2)] text-[var(--wms-text-sec)]"}`}
+                  >
+                    <CreditCard className="w-3.5 h-3.5" />
+                    <span>تحويل بنكي</span>
                   </button>
                 </div>
               </div>
@@ -916,7 +905,7 @@ const BrokerSettlementsPage = () => {
                 </div>
                 <div className="relative">
                   <label className="block mb-1.5 text-[var(--wms-text-sec)] text-[11px] font-bold">
-                    بواسطة / من حساب (موظف)
+                    المسلِّم (الموظف)
                   </label>
                   <select
                     value={deliverForm.deliveredById}
@@ -926,9 +915,9 @@ const BrokerSettlementsPage = () => {
                         deliveredById: e.target.value,
                       })
                     }
-                    className="w-full bg-[var(--wms-surface-2)] border rounded-md px-3 h-[34px] text-[12px] outline-none appearance-none cursor-pointer"
+                    className="w-full bg-[var(--wms-surface-2)] border rounded-md px-2 h-[34px] text-[12px] outline-none appearance-none cursor-pointer"
                   >
-                    <option value="">اختر الموظف...</option>
+                    <option value="">اختر המوظف...</option>
                     {employeesList.map((e) => (
                       <option key={e.id} value={e.id}>
                         {e.name}
@@ -974,7 +963,7 @@ const BrokerSettlementsPage = () => {
                 </label>
               </div>
             </div>
-            <div className="flex justify-end gap-2 px-5 py-3 border-t border-[var(--wms-border)]">
+            <div className="flex justify-end gap-2 px-5 py-3 border-t">
               <button
                 onClick={() => setIsDeliverSettlementOpen(false)}
                 className="px-4 py-1.5 rounded-md bg-[var(--wms-surface-2)] text-[12px]"
@@ -1001,7 +990,9 @@ const BrokerSettlementsPage = () => {
         </div>
       )}
 
-      {/* 4. Modal: كشف الحساب والمعاينة الشاملة للوسيط */}
+      {/* ========================================================= */}
+      {/* 4. Modal: كشف الحساب والمعاينة الشاملة للمعقب */}
+      {/* ========================================================= */}
       {isBrokerModalOpen && (
         <div
           className="fixed inset-0 bg-black/50 z-[40] flex items-center justify-center p-4"
@@ -1026,18 +1017,10 @@ const BrokerSettlementsPage = () => {
                 <div>
                   <div className="flex items-center gap-2">
                     <span className="text-[var(--wms-text)] text-[15px] font-bold">
-                      معاينة وسيط
+                      كشف حساب وتفاصيل
                     </span>
-                    <span
-                      className="inline-flex px-2 py-0.5 rounded-full"
-                      style={{
-                        backgroundColor: "rgba(37, 99, 235, 0.082)",
-                        color: "rgb(37, 99, 235)",
-                        fontSize: "10px",
-                        fontWeight: 600,
-                      }}
-                    >
-                      وسيط
+                    <span className="inline-flex px-2 py-0.5 rounded-full bg-blue-50 text-blue-600 text-[10px] font-bold border border-blue-100">
+                      معقب
                     </span>
                   </div>
                   <div className="text-[var(--wms-text-sec)] mt-0.5 text-[12px] relative">
@@ -1045,18 +1028,18 @@ const BrokerSettlementsPage = () => {
                       <select
                         value={selectedBroker?.id || ""}
                         onChange={(e) => {
-                          const emp = brokersList.find(
+                          const emp = agentsList.find(
                             (x) => x.id === e.target.value,
                           );
                           if (emp)
                             setSelectedBroker({ id: emp.id, name: emp.name });
                         }}
-                        className="bg-transparent border-none outline-none font-bold text-[var(--wms-accent-blue)] cursor-pointer p-0 pr-1 appearance-none"
+                        className="bg-transparent border-none outline-none font-bold text-blue-600 cursor-pointer p-0 pr-1 appearance-none"
                       >
                         <option value="" disabled>
-                          -- اختر وسيطاً --
+                          -- اختر معقباً --
                         </option>
-                        {brokersList.map((emp) => (
+                        {agentsList.map((emp) => (
                           <option key={emp.id} value={emp.id}>
                             {emp.name}
                           </option>
@@ -1083,7 +1066,7 @@ const BrokerSettlementsPage = () => {
                   style={{ fontSize: "12px", fontWeight: "bold" }}
                 >
                   <Download className="w-3.5 h-3.5" />
-                  <span>تصدير PDF</span>
+                  <span>تصدير كشف حساب PDF</span>
                 </button>
                 <button
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-[var(--wms-surface-2)] border border-[var(--wms-border)] text-[var(--wms-text-sec)] cursor-pointer hover:bg-[var(--wms-surface-2)]/80 transition-colors"
@@ -1145,7 +1128,7 @@ const BrokerSettlementsPage = () => {
                 <div className="flex flex-col items-center justify-center h-full text-gray-400">
                   <User className="w-16 h-16 mb-4 opacity-20" />
                   <p className="text-lg font-bold">
-                    الرجاء اختيار وسيط من الأعلى لعرض بياناته
+                    الرجاء اختيار معقب من الأعلى لعرض بياناته
                   </p>
                 </div>
               ) : isLoadingBrokerTx ||
@@ -1182,7 +1165,7 @@ const BrokerSettlementsPage = () => {
                             fontWeight: 600,
                           }}
                         >
-                          وسيط
+                          معقب
                         </div>
                         <div
                           className="flex items-center justify-center gap-4 mt-2"
@@ -1242,7 +1225,7 @@ const BrokerSettlementsPage = () => {
                               color: "rgb(139, 153, 171)",
                             }}
                           >
-                            إجمالي الأتعاب
+                            إجمالي المستحق له
                           </div>
                           <div
                             className="font-mono"
@@ -1252,7 +1235,7 @@ const BrokerSettlementsPage = () => {
                               color: "rgb(26, 35, 50)",
                             }}
                           >
-                            {modalTotals.totalFees.toLocaleString()}
+                            {currentAgentStats.totalFees.toLocaleString()}
                           </div>
                         </div>
                         <div
@@ -1268,7 +1251,7 @@ const BrokerSettlementsPage = () => {
                               color: "rgb(139, 153, 171)",
                             }}
                           >
-                            المستلم
+                            إجمالي المسلّم
                           </div>
                           <div
                             className="font-mono"
@@ -1278,7 +1261,7 @@ const BrokerSettlementsPage = () => {
                               color: "rgb(22, 163, 74)",
                             }}
                           >
-                            {modalTotals.paidAmount.toLocaleString()}
+                            {currentAgentStats.received.toLocaleString()}
                           </div>
                         </div>
                         <div
@@ -1294,7 +1277,7 @@ const BrokerSettlementsPage = () => {
                               color: "rgb(139, 153, 171)",
                             }}
                           >
-                            المتبقي
+                            المتبقي (عليه / له)
                           </div>
                           <div
                             className="font-mono"
@@ -1304,7 +1287,7 @@ const BrokerSettlementsPage = () => {
                               color: "rgb(220, 38, 38)",
                             }}
                           >
-                            {modalTotals.remainingAmount.toLocaleString()}
+                            {currentAgentStats.remaining.toLocaleString()}
                           </div>
                         </div>
                         <div
@@ -1354,7 +1337,7 @@ const BrokerSettlementsPage = () => {
                                 color: "rgb(26, 35, 50)",
                               }}
                             >
-                              أداء الفترة
+                              أداء الفترة (معاملات)
                             </span>
                           </div>
                           <div className="space-y-1.5">
@@ -1363,7 +1346,7 @@ const BrokerSettlementsPage = () => {
                               style={{ fontSize: "11px" }}
                             >
                               <span className="text-gray-500">
-                                معاملات نشطة
+                                معاملات مسجلة باسمه
                               </span>
                               <span className="font-mono font-bold text-gray-800">
                                 {brokerTransactions.length}
@@ -1373,26 +1356,13 @@ const BrokerSettlementsPage = () => {
                               className="flex justify-between"
                               style={{ fontSize: "11px" }}
                             >
-                              <span className="text-gray-500">مكتملة</span>
+                              <span className="text-gray-500">
+                                معاملات مكتملة
+                              </span>
                               <span className="font-mono font-bold text-green-600">
                                 {
                                   brokerTransactions.filter(
-                                    (tx) => tx.remainingAmount === 0,
-                                  ).length
-                                }
-                              </span>
-                            </div>
-                            <div
-                              className="flex justify-between"
-                              style={{ fontSize: "11px" }}
-                            >
-                              <span className="text-gray-500">جزئية</span>
-                              <span className="font-mono font-bold text-amber-600">
-                                {
-                                  brokerTransactions.filter(
-                                    (tx) =>
-                                      tx.paidAmount > 0 &&
-                                      tx.remainingAmount > 0,
+                                    (tx) => tx.status === "مكتملة",
                                   ).length
                                 }
                               </span>
@@ -1402,12 +1372,12 @@ const BrokerSettlementsPage = () => {
                               style={{ fontSize: "11px" }}
                             >
                               <span className="text-gray-500">
-                                معلقة (لم يدفع)
+                                معاملات جارية
                               </span>
-                              <span className="font-mono font-bold text-red-600">
+                              <span className="font-mono font-bold text-amber-600">
                                 {
                                   brokerTransactions.filter(
-                                    (tx) => tx.paidAmount === 0,
+                                    (tx) => tx.status !== "مكتملة",
                                   ).length
                                 }
                               </span>
@@ -1430,7 +1400,7 @@ const BrokerSettlementsPage = () => {
                                 color: "rgb(26, 35, 50)",
                               }}
                             >
-                              آخر التسويات
+                              آخر المستحقات
                             </span>
                           </div>
                           <div className="flex flex-col h-full justify-center text-center text-gray-400 text-xs">
@@ -1446,7 +1416,7 @@ const BrokerSettlementsPage = () => {
                                 </div>
                               </div>
                             ) : (
-                              "لا توجد تسويات حديثة مسجلة"
+                              "لا توجد حركات مسجلة"
                             )}
                           </div>
                         </div>
@@ -1470,15 +1440,15 @@ const BrokerSettlementsPage = () => {
                             </span>
                           </div>
                           <div className="space-y-1.5">
-                            {modalTotals.remainingAmount > 0 ? (
+                            {currentAgentStats.remaining > 0 ? (
                               <div
                                 className="flex items-center gap-1.5"
                                 style={{ fontSize: "11px" }}
                               >
                                 <div className="w-1.5 h-1.5 rounded-full bg-red-500"></div>
                                 <span className="text-gray-600">
-                                  مبالغ متبقية غير مسلمة (
-                                  {modalTotals.remainingAmount.toLocaleString()}
+                                  مبالغ مستحقة للمعقب لم يتم صرفها (
+                                  {currentAgentStats.remaining.toLocaleString()}
                                   )
                                 </span>
                               </div>
@@ -1514,36 +1484,27 @@ const BrokerSettlementsPage = () => {
 
                   {/* === المعاملات === */}
                   {activeTab === "transactions" && (
-                    <div className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm">
-                      <div className="flex items-center gap-2 mb-4 bg-blue-50 p-3 rounded border border-blue-100">
-                        <FileText className="w-4 h-4 text-blue-600" />
-                        <span className="text-[13px] font-bold text-gray-800">
-                          جميع المعاملات المرتبطة بـ {selectedBroker.name}
+                    <div className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm opacity-80 hover:opacity-100 transition-opacity">
+                      <div className="flex items-center gap-2 mb-4 bg-gray-50 p-3 rounded border border-gray-100">
+                        <Eye className="w-4 h-4 text-gray-500" />
+                        <span className="text-[13px] font-bold text-gray-700">
+                          سجل المعاملات المرتبطة بهذا المعقب (للاطلاع فقط)
                         </span>
                       </div>
-                      <table className="w-full text-[12px] border-collapse">
+                      <table className="w-full text-[11px] border-collapse">
                         <thead>
                           <tr>
-                            <th className="text-right px-3 py-2 font-bold text-gray-600 bg-gray-100 border-b-2 border-gray-300">
+                            <th className="text-right px-2 py-1.5 font-bold text-gray-500 bg-gray-100 border-b border-gray-200">
                               المرجع
                             </th>
-                            <th className="text-right px-3 py-2 font-bold text-gray-600 bg-gray-100 border-b-2 border-gray-300">
-                              العميل / الوصف
+                            <th className="text-right px-2 py-1.5 font-bold text-gray-500 bg-gray-100 border-b border-gray-200">
+                              المالك / الوصف
                             </th>
-                            <th className="text-right px-3 py-2 font-bold text-gray-600 bg-gray-100 border-b-2 border-gray-300">
-                              إجمالي الأتعاب
+                            <th className="text-right px-2 py-1.5 font-bold text-gray-500 bg-gray-100 border-b border-gray-200">
+                              إجمالي أتعاب المعاملة
                             </th>
-                            <th className="text-right px-3 py-2 font-bold text-gray-600 bg-gray-100 border-b-2 border-gray-300">
-                              المدفوع
-                            </th>
-                            <th className="text-right px-3 py-2 font-bold text-gray-600 bg-gray-100 border-b-2 border-gray-300">
-                              المتبقي
-                            </th>
-                            <th className="text-right px-3 py-2 font-bold text-gray-600 bg-gray-100 border-b-2 border-gray-300">
-                              التاريخ
-                            </th>
-                            <th className="text-right px-3 py-2 font-bold text-gray-600 bg-gray-100 border-b-2 border-gray-300">
-                              الحالة
+                            <th className="text-right px-2 py-1.5 font-bold text-gray-500 bg-gray-100 border-b border-gray-200">
+                              حالة المعاملة
                             </th>
                           </tr>
                         </thead>
@@ -1553,38 +1514,24 @@ const BrokerSettlementsPage = () => {
                               <tr
                                 key={tx.id}
                                 className={
-                                  idx % 2 === 0
-                                    ? "bg-white hover:bg-blue-50/30"
-                                    : "bg-gray-50 hover:bg-blue-50/30"
+                                  idx % 2 === 0 ? "bg-white" : "bg-gray-50"
                                 }
                               >
-                                <td className="px-3 py-2.5 font-mono text-blue-600 font-bold border-b border-gray-200">
+                                <td className="px-2 py-2 font-mono text-gray-500 border-b border-gray-200">
                                   {tx.ref}
                                 </td>
-                                <td className="px-3 py-2.5 font-bold text-gray-700 border-b border-gray-200">
-                                  {tx.client} — {tx.type}
+                                <td className="px-2 py-2 text-gray-600 border-b border-gray-200 font-semibold">
+                                  {tx.client} —{" "}
+                                  <span className="font-normal text-gray-400">
+                                    {tx.type}
+                                  </span>
                                 </td>
-                                <td className="px-3 py-2.5 font-mono font-bold border-b border-gray-200">
+                                <td className="px-2 py-2 font-mono text-gray-600 border-b border-gray-200">
                                   {tx.totalFees.toLocaleString()}
                                 </td>
-                                <td className="px-3 py-2.5 font-mono font-bold text-green-600 border-b border-gray-200">
-                                  {tx.paidAmount.toLocaleString()}
-                                </td>
-                                <td className="px-3 py-2.5 font-mono font-bold text-red-600 border-b border-gray-200">
-                                  {tx.remainingAmount.toLocaleString()}
-                                </td>
-                                <td className="px-3 py-2.5 font-mono text-gray-500 border-b border-gray-200">
-                                  {tx.date}
-                                </td>
-                                <td className="px-3 py-2.5 border-b border-gray-200">
-                                  <span
-                                    className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold ${tx.remainingAmount === 0 ? "bg-green-100 text-green-700" : tx.paidAmount > 0 ? "bg-amber-100 text-amber-700" : "bg-red-100 text-red-700"}`}
-                                  >
-                                    {tx.remainingAmount === 0
-                                      ? "مكتمل"
-                                      : tx.paidAmount > 0
-                                        ? "جزئي"
-                                        : "غير مدفوع"}
+                                <td className="px-2 py-2 border-b border-gray-200">
+                                  <span className="inline-flex px-1.5 py-0.5 rounded text-[9px] bg-gray-200 text-gray-600">
+                                    {tx.status || "مسجلة"}
                                   </span>
                                 </td>
                               </tr>
@@ -1592,10 +1539,10 @@ const BrokerSettlementsPage = () => {
                           ) : (
                             <tr>
                               <td
-                                colSpan="7"
-                                className="text-center py-8 text-gray-400 font-semibold"
+                                colSpan="4"
+                                className="text-center py-6 text-gray-400"
                               >
-                                لا توجد معاملات مرتبطة بهذا الوسيط
+                                لا توجد معاملات مرتبطة مسجلة
                               </td>
                             </tr>
                           )}
@@ -1611,26 +1558,20 @@ const BrokerSettlementsPage = () => {
                             <td className="px-3 py-2 font-mono font-bold text-gray-800">
                               {modalTotals.totalFees.toLocaleString()}
                             </td>
-                            <td className="px-3 py-2 font-mono font-bold text-green-600">
-                              {modalTotals.paidAmount.toLocaleString()}
-                            </td>
-                            <td className="px-3 py-2 font-mono font-bold text-red-600">
-                              {modalTotals.remainingAmount.toLocaleString()}
-                            </td>
-                            <td colSpan="2"></td>
+                            <td></td>
                           </tr>
                         </tfoot>
                       </table>
                     </div>
                   )}
 
-                  {/* === سجل التسويات (المستحقات) === */}
+                  {/* === سجل المستحقات === */}
                   {activeTab === "settlements" && (
                     <div className="bg-white rounded-lg border border-gray-200 p-4 shadow-sm">
                       <div className="flex items-center gap-2 mb-4 bg-gray-50 p-3 rounded border border-gray-100">
                         <FileText className="w-4 h-4 text-blue-600" />
                         <span className="text-[13px] font-bold text-gray-800">
-                          سجل التسويات والمستحقات المضافة للوسيط (رصيد موجب)
+                          سجل المستحقات والأتعاب المضافة للمعقب (رصيد موجب)
                         </span>
                       </div>
                       <table className="w-full text-[12px] border-collapse">
@@ -1685,7 +1626,7 @@ const BrokerSettlementsPage = () => {
                                 colSpan="5"
                                 className="text-center py-8 text-gray-400 font-semibold"
                               >
-                                لا توجد حركات تسويات مستحقة
+                                لا توجد حركات مستحقات مسجلة
                               </td>
                             </tr>
                           )}
@@ -1717,7 +1658,7 @@ const BrokerSettlementsPage = () => {
                       <div className="flex items-center gap-2 mb-4 bg-green-50 p-3 rounded border border-green-100">
                         <Send className="w-4 h-4 text-green-600" />
                         <span className="text-[13px] font-bold text-green-800">
-                          سجل المسحوبات والمبالغ المصروفة (رصيد سالب)
+                          سجل المدفوعات والمبالغ المسلمة (رصيد سالب)
                         </span>
                       </div>
                       <table className="w-full text-[12px] border-collapse">
@@ -1736,7 +1677,7 @@ const BrokerSettlementsPage = () => {
                               المسلِّم / ملاحظات
                             </th>
                             <th className="text-right px-3 py-2 font-bold text-gray-600 bg-gray-100 border-b-2 border-gray-300 w-[15%]">
-                              المبلغ المسحوب
+                              المبلغ المصروف
                             </th>
                           </tr>
                         </thead>
@@ -1778,7 +1719,7 @@ const BrokerSettlementsPage = () => {
                                 colSpan="5"
                                 className="text-center py-8 text-gray-400 font-semibold"
                               >
-                                لا توجد أي مسحوبات مسجلة لهذا الوسيط
+                                لا توجد أي مسحوبات مسجلة لهذا المعقب
                               </td>
                             </tr>
                           )}
@@ -1809,191 +1750,8 @@ const BrokerSettlementsPage = () => {
           </div>
         </div>
       )}
-
-      {/* 5. Modal: عرض المعاملات المرتبطة بوسيط (شاشة خارجية) */}
-      {isViewTransactionsOpen && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div
-            className="bg-[var(--wms-surface-1)] border border-[var(--wms-border)] rounded-xl shadow-2xl w-full animate-in zoom-in-95 duration-200"
-            style={{ maxWidth: "720px" }}
-          >
-            <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--wms-border)]">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span
-                    className="text-[var(--wms-text)]"
-                    style={{ fontSize: "15px", fontWeight: 700 }}
-                  >
-                    معاملات الوسيط:
-                  </span>
-                  <select
-                    value={selectedBroker?.id || ""}
-                    onChange={(e) => {
-                      const emp = brokersList.find(
-                        (x) => x.id === e.target.value,
-                      );
-                      if (emp)
-                        setSelectedBroker({ id: emp.id, name: emp.name });
-                    }}
-                    className="bg-[var(--wms-surface-2)] border border-[var(--wms-border)] rounded-md px-2 py-1 text-[13px] font-bold text-[var(--wms-accent-blue)] outline-none cursor-pointer"
-                  >
-                    <option value="" disabled>
-                      -- اختر وسيطاً لعرض معاملاته --
-                    </option>
-                    {brokersList.map((emp) => (
-                      <option key={emp.id} value={emp.id}>
-                        {emp.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div
-                  className="text-[var(--wms-text-muted)] mt-1"
-                  style={{ fontSize: "11px" }}
-                >
-                  {selectedBroker
-                    ? `${brokerTransactions.length} معاملة مرتبطة`
-                    : "الرجاء اختيار وسيط من القائمة"}
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  className="flex items-center gap-1 px-2 py-1 rounded-md bg-[var(--wms-surface-2)] text-[var(--wms-text-sec)] cursor-pointer hover:bg-[var(--wms-surface-2)]/80 transition-colors"
-                  style={{ fontSize: "11px" }}
-                >
-                  <Download className="w-3 h-3" />
-                  <span>تصدير</span>
-                </button>
-                <button
-                  onClick={() => {
-                    setIsViewTransactionsOpen(false);
-                    setSelectedBroker(null);
-                  }}
-                  className="text-[var(--wms-text-muted)] hover:text-[var(--wms-text)] cursor-pointer transition-colors p-1"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-            <div
-              className="overflow-x-auto custom-scrollbar-slim"
-              style={{ maxHeight: "400px", minHeight: "200px" }}
-            >
-              <table className="w-full text-[12px] border-collapse">
-                <thead className="sticky top-0 z-10 bg-[var(--wms-surface-2)]">
-                  <tr className="h-[32px]">
-                    <th className="text-right px-3 text-[var(--wms-text-sec)] font-semibold text-[11px] border-b border-gray-300">
-                      رقم المعاملة
-                    </th>
-                    <th className="text-right px-3 text-[var(--wms-text-sec)] font-semibold text-[11px] border-b border-gray-300">
-                      اسم المالك
-                    </th>
-                    <th className="text-right px-3 text-[var(--wms-text-sec)] font-semibold text-[11px] border-b border-gray-300">
-                      القطاع
-                    </th>
-                    <th className="text-right px-3 text-[var(--wms-text-sec)] font-semibold text-[11px] border-b border-gray-300">
-                      الأتعاب
-                    </th>
-                    <th className="text-right px-3 text-[var(--wms-text-sec)] font-semibold text-[11px] border-b border-gray-300">
-                      المدفوع
-                    </th>
-                    <th className="text-right px-3 text-[var(--wms-text-sec)] font-semibold text-[11px] border-b border-gray-300">
-                      المتبقي
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {!selectedBroker ? (
-                    <tr>
-                      <td
-                        colSpan="6"
-                        className="text-center py-12 text-gray-400 font-semibold"
-                      >
-                        يرجى اختيار وسيط من القائمة العلوية
-                      </td>
-                    </tr>
-                  ) : isLoadingBrokerTx ? (
-                    <tr>
-                      <td
-                        colSpan="6"
-                        className="text-center py-12 text-gray-500"
-                      >
-                        <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2 text-[var(--wms-accent-blue)]" />
-                        جاري الجلب...
-                      </td>
-                    </tr>
-                  ) : brokerTransactions.length > 0 ? (
-                    brokerTransactions.map((tx, idx) => (
-                      <tr
-                        key={tx.id}
-                        className={`border-b border-[var(--wms-border)]/30 hover:bg-[var(--wms-surface-2)]/40 transition-colors h-[34px] ${idx % 2 === 0 ? "bg-white" : "bg-gray-50"}`}
-                      >
-                        <td className="px-3 font-mono text-[var(--wms-accent-blue)] font-semibold">
-                          {tx.ref}
-                        </td>
-                        <td className="px-3 text-[var(--wms-text)]">
-                          {tx.client}
-                        </td>
-                        <td className="px-3 text-[var(--wms-text-muted)]">
-                          {tx.district} - {tx.sector}
-                        </td>
-                        <td className="px-3 font-mono text-[var(--wms-text)]">
-                          {tx.totalFees.toLocaleString()}
-                        </td>
-                        <td className="px-3 font-mono text-[var(--wms-success)]">
-                          {tx.paidAmount.toLocaleString()}
-                        </td>
-                        <td
-                          className={`px-3 font-mono font-semibold ${tx.remainingAmount > 0 ? "text-[var(--wms-danger)]" : "text-[var(--wms-success)]"}`}
-                        >
-                          {tx.remainingAmount.toLocaleString()}
-                        </td>
-                      </tr>
-                    ))
-                  ) : (
-                    <tr>
-                      <td
-                        colSpan="6"
-                        className="text-center py-12 text-gray-500 font-semibold"
-                      >
-                        لا توجد معاملات مسجلة لهذا الوسيط
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-            {/* الفوتر (المجاميع) */}
-            <div className="flex items-center justify-between px-5 py-2.5 border-t border-[var(--wms-border)] bg-[var(--wms-surface-2)] shrink-0">
-              <span className="text-[var(--wms-text-sec)] text-[11px] font-semibold">
-                المجموع ({brokerTransactions.length})
-              </span>
-              <div className="flex items-center gap-6 text-[12px]">
-                <span className="text-[var(--wms-text-muted)]">
-                  الأتعاب:{" "}
-                  <span className="text-[var(--wms-text)] font-mono font-semibold">
-                    {modalTotals.totalFees.toLocaleString()}
-                  </span>
-                </span>
-                <span className="text-[var(--wms-text-muted)]">
-                  المدفوع:{" "}
-                  <span className="text-[var(--wms-success)] font-mono font-semibold">
-                    {modalTotals.paidAmount.toLocaleString()}
-                  </span>
-                </span>
-                <span className="text-[var(--wms-text-muted)]">
-                  المتبقي:{" "}
-                  <span className="text-[var(--wms-danger)] font-mono font-semibold">
-                    {modalTotals.remainingAmount.toLocaleString()}
-                  </span>
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
 
-export default BrokerSettlementsPage;
+export default AgentSettlementsPage;

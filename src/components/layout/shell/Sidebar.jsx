@@ -32,17 +32,20 @@ import {
 } from "lucide-react";
 
 const Sidebar = () => {
-  const { activeScreenId, openScreen } = useAppStore();
+  const { activeScreenId, openScreens, openScreen } = useAppStore();
+  // نجلب الشاشة النشطة حالياً بكل بياناتها (بما فيها القطاع props)
+  const activeScreen = openScreens.find((s) => s.id === activeScreenId);
+
+  // التحكم في القوائم المفتوحة افتراضياً
   const [openCategories, setOpenCategories] = useState([
-    "CAT_CLIENTS",
+    "CAT_MAIN",
     "CAT_TRANSACTIONS",
-    "CAT_HR",
+    "CAT_SETTLEMENTS",
   ]);
 
   const { user } = useAuth();
   const { isBuildMode } = usePermissionBuilder();
   const userPermissions = user?.permissions || [];
-
   const isSuperAdmin = user?.email === "admin@wms.com";
 
   const toggleCategory = (categoryId) => {
@@ -53,751 +56,290 @@ const Sidebar = () => {
     );
   };
 
-  // =========================================================
-  // دالة لفتح الشاشات في النظام وتحديث الـ GlobalScreenTabs
-  // =========================================================
   const handleNavigation = (screenId, screenTitle, screenProps = {}) => {
-    // 👈 التعديل هنا: تمرير المتغيرات بشكل منفصل (وليس كـ Object) لكي تتوافق مع الستور
     openScreen(screenId, screenTitle, screenProps);
   };
 
+  // مكون مساعد (Component) لزر القائمة للحفاظ على تناسق التصميم
+  const NavItem = ({ screenId, title, icon: Icon, props = {} }) => {
+    // 1. نتأكد أولاً أن معرف الشاشة متطابق
+    let isActive = activeScreenId === screenId;
+
+    // 2. إذا كانت الشاشة هي المعاملات (أو أي شاشة تستخدم props)، يجب أن يتطابق القطاع أيضاً لتصبح نشطة
+    if (isActive && props.sector) {
+      isActive = activeScreen?.props?.sector === props.sector;
+    }
+
+    return (
+      <button
+        onClick={() => handleNavigation(screenId, title, props)}
+        className={`w-full flex items-center gap-3 px-5 py-2.5 transition-all duration-200 outline-none ${
+          isActive
+            ? "bg-blue-600/20 text-blue-600 border-r-2 border-blue-600 font-semibold"
+            : "text-slate-800 hover:bg-slate-800/50 hover:text-slate-100 border-r-2 border-transparent font-medium"
+        }`}
+      >
+        <Icon
+          className={`w-4 h-4 shrink-0 transition-colors ${isActive ? "text-blue-400" : "text-slate-500"}`}
+        />
+        <span className="text-[13px] tracking-wide truncate">{title}</span>
+      </button>
+    );
+  };
+
+  // مكون مساعد لعنوان المجموعة (Category Header)
+  const CategoryHeader = ({ id, title, defaultOpen = false }) => {
+    const isOpen = openCategories.includes(id);
+    return (
+      <button
+        onClick={() => toggleCategory(id)}
+        className="w-full flex items-center justify-between px-5 py-3 mt-1 group outline-none"
+      >
+        <span className="text-[11px] font-bold tracking-wider text-slate-500 uppercase group-hover:text-slate-300 transition-colors">
+          {title}
+        </span>
+        <ChevronDown
+          className={`w-3.5 h-3.5 text-slate-500 transition-transform duration-300 ${isOpen ? "rotate-180" : ""}`}
+        />
+      </button>
+    );
+  };
+
   return (
-    <aside className="w-[280px] bg-slate-900 text-white flex flex-col h-screen fixed right-0 top-0 z-40 shadow-2xl direction-rtl border-l border-slate-800">
+    <aside className="w-[280px] bg-[#fff] text-slate-800 flex flex-col h-screen fixed right-0 top-0 z-40 shadow-2xl direction-rtl border-l border-slate-800/60 select-none">
       {/* 1. الشعار (Header) */}
-      <div className="h-[60px] flex items-center justify-center border-b border-slate-800 bg-slate-950 shadow-sm shrink-0">
-        <div className="flex items-center gap-3 font-bold text-lg tracking-wide text-slate-100">
-          <div className="p-1.5 bg-blue-600 rounded-lg shadow-lg shadow-blue-900/40">
+      <div className="h-[65px] flex items-center px-6 border-b border-slate-800/80 bg-[#020617] shrink-0">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-gradient-to-br from-blue-600 to-blue-800 rounded-lg shadow-lg shadow-blue-900/20">
             <Building2 className="w-5 h-5 text-white" />
           </div>
-          <span>النظام الهندسي ERP</span>
+          <div>
+            <h1 className="font-bold text-[15px] tracking-wide text-white leading-tight">
+              النظام الهندسي
+            </h1>
+            <p className="text-[10px] text-slate-400 font-mono tracking-widest uppercase">
+              Enterprise ERP
+            </p>
+          </div>
         </div>
       </div>
 
       {/* 2. القائمة (Navigation) */}
-      <nav className="flex-1 overflow-y-auto custom-scrollbar-slim py-1">
-        {/* ===================== المجموعة الأولى: لوحة التحكم ===================== */}
-        <div className="mb-0.5" style={{ backgroundColor: "transparent" }}>
-          <button
-            onClick={() => handleNavigation("DASH", "لوحة التحكم")}
-            className={`w-full flex items-center gap-2 px-4 py-1.5 cursor-pointer transition-colors ${activeScreenId === "DASH" ? "bg-[var(--wms-surface-2)] text-[var(--wms-text)] border-l-2 border-[var(--wms-accent-blue)]" : "text-[var(--wms-text-sec)] hover:bg-[var(--wms-surface-2)]/50 hover:text-[var(--wms-text)] border-l-2 border-transparent"}`}
-            style={{ fontSize: "13px", fontWeight: 600, height: "32px" }}
-          >
-            <span
-              className="flex items-center justify-center shrink-0 rounded"
-              style={{
-                width: "16px",
-                height: "16px",
-                fontSize: "8px",
-                fontWeight: 700,
-                backgroundColor: "rgba(37, 99, 235, 0.12)",
-                color: "var(--wms-accent-blue)",
-              }}
-            >
-              1
-            </span>
-            <LayoutDashboard className="w-4 h-4 shrink-0" />
-            <span className="truncate">لوحة التحكم</span>
-          </button>
-
-          <button
-            onClick={() =>
-              handleNavigation("FINANCE_DASH", "مركز التحكم المالي")
-            }
-            className={`w-full flex items-center gap-2 px-4 py-1.5 cursor-pointer transition-colors ${activeScreenId === "FINANCE_DASH" ? "bg-[var(--wms-surface-2)] text-[var(--wms-text)] border-l-2 border-[var(--wms-accent-blue)]" : "text-[var(--wms-text-sec)] hover:bg-[var(--wms-surface-2)]/50 hover:text-[var(--wms-text)] border-l-2 border-transparent"}`}
-            style={{ fontSize: "13px", fontWeight: 400, height: "32px" }}
-          >
-            <span
-              className="flex items-center justify-center shrink-0 rounded"
-              style={{
-                width: "16px",
-                height: "16px",
-                fontSize: "8px",
-                fontWeight: 700,
-                backgroundColor: "rgba(100, 116, 139, 0.08)",
-                color: "var(--wms-text-muted)",
-              }}
-            >
-              2
-            </span>
-            <Gauge className="w-4 h-4 shrink-0" />
-            <span className="truncate">مركز التحكم المالي</span>
-          </button>
+      <nav className="flex-1 overflow-y-auto custom-scrollbar-slim py-3 scroll-smooth">
+        {/* ===================== المجموعة الأولى: الرئيسية ===================== */}
+        <div className="mb-2">
+          <NavItem screenId="DASH" title="لوحة التحكم" icon={LayoutDashboard} />
+          <NavItem
+            screenId="FINANCE_DASH"
+            title="مركز التحكم المالي"
+            icon={Gauge}
+          />
         </div>
 
-        {/* ===================== المجموعة الثانية: المعاملات (تم التفعيل) ===================== */}
-        <div
-          className="mb-0.5"
-          style={{ backgroundColor: "rgba(37, 99, 235, 0.03)" }}
-        >
-          <button
-            className="w-full flex items-center justify-between px-4 py-1.5 hover:text-[var(--wms-text-sec)] cursor-pointer"
-            style={{
-              fontSize: "11px",
-              fontWeight: 600,
-              color: "rgb(37, 99, 235)",
-            }}
-          >
-            <span>المعاملات</span>
-            <ChevronDown className="w-3 h-3 transition-transform" />
-          </button>
+        {/* ===================== المجموعة الثانية: المعاملات ===================== */}
+        <div className="mb-1 border-t border-slate-800/50 pt-1">
+          <CategoryHeader id="CAT_TRANSACTIONS" title="إدارة المعاملات" />
 
-          <button
-            onClick={() =>
-              handleNavigation("TXN_LIST", "المعاملات - قطاع الوسط", {
-                sector: "وسط",
-              })
-            }
-            className={`w-full flex items-center gap-2 px-4 py-1.5 cursor-pointer transition-colors ${activeScreenId === "TXN_LIST" ? "bg-[var(--wms-surface-2)] text-[var(--wms-text)]" : "text-[var(--wms-text-sec)] hover:bg-[var(--wms-surface-2)]/50 hover:text-[var(--wms-text)]"}`}
-            style={{ fontSize: "13px", fontWeight: 400, height: "32px" }}
+          <div
+            className={`overflow-hidden transition-all duration-300 ease-in-out ${openCategories.includes("CAT_TRANSACTIONS") ? "max-h-[500px] opacity-100" : "max-h-0 opacity-0"}`}
           >
-            <span
-              className="flex items-center justify-center shrink-0 rounded"
-              style={{
-                width: "16px",
-                height: "16px",
-                fontSize: "8px",
-                fontWeight: 700,
-                backgroundColor: "rgba(100, 116, 139, 0.08)",
-                color: "var(--wms-text-muted)",
-              }}
-            >
-              3
-            </span>
-            <MapPin className="w-4 h-4 shrink-0" />
-            <span className="truncate">قطاع الوسط</span>
-          </button>
-
-          <button
-            // 👈 نرسل sector: "شمال"
-            onClick={() =>
-              handleNavigation("TXN_LIST", "المعاملات - قطاع الشمال", {
-                sector: "شمال",
-              })
-            }
-            className={`w-full flex items-center gap-2 px-4 py-1.5 cursor-pointer transition-colors ${activeScreenId === "TXN_LIST" ? "bg-[var(--wms-surface-2)] text-[var(--wms-text)]" : "text-[var(--wms-text-sec)] hover:bg-[var(--wms-surface-2)]/50 hover:text-[var(--wms-text)]"}`}
-            style={{ fontSize: "13px", fontWeight: 400, height: "32px" }}
-          >
-            <span
-              className="flex items-center justify-center shrink-0 rounded"
-              style={{
-                width: "16px",
-                height: "16px",
-                fontSize: "8px",
-                fontWeight: 700,
-                backgroundColor: "rgba(100, 116, 139, 0.08)",
-                color: "var(--wms-text-muted)",
-              }}
-            >
-              4
-            </span>
-            <ArrowUp className="w-4 h-4 shrink-0" />
-            <span className="truncate">قطاع الشمال</span>
-          </button>
-
-          <button
-            onClick={() =>
-              handleNavigation("TXN_LIST", "المعاملات - قطاع الجنوب", {
-                sector: "جنوب",
-              })
-            }
-            className={`w-full flex items-center gap-2 px-4 py-1.5 cursor-pointer transition-colors ${activeScreenId === "TXN_LIST" ? "bg-[var(--wms-surface-2)] text-[var(--wms-text)]" : "text-[var(--wms-text-sec)] hover:bg-[var(--wms-surface-2)]/50 hover:text-[var(--wms-text)]"}`}
-            style={{ fontSize: "13px", fontWeight: 400, height: "32px" }}
-          >
-            <span
-              className="flex items-center justify-center shrink-0 rounded"
-              style={{
-                width: "16px",
-                height: "16px",
-                fontSize: "8px",
-                fontWeight: 700,
-                backgroundColor: "rgba(100, 116, 139, 0.08)",
-                color: "var(--wms-text-muted)",
-              }}
-            >
-              5
-            </span>
-            <ArrowDown className="w-4 h-4 shrink-0" />
-            <span className="truncate">قطاع الجنوب</span>
-          </button>
-
-          <button
-            onClick={() =>
-              handleNavigation("TXN_LIST", "المعاملات - قطاع الشرق", {
-                sector: "شرق",
-              })
-            }
-            className={`w-full flex items-center gap-2 px-4 py-1.5 cursor-pointer transition-colors ${activeScreenId === "TXN_LIST" ? "bg-[var(--wms-surface-2)] text-[var(--wms-text)]" : "text-[var(--wms-text-sec)] hover:bg-[var(--wms-surface-2)]/50 hover:text-[var(--wms-text)]"}`}
-            style={{ fontSize: "13px", fontWeight: 400, height: "32px" }}
-          >
-            <span
-              className="flex items-center justify-center shrink-0 rounded"
-              style={{
-                width: "16px",
-                height: "16px",
-                fontSize: "8px",
-                fontWeight: 700,
-                backgroundColor: "rgba(100, 116, 139, 0.08)",
-                color: "var(--wms-text-muted)",
-              }}
-            >
-              6
-            </span>
-            <ArrowRight className="w-4 h-4 shrink-0" />
-            <span className="truncate">قطاع الشرق</span>
-          </button>
-
-          <button
-            onClick={() =>
-              handleNavigation("TXN_LIST", "المعاملات - قطاع الغرب", {
-                sector: "غرب",
-              })
-            }
-            className={`w-full flex items-center gap-2 px-4 py-1.5 cursor-pointer transition-colors ${activeScreenId === "TXN_LIST" ? "bg-[var(--wms-surface-2)] text-[var(--wms-text)]" : "text-[var(--wms-text-sec)] hover:bg-[var(--wms-surface-2)]/50 hover:text-[var(--wms-text)]"}`}
-            style={{ fontSize: "13px", fontWeight: 400, height: "32px" }}
-          >
-            <span
-              className="flex items-center justify-center shrink-0 rounded"
-              style={{
-                width: "16px",
-                height: "16px",
-                fontSize: "8px",
-                fontWeight: 700,
-                backgroundColor: "rgba(100, 116, 139, 0.08)",
-                color: "var(--wms-text-muted)",
-              }}
-            >
-              7
-            </span>
-            <ArrowLeft className="w-4 h-4 shrink-0" />
-            <span className="truncate">قطاع الغرب</span>
-          </button>
-
-          <button
-            onClick={() =>
-              handleNavigation("TXN_LIST", "كل المعاملات", { sector: "الكل" })
-            }
-            className={`w-full flex items-center gap-2 px-4 py-1.5 cursor-pointer transition-colors ${activeScreenId === "TXN_LIST" ? "bg-[var(--wms-surface-2)] text-[var(--wms-text)]" : "text-[var(--wms-text-sec)] hover:bg-[var(--wms-surface-2)]/50 hover:text-[var(--wms-text)]"}`}
-            style={{ fontSize: "13px", fontWeight: 400, height: "32px" }}
-          >
-            <span
-              className="flex items-center justify-center shrink-0 rounded"
-              style={{
-                width: "16px",
-                height: "16px",
-                fontSize: "8px",
-                fontWeight: 700,
-                backgroundColor: "rgba(100, 116, 139, 0.08)",
-                color: "var(--wms-text-muted)",
-              }}
-            >
-              8
-            </span>
-            <Layers className="w-4 h-4 shrink-0" />
-            <span className="truncate">كل القطاعات</span>
-          </button>
+            <NavItem
+              screenId="TXN_LIST"
+              title="قطاع الوسط"
+              icon={MapPin}
+              props={{ sector: "وسط" }}
+            />
+            <NavItem
+              screenId="TXN_LIST"
+              title="قطاع الشمال"
+              icon={ArrowUp}
+              props={{ sector: "شمال" }}
+            />
+            <NavItem
+              screenId="TXN_LIST"
+              title="قطاع الجنوب"
+              icon={ArrowDown}
+              props={{ sector: "جنوب" }}
+            />
+            <NavItem
+              screenId="TXN_LIST"
+              title="قطاع الشرق"
+              icon={ArrowRight}
+              props={{ sector: "شرق" }}
+            />
+            <NavItem
+              screenId="TXN_LIST"
+              title="قطاع الغرب"
+              icon={ArrowLeft}
+              props={{ sector: "غرب" }}
+            />
+            <NavItem
+              screenId="TXN_LIST"
+              title="كل القطاعات"
+              icon={Layers}
+              props={{ sector: "الكل" }}
+            />
+          </div>
         </div>
 
         {/* ===================== المجموعة الثالثة: التسويات ===================== */}
-        <div
-          className="mb-0.5"
-          style={{ backgroundColor: "rgba(34, 197, 94, 0.03)" }}
-        >
-          <button
-            className="w-full flex items-center justify-between px-4 py-1.5 hover:text-[var(--wms-text-sec)] cursor-pointer"
-            style={{
-              fontSize: "11px",
-              fontWeight: 600,
-              color: "rgb(22, 163, 74)",
-            }}
+        <div className="mb-1 border-t border-slate-800/50 pt-1">
+          <CategoryHeader id="CAT_SETTLEMENTS" title="نظام التسويات" />
+
+          <div
+            className={`overflow-hidden transition-all duration-300 ease-in-out ${openCategories.includes("CAT_SETTLEMENTS") ? "max-h-[500px] opacity-100" : "max-h-0 opacity-0"}`}
           >
-            <span>التسويات</span>
-            <ChevronDown className="w-3 h-3 transition-transform" />
-          </button>
-          <button
-            onClick={() =>
-              handleNavigation("BROKER_SETTLEMENTS", "تسوية الوسطاء")
-            }
-            className={`w-full flex items-center gap-2 px-4 py-1.5 cursor-pointer transition-colors ${activeScreenId === "BROKER_SETTLEMENTS" ? "bg-[var(--wms-surface-2)] text-[var(--wms-text)]" : "text-[var(--wms-text-sec)] hover:bg-[var(--wms-surface-2)]/50 hover:text-[var(--wms-text)]"}`}
-            style={{ fontSize: "13px", fontWeight: 400, height: "32px" }}
-          >
-            <span className="flex items-center justify-center shrink-0 rounded bg-slate-100 text-slate-500 w-4 h-4 text-[8px] font-bold">
-              9
-            </span>
-            <Handshake className="w-4 h-4 shrink-0" />
-            <span className="truncate">تسوية الوسطاء</span>
-          </button>
-          <button
-            className="w-full flex items-center gap-2 px-4 py-1.5 cursor-pointer transition-colors text-[var(--wms-text-sec)] hover:bg-[var(--wms-surface-2)]/50 hover:text-[var(--wms-text)]"
-            style={{ fontSize: "13px", fontWeight: 400, height: "32px" }}
-          >
-            <span
-              className="flex items-center justify-center shrink-0 rounded"
-              style={{
-                width: "16px",
-                height: "16px",
-                fontSize: "8px",
-                fontWeight: 700,
-                backgroundColor: "rgba(100, 116, 139, 0.08)",
-                color: "var(--wms-text-muted)",
-              }}
-            >
-              10
-            </span>
-            <UserCheck className="w-4 h-4 shrink-0" />
-            <span className="truncate">تسوية المعقبين</span>
-          </button>
-          <button
-            className="w-full flex items-center gap-2 px-4 py-1.5 cursor-pointer transition-colors text-[var(--wms-text-sec)] hover:bg-[var(--wms-surface-2)]/50 hover:text-[var(--wms-text)]"
-            style={{ fontSize: "13px", fontWeight: 400, height: "32px" }}
-          >
-            <span
-              className="flex items-center justify-center shrink-0 rounded"
-              style={{
-                width: "16px",
-                height: "16px",
-                fontSize: "8px",
-                fontWeight: 700,
-                backgroundColor: "rgba(100, 116, 139, 0.08)",
-                color: "var(--wms-text-muted)",
-              }}
-            >
-              11
-            </span>
-            <Users className="w-4 h-4 shrink-0" />
-            <span className="truncate">تسوية أرباح الشركاء</span>
-          </button>
-          <button
-            className="w-full flex items-center gap-2 px-4 py-1.5 cursor-pointer transition-colors text-[var(--wms-text-sec)] hover:bg-[var(--wms-surface-2)]/50 hover:text-[var(--wms-text)]"
-            style={{ fontSize: "13px", fontWeight: 400, height: "32px" }}
-          >
-            <span
-              className="flex items-center justify-center shrink-0 rounded"
-              style={{
-                width: "16px",
-                height: "16px",
-                fontSize: "8px",
-                fontWeight: 700,
-                backgroundColor: "rgba(100, 116, 139, 0.08)",
-                color: "var(--wms-text-muted)",
-              }}
-            >
-              12
-            </span>
-            <Star className="w-4 h-4 shrink-0" />
-            <span className="truncate">تسويات أصحاب المصلحة</span>
-          </button>
+            <NavItem
+              screenId="BROKER_SETTLEMENTS"
+              title="تسوية الوسطاء"
+              icon={Handshake}
+            />
+            <NavItem
+              screenId="AGENT_SETTLEMENTS"
+              title="تسوية المعقبين"
+              icon={UserCheck}
+            />
+            <NavItem
+              screenId="PARTNER_SETTLEMENTS"
+              title="تسوية أرباح الشركاء"
+              icon={Users}
+            />
+            <NavItem
+              screenId="STAKEHOLDER_SETTLEMENTS"
+              title="تسويات أصحاب المصلحة"
+              icon={Star}
+            />
+          </div>
         </div>
 
         {/* ===================== المجموعة الرابعة: الماليات التشغيلية ===================== */}
-        <div
-          className="mb-0.5"
-          style={{ backgroundColor: "rgba(245, 158, 11, 0.03)" }}
-        >
-          <button
-            className="w-full flex items-center justify-between px-4 py-1.5 hover:text-[var(--wms-text-sec)] cursor-pointer"
-            style={{
-              fontSize: "11px",
-              fontWeight: 600,
-              color: "rgb(217, 119, 6)",
-            }}
-          >
-            <span>الماليات التشغيلية</span>
-            <ChevronDown className="w-3 h-3 transition-transform" />
-          </button>
+        <div className="mb-1 border-t border-slate-800/50 pt-1">
+          <CategoryHeader id="CAT_FINANCE" title="الماليات التشغيلية" />
 
-          <button
-            className="w-full flex items-center gap-2 px-4 py-1.5 cursor-pointer transition-colors text-[var(--wms-text-sec)] hover:bg-[var(--wms-surface-2)]/50 hover:text-[var(--wms-text)]"
-            style={{ fontSize: "13px", fontWeight: 400, height: "32px" }}
+          <div
+            className={`overflow-hidden transition-all duration-300 ease-in-out ${openCategories.includes("CAT_FINANCE") ? "max-h-[500px] opacity-100" : "max-h-0 opacity-0"}`}
           >
-            <span
-              className="flex items-center justify-center shrink-0 rounded"
-              style={{
-                width: "16px",
-                height: "16px",
-                fontSize: "8px",
-                fontWeight: 700,
-                backgroundColor: "rgba(100, 116, 139, 0.08)",
-                color: "var(--wms-text-muted)",
-              }}
-            >
-              13
-            </span>
-            <Receipt className="w-4 h-4 shrink-0" />
-            <span className="truncate">مصروفات المكتب</span>
-          </button>
-
-          <button
-            className="w-full flex items-center gap-2 px-4 py-1.5 cursor-pointer transition-colors text-[var(--wms-text-sec)] hover:bg-[var(--wms-surface-2)]/50 hover:text-[var(--wms-text)]"
-            style={{ fontSize: "13px", fontWeight: 400, height: "32px" }}
-          >
-            <span
-              className="flex items-center justify-center shrink-0 rounded"
-              style={{
-                width: "16px",
-                height: "16px",
-                fontSize: "8px",
-                fontWeight: 700,
-                backgroundColor: "rgba(100, 116, 139, 0.08)",
-                color: "var(--wms-text-muted)",
-              }}
-            >
-              14
-            </span>
-            <Vault className="w-4 h-4 shrink-0" />
-            <span className="truncate">الخزنة</span>
-          </button>
-
-          <button
-            className="w-full flex items-center gap-2 px-4 py-1.5 cursor-pointer transition-colors text-[var(--wms-text-sec)] hover:bg-[var(--wms-surface-2)]/50 hover:text-[var(--wms-text)]"
-            style={{ fontSize: "13px", fontWeight: 400, height: "32px" }}
-          >
-            <span
-              className="flex items-center justify-center shrink-0 rounded"
-              style={{
-                width: "16px",
-                height: "16px",
-                fontSize: "8px",
-                fontWeight: 700,
-                backgroundColor: "rgba(100, 116, 139, 0.08)",
-                color: "var(--wms-text-muted)",
-              }}
-            >
-              15
-            </span>
-            <Landmark className="w-4 h-4 shrink-0" />
-            <span className="truncate">الحسابات البنكية</span>
-          </button>
-
-          <button
-            className="w-full flex items-center gap-2 px-4 py-1.5 cursor-pointer transition-colors text-[var(--wms-text-sec)] hover:bg-[var(--wms-surface-2)]/50 hover:text-[var(--wms-text)]"
-            style={{ fontSize: "13px", fontWeight: 400, height: "32px" }}
-          >
-            <span
-              className="flex items-center justify-center shrink-0 rounded"
-              style={{
-                width: "16px",
-                height: "16px",
-                fontSize: "8px",
-                fontWeight: 700,
-                backgroundColor: "rgba(100, 116, 139, 0.08)",
-                color: "var(--wms-text-muted)",
-              }}
-            >
-              16
-            </span>
-            <Wallet className="w-4 h-4 shrink-0" />
-            <span className="truncate">إدارة الصرف</span>
-          </button>
+            <NavItem
+              screenId="EXPENSES"
+              title="مصروفات المكتب"
+              icon={Receipt}
+            />
+            <NavItem screenId="TREASURY" title="الخزنة" icon={Vault} />
+            <NavItem
+              screenId="BANK_ACCOUNTS"
+              title="الحسابات البنكية"
+              icon={Landmark}
+            />
+            <NavItem screenId="PAYMENTS" title="إدارة الصرف" icon={Wallet} />
+          </div>
         </div>
 
         {/* ===================== المجموعة الخامسة: المكاتب المتعاونة ===================== */}
-        <div
-          className="mb-0.5"
-          style={{ backgroundColor: "rgba(124, 58, 237, 0.03)" }}
-        >
-          <button
-            className="w-full flex items-center justify-between px-4 py-1.5 hover:text-[var(--wms-text-sec)] cursor-pointer"
-            style={{
-              fontSize: "11px",
-              fontWeight: 600,
-              color: "rgb(124, 58, 237)",
-            }}
-          >
-            <span>المكاتب المتعاونة</span>
-            <ChevronDown className="w-3 h-3 transition-transform" />
-          </button>
+        <div className="mb-1 border-t border-slate-800/50 pt-1">
+          <CategoryHeader id="CAT_PARTNERS" title="المكاتب المتعاونة" />
 
-          <button
-            className="w-full flex items-center gap-2 px-4 py-1.5 cursor-pointer transition-colors text-[var(--wms-text-sec)] hover:bg-[var(--wms-surface-2)]/50 hover:text-[var(--wms-text)]"
-            style={{ fontSize: "13px", fontWeight: 400, height: "32px" }}
+          <div
+            className={`overflow-hidden transition-all duration-300 ease-in-out ${openCategories.includes("CAT_PARTNERS") ? "max-h-[500px] opacity-100" : "max-h-0 opacity-0"}`}
           >
-            <span
-              className="flex items-center justify-center shrink-0 rounded"
-              style={{
-                width: "16px",
-                height: "16px",
-                fontSize: "8px",
-                fontWeight: 700,
-                backgroundColor: "rgba(100, 116, 139, 0.08)",
-                color: "var(--wms-text-muted)",
-              }}
-            >
-              17
-            </span>
-            <Briefcase className="w-4 h-4 shrink-0" />
-            <span className="truncate">حسابات أتعاب المكاتب</span>
-          </button>
-
-          <button
-            className="w-full flex items-center gap-2 px-4 py-1.5 cursor-pointer transition-colors text-[var(--wms-text-sec)] hover:bg-[var(--wms-surface-2)]/50 hover:text-[var(--wms-text)]"
-            style={{ fontSize: "13px", fontWeight: 400, height: "32px" }}
-          >
-            <span
-              className="flex items-center justify-center shrink-0 rounded"
-              style={{
-                width: "16px",
-                height: "16px",
-                fontSize: "8px",
-                fontWeight: 700,
-                backgroundColor: "rgba(100, 116, 139, 0.08)",
-                color: "var(--wms-text-muted)",
-              }}
-            >
-              18
-            </span>
-            <Building2 className="w-4 h-4 shrink-0" />
-            <span className="truncate">بروفايلات المكاتب المتعاونة</span>
-          </button>
+            <NavItem
+              screenId="COOP_FEES"
+              title="حسابات أتعاب المكاتب"
+              icon={Briefcase}
+            />
+            <NavItem
+              screenId="COOP_PROFILES"
+              title="بروفايلات المكاتب"
+              icon={Building2}
+            />
+          </div>
         </div>
 
-        {/* ===================== المجموعة السادسة: الإعدادات ===================== */}
-        <div
-          className="mb-0.5"
-          style={{ backgroundColor: "rgba(100, 116, 139, 0.03)" }}
-        >
-          <button
-            className="w-full flex items-center justify-between px-4 py-1.5 hover:text-[var(--wms-text-sec)] cursor-pointer"
-            style={{
-              fontSize: "11px",
-              fontWeight: 600,
-              color: "rgb(100, 116, 139)",
-            }}
-          >
-            <span>الإعدادات</span>
-            <ChevronDown className="w-3 h-3 transition-transform" />
-          </button>
+        {/* ===================== المجموعة السادسة: حسابات خاصة ===================== */}
+        <div className="mb-1 border-t border-slate-800/50 pt-1">
+          <CategoryHeader id="CAT_SPECIAL" title="حسابات خاصة" />
 
-          <button
-            className="w-full flex items-center gap-2 px-4 py-1.5 cursor-pointer transition-colors text-[var(--wms-text-sec)] hover:bg-[var(--wms-surface-2)]/50 hover:text-[var(--wms-text)]"
-            style={{ fontSize: "13px", fontWeight: 400, height: "32px" }}
+          <div
+            className={`overflow-hidden transition-all duration-300 ease-in-out ${openCategories.includes("CAT_SPECIAL") ? "max-h-[500px] opacity-100" : "max-h-0 opacity-0"}`}
           >
-            <span
-              className="flex items-center justify-center shrink-0 rounded"
-              style={{
-                width: "16px",
-                height: "16px",
-                fontSize: "8px",
-                fontWeight: 700,
-                backgroundColor: "rgba(100, 116, 139, 0.08)",
-                color: "var(--wms-text-muted)",
-              }}
-            >
-              19
-            </span>
-            <MapPinned className="w-4 h-4 shrink-0" />
-            <span className="truncate">إعدادات الأحياء والقطاعات</span>
-          </button>
-
-          <button
-            className="w-full flex items-center gap-2 px-4 py-1.5 cursor-pointer transition-colors text-[var(--wms-text-sec)] hover:bg-[var(--wms-surface-2)]/50 hover:text-[var(--wms-text)]"
-            style={{ fontSize: "13px", fontWeight: 400, height: "32px" }}
-          >
-            <span
-              className="flex items-center justify-center shrink-0 rounded"
-              style={{
-                width: "16px",
-                height: "16px",
-                fontSize: "8px",
-                fontWeight: 700,
-                backgroundColor: "rgba(100, 116, 139, 0.08)",
-                color: "var(--wms-text-muted)",
-              }}
-            >
-              20
-            </span>
-            <Clock className="w-4 h-4 shrink-0" />
-            <span className="truncate">إعدادات التأخير</span>
-          </button>
-
-          <button
-            className="w-full flex items-center gap-2 px-4 py-1.5 cursor-pointer transition-colors text-[var(--wms-text-sec)] hover:bg-[var(--wms-surface-2)]/50 hover:text-[var(--wms-text)]"
-            style={{ fontSize: "13px", fontWeight: 400, height: "32px" }}
-          >
-            <span
-              className="flex items-center justify-center shrink-0 rounded"
-              style={{
-                width: "16px",
-                height: "16px",
-                fontSize: "8px",
-                fontWeight: 700,
-                backgroundColor: "rgba(100, 116, 139, 0.08)",
-                color: "var(--wms-text-muted)",
-              }}
-            >
-              21
-            </span>
-            <Calculator className="w-4 h-4 shrink-0" />
-            <span className="truncate">إعدادات التقدير الضريبي</span>
-          </button>
-
-          <button
-            className="w-full flex items-center gap-2 px-4 py-1.5 cursor-pointer transition-colors text-[var(--wms-text-sec)] hover:bg-[var(--wms-surface-2)]/50 hover:text-[var(--wms-text)]"
-            style={{ fontSize: "13px", fontWeight: 400, height: "32px" }}
-          >
-            <span
-              className="flex items-center justify-center shrink-0 rounded"
-              style={{
-                width: "16px",
-                height: "16px",
-                fontSize: "8px",
-                fontWeight: 700,
-                backgroundColor: "rgba(100, 116, 139, 0.08)",
-                color: "var(--wms-text-muted)",
-              }}
-            >
-              22
-            </span>
-            <Link2 className="w-4 h-4 shrink-0" />
-            <span className="truncate">بوابة الربط</span>
-          </button>
+            <NavItem
+              screenId="ACC_ALABOUDY"
+              title="حسابات العبودي"
+              icon={CircleUser}
+            />
+            <NavItem
+              screenId="ACC_ALRAJHI"
+              title="حسابات إبراهيم الراجحي"
+              icon={CircleUser}
+            />
+            <NavItem
+              screenId="ACC_TALAAT"
+              title="حسابات أحمد طلعت"
+              icon={CircleUser}
+            />
+            <NavItem
+              screenId="ACC_FOUAD"
+              title="حسابات محمد فؤاد"
+              icon={CircleUser}
+            />
+          </div>
         </div>
 
-        {/* ===================== المجموعة السابعة: حسابات خاصة ===================== */}
-        <div
-          className="mb-0.5"
-          style={{ backgroundColor: "rgba(217, 119, 6, 0.03)" }}
-        >
-          <button
-            className="w-full flex items-center justify-between px-4 py-1.5 hover:text-[var(--wms-text-sec)] cursor-pointer"
-            style={{
-              fontSize: "11px",
-              fontWeight: 600,
-              color: "rgb(217, 119, 6)",
-            }}
-          >
-            <span>حسابات خاصة</span>
-            <ChevronDown className="w-3 h-3 transition-transform" />
-          </button>
+        {/* ===================== المجموعة السابعة: السجلات ===================== */}
+        <div className="mb-1 border-t border-slate-800/50 pt-1">
+          <CategoryHeader id="CAT_RECORDS" title="سجلات النظام" />
 
-          <button
-            className="w-full flex items-center gap-2 px-4 py-1.5 cursor-pointer transition-colors text-[var(--wms-text-sec)] hover:bg-[var(--wms-surface-2)]/50 hover:text-[var(--wms-text)]"
-            style={{ fontSize: "13px", fontWeight: 400, height: "32px" }}
+          <div
+            className={`overflow-hidden transition-all duration-300 ease-in-out ${openCategories.includes("CAT_RECORDS") ? "max-h-[500px] opacity-100" : "max-h-0 opacity-0"}`}
           >
-            <span
-              className="flex items-center justify-center shrink-0 rounded"
-              style={{
-                width: "16px",
-                height: "16px",
-                fontSize: "8px",
-                fontWeight: 700,
-                backgroundColor: "rgba(100, 116, 139, 0.08)",
-                color: "var(--wms-text-muted)",
-              }}
-            >
-              23
-            </span>
-            <CircleUser className="w-4 h-4 shrink-0" />
-            <span className="truncate">حسابات العبودي</span>
-          </button>
-
-          <button
-            className="w-full flex items-center gap-2 px-4 py-1.5 cursor-pointer transition-colors text-[var(--wms-text-sec)] hover:bg-[var(--wms-surface-2)]/50 hover:text-[var(--wms-text)]"
-            style={{ fontSize: "13px", fontWeight: 400, height: "32px" }}
-          >
-            <span
-              className="flex items-center justify-center shrink-0 rounded"
-              style={{
-                width: "16px",
-                height: "16px",
-                fontSize: "8px",
-                fontWeight: 700,
-                backgroundColor: "rgba(100, 116, 139, 0.08)",
-                color: "var(--wms-text-muted)",
-              }}
-            >
-              24
-            </span>
-            <CircleUser className="w-4 h-4 shrink-0" />
-            <span className="truncate">حسابات إبراهيم الراجحي</span>
-          </button>
-
-          <button
-            className="w-full flex items-center gap-2 px-4 py-1.5 cursor-pointer transition-colors text-[var(--wms-text-sec)] hover:bg-[var(--wms-surface-2)]/50 hover:text-[var(--wms-text)]"
-            style={{ fontSize: "13px", fontWeight: 400, height: "32px" }}
-          >
-            <span
-              className="flex items-center justify-center shrink-0 rounded"
-              style={{
-                width: "16px",
-                height: "16px",
-                fontSize: "8px",
-                fontWeight: 700,
-                backgroundColor: "rgba(100, 116, 139, 0.08)",
-                color: "var(--wms-text-muted)",
-              }}
-            >
-              25
-            </span>
-            <CircleUser className="w-4 h-4 shrink-0" />
-            <span className="truncate">حسابات أحمد طلعت</span>
-          </button>
-
-          <button
-            className="w-full flex items-center gap-2 px-4 py-1.5 cursor-pointer transition-colors text-[var(--wms-text-sec)] hover:bg-[var(--wms-surface-2)]/50 hover:text-[var(--wms-text)]"
-            style={{ fontSize: "13px", fontWeight: 400, height: "32px" }}
-          >
-            <span
-              className="flex items-center justify-center shrink-0 rounded"
-              style={{
-                width: "16px",
-                height: "16px",
-                fontSize: "8px",
-                fontWeight: 700,
-                backgroundColor: "rgba(100, 116, 139, 0.08)",
-                color: "var(--wms-text-muted)",
-              }}
-            >
-              26
-            </span>
-            <CircleUser className="w-4 h-4 shrink-0" />
-            <span className="truncate">حسابات محمد فؤاد</span>
-          </button>
+            <NavItem
+              screenId="PEOPLE_RECORDS"
+              title="سجل الأشخاص"
+              icon={BookUser}
+            />
+          </div>
         </div>
 
-        {/* ===================== المجموعة الثامنة: السجلات ===================== */}
-        <div
-          className="mb-0.5"
-          style={{ backgroundColor: "rgba(14, 165, 233, 0.03)" }}
-        >
-          <button
-            className="w-full flex items-center justify-between px-4 py-1.5 hover:text-[var(--wms-text-sec)] cursor-pointer"
-            style={{
-              fontSize: "11px",
-              fontWeight: 600,
-              color: "rgb(14, 165, 233)",
-            }}
-          >
-            <span>السجلات</span>
-            <ChevronDown className="w-3 h-3 transition-transform" />
-          </button>
+        {/* ===================== المجموعة الثامنة: الإعدادات ===================== */}
+        <div className="mb-4 border-t border-slate-800/50 pt-1">
+          <CategoryHeader id="CAT_SETTINGS" title="الإعدادات" />
 
-          <button
-            className="w-full flex items-center gap-2 px-4 py-1.5 cursor-pointer transition-colors text-[var(--wms-text-sec)] hover:bg-[var(--wms-surface-2)]/50 hover:text-[var(--wms-text)]"
-            style={{ fontSize: "13px", fontWeight: 400, height: "32px" }}
+          <div
+            className={`overflow-hidden transition-all duration-300 ease-in-out ${openCategories.includes("CAT_SETTINGS") ? "max-h-[500px] opacity-100" : "max-h-0 opacity-0"}`}
           >
-            <span
-              className="flex items-center justify-center shrink-0 rounded"
-              style={{
-                width: "16px",
-                height: "16px",
-                fontSize: "8px",
-                fontWeight: 700,
-                backgroundColor: "rgba(100, 116, 139, 0.08)",
-                color: "var(--wms-text-muted)",
-              }}
-            >
-              27
-            </span>
-            <BookUser className="w-4 h-4 shrink-0" />
-            <span className="truncate">سجل الأشخاص</span>
-          </button>
+            <NavItem
+              screenId="SET_ZONES"
+              title="إعدادات الأحياء والقطاعات"
+              icon={MapPinned}
+            />
+            <NavItem
+              screenId="SET_DELAYS"
+              title="إعدادات التأخير"
+              icon={Clock}
+            />
+            <NavItem
+              screenId="SET_TAX"
+              title="إعدادات التقدير الضريبي"
+              icon={Calculator}
+            />
+            <NavItem screenId="SET_API" title="بوابة الربط" icon={Link2} />
+          </div>
         </div>
       </nav>
 
       {/* الفوتر الخاص بالقائمة */}
-      <div className="p-4 border-t border-slate-800 bg-slate-950 text-center shrink-0">
-        <div className="text-[10px] text-slate-500 font-mono">
-          Master List v2.0 (Dynamic)
+      <div className="p-4 border-t border-slate-800/80 bg-[#020617] shrink-0 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center border border-slate-700 text-slate-300 font-bold text-xs">
+            {user?.email ? user.email.charAt(0).toUpperCase() : "A"}
+          </div>
+          <div className="flex flex-col">
+            <span className="text-xs font-medium text-slate-200 truncate w-[160px]">
+              {user?.name || "مدير النظام"}
+            </span>
+            <span className="text-[10px] text-slate-500 font-mono truncate w-[160px]">
+              v2.0 (Stable)
+            </span>
+          </div>
         </div>
       </div>
     </aside>

@@ -16,6 +16,18 @@ import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import TransactionsPage from "./pages/TransactionsPage"; // 👈 استيراد صفحة المعاملات الجديدة
 import BrokerSettlementsPage from "./pages/BrokerSettlementsPage";
+import AgentSettlementsPage from "./pages/AgentSettlementsPage";
+import PartnerSettlementsPage from "./pages/PartnerSettlementsPage";
+import StakeholderSettlementsPage from "./pages/StakeholderSettlementsPage";
+import CoopOfficesProfiles from "./pages/CoopOfficesProfiles";
+import CoopOfficesFeesPage from "./pages/CoopOfficesFeesPage";
+import OfficeExpensesPage from "./pages/OfficeExpensesPage";
+import TreasuryPage from "./pages/TreasuryPage";
+import BankAccountsPage from "./pages/BankAccountsPage";
+import DisbursementsPage from "./pages/DisbursementsPage";
+import PersonsDirectoryPage from "./pages/PersonsDirectoryPage";
+import RiyadhDivisionScreen from "./pages/Riyadh/RiyadhDivisionScreen";
+import FinancialDashboardPage from "./pages/FinancialDashboardPage";
 
 // --- Icons & Context ---
 import { Wrench } from "lucide-react";
@@ -79,7 +91,23 @@ const AppContent = () => {
   }
 
   // 👈 إضافة TXN_LIST إلى قائمة الشاشات المبرمجة
-  const implementedScreens = ["DASH", "TXN_LIST", "BROKER_SETTLEMENTS"];
+  const implementedScreens = [
+    "DASH",
+    "TXN_LIST",
+    "BROKER_SETTLEMENTS",
+    "AGENT_SETTLEMENTS",
+    "PARTNER_SETTLEMENTS",
+    "STAKEHOLDER_SETTLEMENTS",
+    "COOP_PROFILES",
+    "COOP_FEES",
+    "EXPENSES",
+    "TREASURY",
+    "BANK_ACCOUNTS",
+    "PAYMENTS",
+    "PEOPLE_RECORDS",
+    "SET_ZONES",
+    "FINANCE_DASH",
+  ];
   const isImplemented = implementedScreens.includes(activeScreenId);
 
   return (
@@ -137,6 +165,106 @@ const AppContent = () => {
               }
             >
               <BrokerSettlementsPage />
+            </div>
+            <div
+              className={
+                activeScreenId === "AGENT_SETTLEMENTS"
+                  ? "block h-full"
+                  : "hidden"
+              }
+            >
+              <AgentSettlementsPage />
+            </div>
+
+            <div
+              className={
+                activeScreenId === "PARTNER_SETTLEMENTS"
+                  ? "block h-full"
+                  : "hidden"
+              }
+            >
+              <PartnerSettlementsPage />
+            </div>
+
+            <div
+              className={
+                activeScreenId === "STAKEHOLDER_SETTLEMENTS"
+                  ? "block h-full"
+                  : "hidden"
+              }
+            >
+              <StakeholderSettlementsPage />
+            </div>
+
+            <div
+              className={
+                activeScreenId === "COOP_PROFILES" ? "block h-full" : "hidden"
+              }
+            >
+              <CoopOfficesProfiles />
+            </div>
+
+            <div
+              className={
+                activeScreenId === "COOP_FEES" ? "block h-full" : "hidden"
+              }
+            >
+              <CoopOfficesFeesPage />
+            </div>
+
+            <div
+              className={
+                activeScreenId === "EXPENSES" ? "block h-full" : "hidden"
+              }
+            >
+              <OfficeExpensesPage />
+            </div>
+
+            <div
+              className={
+                activeScreenId === "TREASURY" ? "block h-full" : "hidden"
+              }
+            >
+              <TreasuryPage />
+            </div>
+            <div
+              className={
+                activeScreenId === "BANK_ACCOUNTS" ? "block h-full" : "hidden"
+              }
+            >
+              <BankAccountsPage />
+            </div>
+
+            <div
+              className={
+                activeScreenId === "PAYMENTS" ? "block h-full" : "hidden"
+              }
+            >
+              <DisbursementsPage />
+            </div>
+
+            <div
+              className={
+                activeScreenId === "PEOPLE_RECORDS" ? "block h-full" : "hidden"
+              }
+            >
+              <PersonsDirectoryPage />
+            </div>
+
+            <div
+              className={
+                activeScreenId === "SET_ZONES" ? "block h-full" : "hidden"
+              }
+            >
+              <RiyadhDivisionScreen />
+            </div>
+
+            <div
+              className={
+                activeScreenId === "FINANCE_DASH" ? "block h-full" : "hidden"
+              }
+            >
+              <FinancialDashboardPage />
             </div>
 
             {/* --- شاشة Fallback لأي كود غير مبرمج --- */}

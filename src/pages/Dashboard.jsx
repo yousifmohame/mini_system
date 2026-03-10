@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useAuth } from "../context/AuthContext";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/axios";
@@ -16,20 +16,30 @@ import {
   User,
   Info,
   Upload,
+  Landmark,
+  RefreshCw,
 } from "lucide-react";
 
 const Dashboard = () => {
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const [isModalOpen, setIsModalOpen] = useState(false);
+
+  // ==================================================
+  // Modals Visibility States
+  // ==================================================
   const [isNewTransactionModalOpen, setIsNewTransactionModalOpen] =
     useState(false);
   const [isCollectionModalOpen, setIsCollectionModalOpen] = useState(false);
+  const [isSettlementModalOpen, setIsSettlementModalOpen] = useState(false);
+  const [isDeliverModalOpen, setIsDeliverModalOpen] = useState(false);
+  const [isVaultInvModalOpen, setIsVaultInvModalOpen] = useState(false);
+  const [isBankInvModalOpen, setIsBankInvModalOpen] = useState(false);
+  const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
 
   // ==================================================
-  // 1. حالة نموذج المعاملة الجديدة
+  // Forms States
   // ==================================================
-  const initialTransactionFormState = {
+  const [transactionFormData, setTransactionFormData] = useState({
     transactionType: "اصدار",
     surveyType: "برافع",
     clientId: "",
@@ -47,42 +57,69 @@ const Dashboard = () => {
     receiverId: "",
     engOfficeBrokerId: "",
     totalFees: "",
-  };
-  const [transactionFormData, setTransactionFormData] = useState(
-    initialTransactionFormState,
-  );
+  });
 
-  // ==================================================
-  // 2. حالة نموذج تسجيل تحصيل
-  // ==================================================
-  const initialCollectionFormState = {
+  const [collectionFormData, setCollectionFormData] = useState({
     transactionId: "",
-    collectedFromType: "من أشخاص النظام", // "من أشخاص النظام", "شخص آخر"
-    collectedFromId: "", // ID العميل/الموظف
-    collectedFromOther: "", // اسم الشخص الآخر
+    collectedFromType: "من أشخاص النظام",
+    collectedFromId: "",
+    collectedFromOther: "",
     amount: "",
     periodRef: "",
-    paymentMethod: "بنكي", // "بنكي", "نقدي", "غير مسلم للشركة"
+    paymentMethod: "بنكي",
     bankAccountId: "",
     date: new Date().toISOString().split("T")[0],
     receiverId: "",
-    splitReceivers: false,
     notes: "",
     attachment: null,
-  };
-  const [collectionFormData, setCollectionFormData] = useState(
-    initialCollectionFormState,
-  );
+  });
 
-  // تفاصيل المعاملة المختارة للتحصيل (لإظهار المبلغ المستحق والمتبقي)
+  const [settlementForm, setSettlementForm] = useState({
+    targetType: "وسيط",
+    targetId: "",
+    amount: "",
+    source: "",
+    notes: "",
+  });
+  const [deliverForm, setDeliverForm] = useState({
+    targetType: "وسيط",
+    targetId: "",
+    amount: "",
+    method: "نقدي",
+    date: new Date().toISOString().split("T")[0],
+    deliveredById: "",
+    notes: "",
+    attachment: null,
+  });
+  const [vaultInvForm, setVaultInvForm] = useState({
+    actualBalance: "",
+    recordedById: "",
+    date: new Date().toISOString().split("T")[0],
+  });
+  const [bankInvForm, setBankInvForm] = useState({
+    accountId: "",
+    actualBalance: "",
+    recordedById: "",
+    date: new Date().toISOString().split("T")[0],
+    notes: "",
+    attachment: null,
+  });
+  const [expenseForm, setExpenseForm] = useState({
+    item: "",
+    amount: "",
+    payerId: "",
+    source: "",
+    date: new Date().toISOString().split("T")[0],
+    notes: "",
+    attachment: null,
+  });
+
   const [selectedTransactionDetails, setSelectedTransactionDetails] =
     useState(null);
 
   // ==================================================
-  // جلب البيانات (Queries)
+  // Data Fetching (Queries)
   // ==================================================
-
-  // جلب العملاء
   const { data: clients = [], isLoading: isLoadingClients } = useQuery({
     queryKey: ["clients-simple"],
     queryFn: async () => {
@@ -91,8 +128,6 @@ const Dashboard = () => {
     },
     enabled: isNewTransactionModalOpen || isCollectionModalOpen,
   });
-
-  // جلب المناطق والأحياء
   const { data: riyadhZones = [], isLoading: isLoadingZones } = useQuery({
     queryKey: ["riyadhZones"],
     queryFn: async () => {
@@ -101,8 +136,6 @@ const Dashboard = () => {
     },
     enabled: isNewTransactionModalOpen,
   });
-
-  // جلب المخططات
   const { data: plans = [] } = useQuery({
     queryKey: ["riyadh-plans-simple"],
     queryFn: async () => {
@@ -111,45 +144,99 @@ const Dashboard = () => {
     },
     enabled: isNewTransactionModalOpen,
   });
-
-  // جلب الموظفين
-  const { data: employees = [] } = useQuery({
-    queryKey: ["employees-simple"],
+  const { data: persons = [] } = useQuery({
+    queryKey: ["persons-directory"],
     queryFn: async () => {
-      const res = await api.get("/employees");
-      return res.data || [];
+      const res = await api.get("/persons");
+      return res.data?.data || [];
     },
-    enabled: isNewTransactionModalOpen || isCollectionModalOpen,
+  });
+  const { data: offices = [], isLoading: isLoadingOffices } = useQuery({
+    queryKey: ["coop-offices"],
+    queryFn: async () => {
+      const res = await api.get("/coop-offices");
+      return res.data?.data || [];
+    },
+    enabled: isNewTransactionModalOpen,
+  });
+  const { data: bankAccounts = [] } = useQuery({
+    queryKey: ["bank-accounts"],
+    queryFn: async () => {
+      const res = await api.get("/bank-accounts");
+      return res.data?.data || [];
+    },
   });
 
-  // جلب المعاملات الخاصة (قائمة منسدلة للتحصيل)
   const { data: privateTransactions = [], isLoading: isLoadingTransactions } =
     useQuery({
       queryKey: ["private-transactions-simple"],
       queryFn: async () => {
-        const res = await api.get("/private-transactions"); // افترضنا أن الـ endpoint ترجع قائمة
+        const res = await api.get("/private-transactions");
         return res.data?.data || [];
       },
       enabled: isCollectionModalOpen,
     });
-
-  // 🚀 جلب إحصائيات لوحة القيادة للمعاملات الخاصة من الباك إند
   const { data: dashboardStats = {}, isLoading: isLoadingStats } = useQuery({
     queryKey: ["private-dashboard-stats"],
     queryFn: async () => {
       const res = await api.get("/private-transactions/dashboard-stats");
-      // نعتمد على هيكل البيانات الذي أنشأناه في الباك إند
       return res.data?.data || {};
     },
   });
 
-  // ==================================================
-  // 3. دوال التعامل مع المدخلات
-  // ==================================================
+  // Filtering persons based on roles for dropdowns
+  const brokers = useMemo(
+    () => persons.filter((p) => p.role === "وسيط"),
+    [persons],
+  );
+  const agents = useMemo(
+    () => persons.filter((p) => p.role === "معقب"),
+    [persons],
+  );
+  const stakeholders = useMemo(
+    () => persons.filter((p) => p.role === "صاحب مصلحة"),
+    [persons],
+  );
+  const partners = useMemo(
+    () => persons.filter((p) => p.role === "شريك"),
+    [persons],
+  );
+  const employeesList = useMemo(
+    () => persons.filter((p) => p.role === "موظف"),
+    [persons],
+  );
 
-  const handleTransactionChange = (field, value) => {
-    setTransactionFormData((prev) => ({ ...prev, [field]: value }));
+  const engBrokers = useMemo(
+    () => persons.filter((p) => p.role === "وسيط المكتب الهندسي"),
+    [persons],
+  );
+
+  const getTargetList = (type) => {
+    if (type === "وسيط") return brokers;
+    if (type === "معقب") return agents;
+    if (type === "صاحب مصلحة") return stakeholders;
+    if (type === "شريك") return partners;
+    if (type === "موظف") return employeesList;
+    return [];
   };
+
+  // ==================================================
+  // Handlers & Change Functions
+  // ==================================================
+  const handleTransactionChange = (field, value) =>
+    setTransactionFormData((prev) => ({ ...prev, [field]: value }));
+  const handleCollectionChange = (field, value) =>
+    setCollectionFormData((prev) => ({ ...prev, [field]: value }));
+  const handleSetChange = (field, value) =>
+    setSettlementForm((prev) => ({ ...prev, [field]: value }));
+  const handleDelChange = (field, value) =>
+    setDeliverForm((prev) => ({ ...prev, [field]: value }));
+  const handleVaultChange = (field, value) =>
+    setVaultInvForm((prev) => ({ ...prev, [field]: value }));
+  const handleBankInvChange = (field, value) =>
+    setBankInvForm((prev) => ({ ...prev, [field]: value }));
+  const handleExpChange = (field, value) =>
+    setExpenseForm((prev) => ({ ...prev, [field]: value }));
 
   const toggleTransactionArrayItem = (field, value) => {
     setTransactionFormData((prev) => {
@@ -179,116 +266,19 @@ const Dashboard = () => {
     }));
   };
 
-  // ==================================================
-  // 4. دالة الإرسال والحفظ (Mutation)
-  // ==================================================
-  const submitTransactionMutation = useMutation({
-    mutationFn: async (payload) => {
-      const res = await api.post("/private-transactions", payload);
-      return res.data;
-    },
-    onSuccess: () => {
-      toast.success("تم تسجيل المعاملة بنجاح!");
-      queryClient.invalidateQueries(["private-dashboard-stats"]); // 🚀 تحديث الإحصائيات
-      queryClient.invalidateQueries(["private-transactions-simple"]);
-      setIsNewTransactionModalOpen(false);
-      setTransactionFormData(initialTransactionFormState);
-    },
-    onError: (err) => {
-      toast.error(
-        err.response?.data?.message || "حدث خطأ أثناء تسجيل المعاملة",
-      );
-    },
-  });
-
-  const handleTransactionSubmit = () => {
-    if (!transactionFormData.clientId)
-      return toast.error("الرجاء اختيار المالك");
-    if (!transactionFormData.districtId)
-      return toast.error("الرجاء اختيار الحي");
-
-    submitTransactionMutation.mutate(transactionFormData);
-  };
-
-  // ==================================================
-  // دوال معالجة نموذج التحصيل
-  // ==================================================
-
-  const handleCollectionChange = (field, value) => {
-    setCollectionFormData((prev) => ({ ...prev, [field]: value }));
-  };
-
-  // تحديث تفاصيل المعاملة عند اختيار معاملة جديدة في مودال التحصيل
   useEffect(() => {
     if (collectionFormData.transactionId && privateTransactions.length > 0) {
       const selectedTx = privateTransactions.find(
-        (tx) => tx.id === collectionFormData.transactionId,
+        (tx) => (tx.dbId || tx.id) === collectionFormData.transactionId,
       );
-      if (selectedTx) {
+      if (selectedTx)
         setSelectedTransactionDetails({
-          totalFees: selectedTx.totalFees || 0,
-          paidAmount: selectedTx.paidAmount || 0,
-          remainingAmount:
-            selectedTx.remainingAmount ||
-            (selectedTx.totalFees || 0) - (selectedTx.paidAmount || 0),
+          totalFees: selectedTx.totalPrice ?? selectedTx.totalFees ?? 0,
+          paidAmount: selectedTx.collectionAmount ?? selectedTx.paidAmount ?? 0,
+          remainingAmount: selectedTx.remainingAmount ?? 0,
         });
-      }
-    } else {
-      setSelectedTransactionDetails(null);
-    }
+    } else setSelectedTransactionDetails(null);
   }, [collectionFormData.transactionId, privateTransactions]);
-
-  const submitCollectionMutation = useMutation({
-    mutationFn: async (payload) => {
-      // 1. إذا كان هناك مرفق، يجب إرساله عبر FormData
-      const formDataToSend = new FormData();
-      Object.keys(payload).forEach((key) => {
-        if (key === "attachment" && payload[key]) {
-          formDataToSend.append("file", payload[key]);
-        } else if (key !== "attachment") {
-          formDataToSend.append(key, payload[key]);
-        }
-      });
-
-      const res = await api.post(
-        "/private-transactions/payments",
-        formDataToSend,
-        {
-          headers: { "Content-Type": "multipart/form-data" },
-        },
-      );
-      return res.data;
-    },
-    onSuccess: () => {
-      toast.success("تم تسجيل التحصيل بنجاح!");
-      queryClient.invalidateQueries(["private-dashboard-stats"]); // 🚀 تحديث الإحصائيات
-      queryClient.invalidateQueries(["private-transactions-simple"]);
-      setIsCollectionModalOpen(false);
-      setCollectionFormData(initialCollectionFormState);
-      setSelectedTransactionDetails(null);
-    },
-    onError: (err) => {
-      toast.error(err.response?.data?.message || "حدث خطأ أثناء تسجيل التحصيل");
-    },
-  });
-
-  const handleCollectionSubmit = () => {
-    if (!collectionFormData.transactionId)
-      return toast.error("الرجاء اختيار رقم المعاملة");
-    if (!collectionFormData.amount || collectionFormData.amount <= 0)
-      return toast.error("الرجاء إدخال مبلغ صحيح");
-
-    // التحقق من أن المبلغ لا يتجاوز المتبقي
-    if (
-      selectedTransactionDetails &&
-      parseFloat(collectionFormData.amount) >
-        selectedTransactionDetails.remainingAmount
-    ) {
-      return toast.error("المبلغ المدخل أكبر من المتبقي للمعاملة!");
-    }
-
-    submitCollectionMutation.mutate(collectionFormData);
-  };
 
   const calculatePercentageAmount = (percentage) => {
     if (!selectedTransactionDetails?.totalFees) return;
@@ -298,6 +288,160 @@ const Dashboard = () => {
     ).toFixed(2);
     handleCollectionChange("amount", amount);
   };
+
+  // ==================================================
+  // Mutations (Save to Backend)
+  // ==================================================
+  const submitTransactionMutation = useMutation({
+    mutationFn: async (payload) =>
+      await api.post("/private-transactions", payload),
+    onSuccess: () => {
+      toast.success("تم تسجيل المعاملة بنجاح!");
+      queryClient.invalidateQueries(["private-dashboard-stats"]);
+      queryClient.invalidateQueries(["private-transactions-simple"]);
+      setIsNewTransactionModalOpen(false);
+      setTransactionFormData({
+        transactionType: "اصدار",
+        surveyType: "برافع",
+        clientId: "",
+        plotNumber: "",
+        planId: "",
+        districtId: "",
+        sectorId: "",
+        sectorName: "",
+        entities: [],
+        source: "مكتب ديتيلز",
+        attachments: [],
+        brokerId: "",
+        followUpAgentId: "",
+        stakeholderId: "",
+        receiverId: "",
+        engOfficeBrokerId: "",
+        totalFees: "",
+      });
+    },
+    onError: (err) =>
+      toast.error(
+        err.response?.data?.message || "حدث خطأ أثناء تسجيل المعاملة",
+      ),
+  });
+
+  const submitCollectionMutation = useMutation({
+    mutationFn: async (payload) => {
+      const fd = new FormData();
+      Object.keys(payload).forEach((key) => {
+        if (key === "attachment" && payload[key])
+          fd.append("file", payload[key]);
+        else if (key !== "attachment") fd.append(key, payload[key]);
+      });
+      return await api.post("/private-transactions/payments", fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+    },
+    onSuccess: () => {
+      toast.success("تم تسجيل التحصيل بنجاح!");
+      queryClient.invalidateQueries(["private-dashboard-stats"]);
+      queryClient.invalidateQueries(["private-transactions-simple"]);
+      setIsCollectionModalOpen(false);
+      setCollectionFormData({
+        transactionId: "",
+        collectedFromType: "من أشخاص النظام",
+        collectedFromId: "",
+        collectedFromOther: "",
+        amount: "",
+        periodRef: "",
+        paymentMethod: "بنكي",
+        bankAccountId: "",
+        date: new Date().toISOString().split("T")[0],
+        receiverId: "",
+        notes: "",
+        attachment: null,
+      });
+      setSelectedTransactionDetails(null);
+    },
+    onError: (err) =>
+      toast.error(err.response?.data?.message || "حدث خطأ أثناء تسجيل التحصيل"),
+  });
+
+  const settleMutation = useMutation({
+    mutationFn: async (data) => await api.post("/finance/settlements", data),
+    onSuccess: () => {
+      toast.success("تم تسجيل التسوية بنجاح!");
+      setIsSettlementModalOpen(false);
+      setSettlementForm({
+        targetType: "وسيط",
+        targetId: "",
+        amount: "",
+        source: "",
+        notes: "",
+      });
+    },
+    onError: (err) => toast.error(err.response?.data?.message || "حدث خطأ"),
+  });
+
+  const deliverMutation = useMutation({
+    mutationFn: async (data) => {
+      const fd = new FormData();
+      Object.keys(data).forEach((k) => {
+        if (k === "attachment" && data[k]) fd.append("file", data[k]);
+        else fd.append(k, data[k]);
+      });
+      return await api.post("/finance/settlements/deliver", fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+    },
+    onSuccess: () => {
+      toast.success("تم تسليم التسوية بنجاح!");
+      setIsDeliverModalOpen(false);
+      setDeliverForm({
+        targetType: "وسيط",
+        targetId: "",
+        amount: "",
+        method: "نقدي",
+        date: new Date().toISOString().split("T")[0],
+        deliveredById: "",
+        notes: "",
+        attachment: null,
+      });
+    },
+    onError: () => toast.error("حدث خطأ"),
+  });
+
+  const inventoryMutation = useMutation({
+    mutationFn: async (data) => await api.post("/finance/inventory", data),
+    onSuccess: () => {
+      toast.success("تم تسجيل الجرد بنجاح!");
+      setIsVaultInvModalOpen(false);
+      setIsBankInvModalOpen(false);
+      queryClient.invalidateQueries(["bank-accounts"]);
+    },
+    onError: () => toast.error("حدث خطأ"),
+  });
+
+  const expenseMutation = useMutation({
+    mutationFn: async (data) => {
+      const fd = new FormData();
+      Object.keys(data).forEach((k) => {
+        if (k === "attachment" && data[k]) fd.append("file", data[k]);
+        else fd.append(k, data[k]);
+      });
+      return await api.post("/office-expenses", fd);
+    },
+    onSuccess: () => {
+      toast.success("تم تسجيل المصروف بنجاح!");
+      setIsExpenseModalOpen(false);
+      setExpenseForm({
+        item: "",
+        amount: "",
+        payerId: "",
+        source: "",
+        date: new Date().toISOString().split("T")[0],
+        notes: "",
+        attachment: null,
+      });
+    },
+    onError: () => toast.error("حدث خطأ"),
+  });
 
   return (
     <>
@@ -324,211 +468,100 @@ const Dashboard = () => {
           >
             <button
               onClick={() => setIsNewTransactionModalOpen(true)}
-              className="flex items-center gap-1.5 px-3 rounded-md cursor-pointer hover:opacity-90 transition-opacity shrink-0"
+              className="flex items-center gap-1.5 px-3 rounded-md cursor-pointer hover:opacity-90 shrink-0"
               style={{
                 height: "32px",
                 fontSize: "11px",
                 fontWeight: 600,
                 backgroundColor: "var(--wms-accent-blue)",
-                color: "rgb(255, 255, 255)",
+                color: "white",
               }}
             >
               <FilePlus className="w-3.5 h-3.5" />
               <span>تسجيل معاملة جديدة</span>
             </button>
-
             <button
               onClick={() => setIsCollectionModalOpen(true)}
-              className="flex items-center gap-1.5 px-3 rounded-md cursor-pointer hover:opacity-90 transition-opacity shrink-0"
+              className="flex items-center gap-1.5 px-3 rounded-md cursor-pointer hover:opacity-90 shrink-0"
               style={{
                 height: "32px",
                 fontSize: "11px",
                 fontWeight: 600,
                 backgroundColor: "var(--wms-success)",
-                color: "rgb(255, 255, 255)",
+                color: "white",
               }}
             >
               <Banknote className="w-3.5 h-3.5" />
               <span>تسجيل تحصيل</span>
             </button>
             <button
-              className="flex items-center gap-1.5 px-3 rounded-md cursor-pointer hover:opacity-90 transition-opacity shrink-0"
+              onClick={() => setIsSettlementModalOpen(true)}
+              className="flex items-center gap-1.5 px-3 rounded-md cursor-pointer hover:opacity-90 shrink-0"
               style={{
                 height: "32px",
                 fontSize: "11px",
                 fontWeight: 600,
                 backgroundColor: "var(--wms-success)",
-                color: "rgb(255, 255, 255)",
+                color: "white",
               }}
             >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="lucide lucide-hand-coins w-3.5 h-3.5"
-              >
-                <path d="M11 15h2a2 2 0 1 0 0-4h-3c-.6 0-1.1.2-1.4.6L3 17"></path>
-                <path d="m7 21 1.6-1.4c.3-.4.8-.6 1.4-.6h4c1.1 0 2.1-.4 2.8-1.2l4.6-4.4a2 2 0 0 0-2.75-2.91l-4.2 3.9"></path>
-                <path d="m2 16 6 6"></path>
-                <circle cx="16" cy="9" r="2.9"></circle>
-                <circle cx="6" cy="5" r="3"></circle>
-              </svg>
+              <Landmark className="w-3.5 h-3.5" />
               <span>تسجيل تسوية</span>
             </button>
             <button
-              className="flex items-center gap-1.5 px-3 rounded-md cursor-pointer hover:opacity-90 transition-opacity shrink-0"
+              onClick={() => setIsDeliverModalOpen(true)}
+              className="flex items-center gap-1.5 px-3 rounded-md cursor-pointer hover:opacity-90 shrink-0"
               style={{
                 height: "32px",
                 fontSize: "11px",
                 fontWeight: 600,
                 backgroundColor: "var(--wms-success)",
-                color: "rgb(255, 255, 255)",
+                color: "white",
               }}
             >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="lucide lucide-send w-3.5 h-3.5"
-              >
-                <path d="M14.536 21.686a.5.5 0 0 0 .937-.024l6.5-19a.496.496 0 0 0-.635-.635l-19 6.5a.5.5 0 0 0-.024.937l7.93 3.18a2 2 0 0 1 1.112 1.11z"></path>
-                <path d="m21.854 2.147-10.94 10.939"></path>
-              </svg>
+              <Send className="w-3.5 h-3.5" />
               <span>تسجيل تسليم تسوية</span>
             </button>
             <button
-              className="flex items-center gap-1.5 px-3 rounded-md cursor-pointer hover:opacity-90 transition-opacity shrink-0"
+              onClick={() => setIsVaultInvModalOpen(true)}
+              className="flex items-center gap-1.5 px-3 rounded-md cursor-pointer hover:opacity-90 shrink-0"
               style={{
                 height: "32px",
                 fontSize: "11px",
                 fontWeight: 600,
                 backgroundColor: "rgb(245, 158, 11)",
-                color: "rgb(255, 255, 255)",
+                color: "white",
               }}
             >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="lucide lucide-vault w-3.5 h-3.5"
-              >
-                <rect width="18" height="18" x="3" y="3" rx="2"></rect>
-                <circle cx="7.5" cy="7.5" r=".5" fill="currentColor"></circle>
-                <path d="m7.9 7.9 2.7 2.7"></path>
-                <circle cx="16.5" cy="7.5" r=".5" fill="currentColor"></circle>
-                <path d="m13.4 10.6 2.7-2.7"></path>
-                <circle cx="7.5" cy="16.5" r=".5" fill="currentColor"></circle>
-                <path d="m7.9 16.1 2.7-2.7"></path>
-                <circle cx="16.5" cy="16.5" r=".5" fill="currentColor"></circle>
-                <path d="m13.4 13.4 2.7 2.7"></path>
-                <circle cx="12" cy="12" r="2"></circle>
-              </svg>
+              <Landmark className="w-3.5 h-3.5" />
               <span>جرد خزنة</span>
             </button>
             <button
-              className="flex items-center gap-1.5 px-3 rounded-md cursor-pointer hover:opacity-90 transition-opacity shrink-0"
+              onClick={() => setIsBankInvModalOpen(true)}
+              className="flex items-center gap-1.5 px-3 rounded-md cursor-pointer hover:opacity-90 shrink-0"
               style={{
                 height: "32px",
                 fontSize: "11px",
                 fontWeight: 600,
                 backgroundColor: "rgb(245, 158, 11)",
-                color: "rgb(255, 255, 255)",
+                color: "white",
               }}
             >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="lucide lucide-landmark w-3.5 h-3.5"
-              >
-                <line x1="3" x2="21" y1="22" y2="22"></line>
-                <line x1="6" x2="6" y1="18" y2="11"></line>
-                <line x1="10" x2="10" y1="18" y2="11"></line>
-                <line x1="14" x2="14" y1="18" y2="11"></line>
-                <line x1="18" x2="18" y1="18" y2="11"></line>
-                <polygon points="12 2 20 7 4 7"></polygon>
-              </svg>
+              <RefreshCw className="w-3.5 h-3.5" />
               <span>جرد حساب بنكي</span>
             </button>
             <button
-              className="flex items-center gap-1.5 px-3 rounded-md cursor-pointer hover:opacity-90 transition-opacity shrink-0"
-              style={{
-                height: "32px",
-                fontSize: "11px",
-                fontWeight: 600,
-                backgroundColor: "rgb(245, 158, 11)",
-                color: "rgb(255, 255, 255)",
-              }}
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="lucide lucide-refresh-cw w-3.5 h-3.5"
-              >
-                <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path>
-                <path d="M21 3v5h-5"></path>
-                <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path>
-                <path d="M8 16H3v5"></path>
-              </svg>
-              <span>تحديث رصيد البنك</span>
-            </button>
-            <button
-              className="flex items-center gap-1.5 px-3 rounded-md cursor-pointer hover:opacity-90 transition-opacity shrink-0"
+              onClick={() => setIsExpenseModalOpen(true)}
+              className="flex items-center gap-1.5 px-3 rounded-md cursor-pointer hover:opacity-90 shrink-0"
               style={{
                 height: "32px",
                 fontSize: "11px",
                 fontWeight: 600,
                 backgroundColor: "var(--wms-accent-blue)",
-                color: "rgb(255, 255, 255)",
+                color: "white",
               }}
             >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                width="24"
-                height="24"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="lucide lucide-receipt w-3.5 h-3.5"
-              >
-                <path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"></path>
-                <path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"></path>
-                <path d="M12 17.5v-11"></path>
-              </svg>
+              <Banknote className="w-3.5 h-3.5" />
               <span>تسجيل مصروف</span>
             </button>
             <span
@@ -538,357 +571,260 @@ const Dashboard = () => {
               هذا النظام مخصص للتسويات الداخلية والمتابعة المالية المبسطة فقط
             </span>
           </div>
-        </div>
 
-        <div className="p-4 space-y-4">
-          {/* الإحصائيات العلوية */}
-          <div className="flex items-center gap-5 px-4 py-2.5 bg-wms-surface-1 border border-wms-border rounded-lg">
-            {/* إجمالي المعاملات */}
-            <div className="flex items-center gap-2">
-              <div
-                className="w-7 h-7 rounded-md flex items-center justify-center shrink-0"
-                style={{ backgroundColor: "var(--wms-accent-blue)20" }}
-              >
-                <FilePlus
-                  className="w-3.5 h-3.5"
-                  style={{ color: "var(--wms-accent-blue)" }}
-                />
-              </div>
-              <div>
+          <div className="p-4 space-y-4">
+            {/* الإحصائيات العلوية */}
+            <div className="flex items-center gap-5 px-4 py-2.5 bg-wms-surface-1 border border-wms-border rounded-lg">
+              <div className="flex items-center gap-2">
                 <div
-                  className="text-wms-text-muted"
-                  style={{ fontSize: "10px" }}
+                  className="w-7 h-7 rounded-md flex items-center justify-center shrink-0"
+                  style={{ backgroundColor: "var(--wms-accent-blue)20" }}
                 >
-                  إجمالي المعاملات
+                  <FilePlus
+                    className="w-3.5 h-3.5"
+                    style={{ color: "var(--wms-accent-blue)" }}
+                  />
                 </div>
-                <div className="flex items-center gap-1.5">
-                  <span
-                    className="font-mono"
-                    style={{
-                      fontSize: "15px",
-                      fontWeight: 700,
-                      color: "var(--wms-accent-blue)",
-                    }}
-                  >
+                <div>
+                  <div className="text-wms-text-muted text-[10px]">
+                    إجمالي المعاملات
+                  </div>
+                  <div className="font-mono text-[15px] font-bold text-[var(--wms-accent-blue)]">
                     {isLoadingStats
                       ? "..."
                       : (dashboardStats.totalCount || 0).toLocaleString()}
-                  </span>
+                  </div>
                 </div>
               </div>
-            </div>
-
-            <div className="flex items-center gap-2">
               <div className="w-px h-8 bg-wms-border"></div>
-              {/* إجمالي المبالغ */}
-              <div
-                className="w-7 h-7 rounded-md flex items-center justify-center shrink-0"
-                style={{ backgroundColor: "var(--wms-success)20" }}
-              >
-                <Banknote
-                  className="w-3.5 h-3.5"
-                  style={{ color: "var(--wms-success)" }}
-                />
-              </div>
-              <div>
+              <div className="flex items-center gap-2">
                 <div
-                  className="text-wms-text-muted"
-                  style={{ fontSize: "10px" }}
+                  className="w-7 h-7 rounded-md flex items-center justify-center shrink-0"
+                  style={{ backgroundColor: "var(--wms-success)20" }}
                 >
-                  إجمالي المبالغ
+                  <Banknote
+                    className="w-3.5 h-3.5"
+                    style={{ color: "var(--wms-success)" }}
+                  />
                 </div>
-                <div className="flex items-center gap-1.5">
-                  <span
-                    className="font-mono"
-                    style={{
-                      fontSize: "15px",
-                      fontWeight: 700,
-                      color: "var(--wms-success)",
-                    }}
-                  >
+                <div>
+                  <div className="text-wms-text-muted text-[10px]">
+                    إجمالي المبالغ
+                  </div>
+                  <div className="font-mono text-[15px] font-bold text-[var(--wms-success)]">
                     {isLoadingStats
                       ? "..."
                       : (
                           dashboardStats.totalProfits || 0
                         ).toLocaleString()}{" "}
                     ر.س
-                  </span>
+                  </div>
                 </div>
               </div>
-            </div>
-
-            <div className="flex items-center gap-2">
               <div className="w-px h-8 bg-wms-border"></div>
-              {/* الوسطاء النشطون */}
-              <div
-                className="w-7 h-7 rounded-md flex items-center justify-center shrink-0"
-                style={{ backgroundColor: "var(--chart-4)20" }}
-              >
-                <User
-                  className="w-3.5 h-3.5"
-                  style={{ color: "var(--chart-4)" }}
-                />
-              </div>
-              <div>
+              <div className="flex items-center gap-2">
                 <div
-                  className="text-wms-text-muted"
-                  style={{ fontSize: "10px" }}
+                  className="w-7 h-7 rounded-md flex items-center justify-center shrink-0"
+                  style={{ backgroundColor: "var(--chart-4)20" }}
                 >
-                  الوسطاء النشطون
+                  <User
+                    className="w-3.5 h-3.5"
+                    style={{ color: "var(--chart-4)" }}
+                  />
                 </div>
-                <div className="flex items-center gap-1.5">
-                  <span
-                    className="font-mono"
-                    style={{
-                      fontSize: "15px",
-                      fontWeight: 700,
-                      color: "var(--chart-4)",
-                    }}
-                  >
+                <div>
+                  <div className="text-wms-text-muted text-[10px]">
+                    الوسطاء النشطون
+                  </div>
+                  <div className="font-mono text-[15px] font-bold text-[var(--chart-4)]">
                     {isLoadingStats
                       ? "..."
                       : (dashboardStats.activeBrokers || 0).toLocaleString()}
-                  </span>
+                  </div>
                 </div>
               </div>
-            </div>
-
-            <div className="flex items-center gap-2">
               <div className="w-px h-8 bg-wms-border"></div>
-              {/* السيولة المحصلة */}
-              <div
-                className="w-7 h-7 rounded-md flex items-center justify-center shrink-0"
-                style={{ backgroundColor: "var(--wms-warning)20" }}
-              >
-                <CreditCard
-                  className="w-3.5 h-3.5"
-                  style={{ color: "var(--wms-warning)" }}
-                />
-              </div>
-              <div>
+              <div className="flex items-center gap-2">
                 <div
-                  className="text-wms-text-muted"
-                  style={{ fontSize: "10px" }}
+                  className="w-7 h-7 rounded-md flex items-center justify-center shrink-0"
+                  style={{ backgroundColor: "var(--wms-warning)20" }}
                 >
-                  السيولة المحصلة
+                  <CreditCard
+                    className="w-3.5 h-3.5"
+                    style={{ color: "var(--wms-warning)" }}
+                  />
                 </div>
-                <div className="flex items-center gap-1.5">
-                  <span
-                    className="font-mono"
-                    style={{
-                      fontSize: "15px",
-                      fontWeight: 700,
-                      color: "var(--wms-warning)",
-                    }}
-                  >
+                <div>
+                  <div className="text-wms-text-muted text-[10px]">
+                    السيولة المحصلة
+                  </div>
+                  <div className="font-mono text-[15px] font-bold text-[var(--wms-warning)]">
                     {isLoadingStats
                       ? "..."
                       : (
                           dashboardStats.vaultBalance || 0
                         ).toLocaleString()}{" "}
                     ر.س
-                  </span>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
 
-          {/* الجداول والإحصائيات */}
-          <div className="grid grid-cols-3 gap-3">
-            <div className="col-span-2 bg-wms-surface-1 border border-wms-border rounded-lg overflow-hidden">
-              <div className="flex items-center justify-between px-3 py-2 border-b border-wms-border">
-                <span
-                  className="text-wms-text"
-                  style={{ fontSize: "13px", fontWeight: 600 }}
-                >
-                  آخر المعاملات الداخلية
-                </span>
-                <span
-                  className="text-wms-text-muted"
-                  style={{ fontSize: "11px" }}
-                >
-                  حسب الأحدث
-                </span>
-              </div>
-
-              <div className="overflow-x-auto max-h-[300px] custom-scrollbar-slim">
-                <table
-                  className="w-full text-right"
-                  style={{ fontSize: "12px" }}
-                >
-                  <thead className="sticky top-0 z-10">
-                    <tr style={{ backgroundColor: "var(--wms-surface-2)" }}>
-                      <th
-                        className="px-3 py-2 text-wms-text-sec"
-                        style={{ fontWeight: 600, fontSize: "11px" }}
-                      >
-                        رقم المعاملة
-                      </th>
-                      <th
-                        className="px-3 py-2 text-wms-text-sec"
-                        style={{ fontWeight: 600, fontSize: "11px" }}
-                      >
-                        النوع
-                      </th>
-                      <th
-                        className="px-3 py-2 text-wms-text-sec"
-                        style={{ fontWeight: 600, fontSize: "11px" }}
-                      >
-                        المالك
-                      </th>
-                      <th
-                        className="px-3 py-2 text-wms-text-sec"
-                        style={{ fontWeight: 600, fontSize: "11px" }}
-                      >
-                        القطاع
-                      </th>
-                      <th
-                        className="px-3 py-2 text-wms-text-sec"
-                        style={{ fontWeight: 600, fontSize: "11px" }}
-                      >
-                        المبلغ
-                      </th>
-                      <th
-                        className="px-3 py-2 text-wms-text-sec"
-                        style={{ fontWeight: 600, fontSize: "11px" }}
-                      >
-                        الحالة
-                      </th>
-                      <th
-                        className="px-3 py-2 text-wms-text-sec"
-                        style={{ fontWeight: 600, fontSize: "11px" }}
-                      >
-                        التاريخ
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {isLoadingStats ? (
-                      <tr>
-                        <td
-                          colSpan="7"
-                          className="text-center py-4 text-slate-400"
-                        >
-                          جاري التحميل...
-                        </td>
+            {/* الجداول والإحصائيات */}
+            <div className="grid grid-cols-3 gap-3">
+              <div className="col-span-2 bg-wms-surface-1 border border-wms-border rounded-lg overflow-hidden">
+                <div className="flex items-center justify-between px-3 py-2 border-b border-wms-border">
+                  <span className="text-wms-text text-[13px] font-bold">
+                    آخر المعاملات الداخلية
+                  </span>
+                  <span className="text-wms-text-muted text-[11px]">
+                    حسب الأحدث
+                  </span>
+                </div>
+                <div className="overflow-x-auto max-h-[300px] custom-scrollbar-slim">
+                  <table className="w-full text-right text-[12px]">
+                    <thead className="sticky top-0 z-10">
+                      <tr className="bg-[var(--wms-surface-2)]">
+                        <th className="px-3 py-2 text-wms-text-sec font-bold text-[11px]">
+                          رقم المعاملة
+                        </th>
+                        <th className="px-3 py-2 text-wms-text-sec font-bold text-[11px]">
+                          النوع
+                        </th>
+                        <th className="px-3 py-2 text-wms-text-sec font-bold text-[11px]">
+                          المالك
+                        </th>
+                        <th className="px-3 py-2 text-wms-text-sec font-bold text-[11px]">
+                          القطاع
+                        </th>
+                        <th className="px-3 py-2 text-wms-text-sec font-bold text-[11px]">
+                          المبلغ
+                        </th>
+                        <th className="px-3 py-2 text-wms-text-sec font-bold text-[11px]">
+                          الحالة
+                        </th>
+                        <th className="px-3 py-2 text-wms-text-sec font-bold text-[11px]">
+                          التاريخ
+                        </th>
                       </tr>
-                    ) : dashboardStats.recentTransactions &&
-                      dashboardStats.recentTransactions.length > 0 ? (
-                      dashboardStats.recentTransactions.map((tx) => (
-                        <tr
-                          key={tx.id}
-                          className="border-b border-wms-border/50 hover:bg-wms-surface-2/30 transition-colors"
-                        >
+                    </thead>
+                    <tbody>
+                      {isLoadingStats ? (
+                        <tr>
                           <td
-                            className="px-3 py-2 text-wms-blue font-mono font-bold"
-                            style={{ fontSize: "11px" }}
+                            colSpan="7"
+                            className="text-center py-4 text-slate-400"
                           >
-                            {tx.ref}
-                          </td>
-                          <td className="px-3 py-2 text-wms-text-sec font-bold">
-                            {tx.type}
-                          </td>
-                          <td className="px-3 py-2 text-wms-text">
-                            {tx.client}
-                          </td>
-                          <td className="px-3 py-2 text-wms-text-sec">
-                            {tx.sector || tx.district}
-                          </td>
-                          <td className="px-3 py-2 text-wms-text font-mono font-bold">
-                            {tx.value?.toLocaleString()}
-                          </td>
-                          <td className="px-3 py-2">
-                            <span
-                              className="inline-block px-2 py-0.5 rounded-md"
-                              style={{
-                                backgroundColor:
-                                  tx.status === "مكتملة"
-                                    ? "rgba(34, 197, 94, 0.15)"
-                                    : "rgba(59, 130, 246, 0.15)",
-                                color:
-                                  tx.status === "مكتملة"
-                                    ? "var(--wms-success)"
-                                    : "var(--wms-accent-blue)",
-                                fontSize: "10px",
-                                fontWeight: 600,
-                              }}
-                            >
-                              {tx.status}
-                            </span>
-                          </td>
-                          <td
-                            className="px-3 py-2 text-wms-text-muted font-mono"
-                            style={{ fontSize: "11px" }}
-                          >
-                            {tx.date}
+                            جاري التحميل...
                           </td>
                         </tr>
-                      ))
-                    ) : (
-                      <tr>
-                        <td
-                          colSpan="7"
-                          className="text-center py-4 text-slate-400"
-                        >
-                          لا توجد معاملات مسجلة حتى الآن
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
+                      ) : dashboardStats.recentTransactions &&
+                        dashboardStats.recentTransactions.length > 0 ? (
+                        dashboardStats.recentTransactions.map((tx) => (
+                          <tr
+                            key={tx.id}
+                            className="border-b border-wms-border/50 hover:bg-wms-surface-2/30 transition-colors"
+                          >
+                            <td className="px-3 py-2 text-wms-blue font-mono font-bold text-[11px]">
+                              {tx.ref}
+                            </td>
+                            <td className="px-3 py-2 text-wms-text-sec font-bold">
+                              {tx.type}
+                            </td>
+                            <td className="px-3 py-2 text-wms-text">
+                              {tx.client}
+                            </td>
+                            <td className="px-3 py-2 text-wms-text-sec">
+                              {tx.sector || tx.district}
+                            </td>
+                            <td className="px-3 py-2 text-wms-text font-mono font-bold">
+                              {tx.value?.toLocaleString()}
+                            </td>
+                            <td className="px-3 py-2">
+                              <span
+                                className="inline-block px-2 py-0.5 rounded-md text-[10px] font-bold"
+                                style={{
+                                  backgroundColor:
+                                    tx.status === "مكتملة"
+                                      ? "rgba(34, 197, 94, 0.15)"
+                                      : "rgba(59, 130, 246, 0.15)",
+                                  color:
+                                    tx.status === "مكتملة"
+                                      ? "var(--wms-success)"
+                                      : "var(--wms-accent-blue)",
+                                }}
+                              >
+                                {tx.status}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2 text-wms-text-muted font-mono text-[11px]">
+                              {tx.date}
+                            </td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td
+                            colSpan="7"
+                            className="text-center py-4 text-slate-400"
+                          >
+                            لا توجد معاملات مسجلة حتى الآن
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </div>
 
-            {/* ملخص المبالغ والمديونيات */}
-            <div className="bg-wms-surface-1 border border-wms-border rounded-lg">
-              <div className="px-3 py-2 border-b border-wms-border">
-                <span
-                  className="text-wms-text"
-                  style={{ fontSize: "13px", fontWeight: 600 }}
-                >
-                  التدفق النقدي
-                </span>
-              </div>
-              <div className="p-3 space-y-3">
-                <div className="flex justify-between items-center bg-blue-50/50 p-2 rounded border border-blue-100">
-                  <span className="text-slate-600 text-xs font-bold">
-                    إجمالي المطالبات
-                  </span>
-                  <span className="font-mono font-bold text-blue-700">
-                    {isLoadingStats
-                      ? "..."
-                      : (
-                          dashboardStats.totalProfits || 0
-                        ).toLocaleString()}{" "}
-                    ر.س
+              {/* ملخص المبالغ والمديونيات */}
+              <div className="bg-wms-surface-1 border border-wms-border rounded-lg">
+                <div className="px-3 py-2 border-b border-wms-border">
+                  <span className="text-wms-text text-[13px] font-bold">
+                    التدفق النقدي
                   </span>
                 </div>
-                <div className="flex justify-between items-center bg-emerald-50/50 p-2 rounded border border-emerald-100">
-                  <span className="text-slate-600 text-xs font-bold">
-                    المبالغ المحصلة
-                  </span>
-                  <span className="font-mono font-bold text-emerald-700">
-                    {isLoadingStats
-                      ? "..."
-                      : (
-                          dashboardStats.vaultBalance || 0
-                        ).toLocaleString()}{" "}
-                    ر.س
-                  </span>
-                </div>
-                <div className="flex justify-between items-center bg-amber-50/50 p-2 rounded border border-amber-100">
-                  <span className="text-slate-600 text-xs font-bold">
-                    المتبقي (المديونيات)
-                  </span>
-                  <span className="font-mono font-bold text-amber-700">
-                    {isLoadingStats
-                      ? "..."
-                      : (
-                          (dashboardStats.totalProfits || 0) -
-                          (dashboardStats.vaultBalance || 0)
-                        ).toLocaleString()}{" "}
-                    ر.س
-                  </span>
+                <div className="p-3 space-y-3">
+                  <div className="flex justify-between items-center bg-blue-50/50 p-2 rounded border border-blue-100">
+                    <span className="text-slate-600 text-xs font-bold">
+                      إجمالي المطالبات
+                    </span>
+                    <span className="font-mono font-bold text-blue-700">
+                      {isLoadingStats
+                        ? "..."
+                        : (
+                            dashboardStats.totalProfits || 0
+                          ).toLocaleString()}{" "}
+                      ر.س
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center bg-emerald-50/50 p-2 rounded border border-emerald-100">
+                    <span className="text-slate-600 text-xs font-bold">
+                      المبالغ المحصلة
+                    </span>
+                    <span className="font-mono font-bold text-emerald-700">
+                      {isLoadingStats
+                        ? "..."
+                        : (
+                            dashboardStats.vaultBalance || 0
+                          ).toLocaleString()}{" "}
+                      ر.س
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center bg-amber-50/50 p-2 rounded border border-amber-100">
+                    <span className="text-slate-600 text-xs font-bold">
+                      المتبقي (المديونيات)
+                    </span>
+                    <span className="font-mono font-bold text-amber-700">
+                      {isLoadingStats
+                        ? "..."
+                        : (
+                            (dashboardStats.totalProfits || 0) -
+                            (dashboardStats.vaultBalance || 0)
+                          ).toLocaleString()}{" "}
+                      ر.س
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -896,47 +832,30 @@ const Dashboard = () => {
         </div>
       </main>
 
-      {/* ================================================== */}
-      {/* 1. نافذة (Modal) تسجيل معاملة جديدة */}
-      {/* ================================================== */}
+      {/* ========================================================================= */}
+      {/* 1. Modal: تسجيل معاملة جديدة */}
+      {/* ========================================================================= */}
       {isNewTransactionModalOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4"
-          style={{ backgroundColor: "rgba(15, 23, 42, 0.6)" }}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60"
           dir="rtl"
         >
-          <div
-            className="w-full max-w-2xl max-h-[90vh] flex flex-col rounded-xl shadow-2xl overflow-hidden border border-slate-200 animate-in zoom-in-95 duration-200"
-            style={{ backgroundColor: "#ffffff" }}
-          >
-            {/* عنوان المودال */}
-            <div
-              className="flex justify-between items-center px-5 py-3 border-b border-slate-200 shrink-0"
-              style={{ backgroundColor: "#f8fafc" }}
-            >
-              <h2
-                className="font-bold flex items-center gap-2 text-slate-800"
-                style={{ fontSize: "14px" }}
-              >
+          <div className="w-full max-w-2xl max-h-[90vh] flex flex-col rounded-xl shadow-2xl overflow-hidden border border-slate-200 bg-white animate-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-center px-5 py-3 border-b border-slate-200 shrink-0 bg-slate-50">
+              <h2 className="font-bold flex items-center gap-2 text-slate-800 text-[14px]">
                 <FilePlus className="w-4 h-4 text-blue-600" />
                 تسجيل معاملة جديدة
               </h2>
               <button
                 onClick={() => setIsNewTransactionModalOpen(false)}
-                className="text-slate-400 hover:text-red-500 transition-colors cursor-pointer p-1 rounded-md hover:bg-red-50"
+                className="text-slate-400 hover:text-red-500 transition-colors p-1 rounded-md hover:bg-red-50"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
-
-            {/* محتوى المودال */}
             <div className="p-5 space-y-4 overflow-y-auto custom-scrollbar-slim">
-              {/* 1. نوع المعاملة */}
               <div>
-                <label
-                  className="block mb-1.5 text-slate-600"
-                  style={{ fontSize: "11px", fontWeight: 700 }}
-                >
+                <label className="block mb-1.5 text-slate-600 text-[11px] font-bold">
                   نوع المعاملة
                 </label>
                 <div className="flex gap-2">
@@ -947,12 +866,7 @@ const Dashboard = () => {
                         onClick={() =>
                           handleTransactionChange("transactionType", type)
                         }
-                        className={`px-3 py-1.5 rounded-md cursor-pointer transition-colors ${
-                          transactionFormData.transactionType === type
-                            ? "bg-blue-600 text-white"
-                            : "bg-slate-50 text-slate-600 hover:text-slate-800 border border-slate-200"
-                        }`}
-                        style={{ fontSize: "11px", fontWeight: 600 }}
+                        className={`px-3 py-1.5 rounded-md transition-colors text-[11px] font-bold ${transactionFormData.transactionType === type ? "bg-blue-600 text-white" : "bg-slate-50 text-slate-600 hover:text-slate-800 border border-slate-200"}`}
                       >
                         {type}
                       </button>
@@ -960,13 +874,8 @@ const Dashboard = () => {
                   )}
                 </div>
               </div>
-
-              {/* 2. نوع الرفع */}
               <div>
-                <label
-                  className="block mb-1.5 text-slate-600"
-                  style={{ fontSize: "11px", fontWeight: 700 }}
-                >
+                <label className="block mb-1.5 text-slate-600 text-[11px] font-bold">
                   نوع الرفع
                 </label>
                 <div className="flex gap-2">
@@ -976,25 +885,15 @@ const Dashboard = () => {
                       onClick={() =>
                         handleTransactionChange("surveyType", type)
                       }
-                      className={`px-3 py-1.5 rounded-md cursor-pointer transition-colors ${
-                        transactionFormData.surveyType === type
-                          ? "bg-blue-600 text-white"
-                          : "bg-slate-50 text-slate-600 hover:text-slate-800 border border-slate-200"
-                      }`}
-                      style={{ fontSize: "11px", fontWeight: 600 }}
+                      className={`px-3 py-1.5 rounded-md transition-colors text-[11px] font-bold ${transactionFormData.surveyType === type ? "bg-blue-600 text-white" : "bg-slate-50 text-slate-600 hover:text-slate-800 border border-slate-200"}`}
                     >
                       {type}
                     </button>
                   ))}
                 </div>
               </div>
-
-              {/* 3. المالك */}
               <div>
-                <label
-                  className="mb-1.5 text-slate-600 flex justify-between"
-                  style={{ fontSize: "11px", fontWeight: 700 }}
-                >
+                <label className="mb-1.5 text-slate-600 flex justify-between text-[11px] font-bold">
                   <span>
                     المالك * <span className="text-red-500">*</span>
                   </span>
@@ -1008,8 +907,7 @@ const Dashboard = () => {
                     onChange={(e) =>
                       handleTransactionChange("clientId", e.target.value)
                     }
-                    className="w-full bg-slate-50 border border-slate-200 rounded-md px-3 text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer appearance-none"
-                    style={{ height: "34px", fontSize: "12px" }}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-md px-3 text-slate-800 outline-none focus:border-blue-500 appearance-none h-[34px] text-[12px]"
                   >
                     <option value="">-- اختر المالك --</option>
                     {clients.map((client) => (
@@ -1022,14 +920,9 @@ const Dashboard = () => {
                   <ChevronDown className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
                 </div>
               </div>
-
-              {/* 4. القطعة والمخطط */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label
-                    className="block mb-1.5 text-slate-600"
-                    style={{ fontSize: "11px", fontWeight: 700 }}
-                  >
+                  <label className="block mb-1.5 text-slate-600 text-[11px] font-bold">
                     القطعة
                   </label>
                   <input
@@ -1038,16 +931,12 @@ const Dashboard = () => {
                     onChange={(e) =>
                       handleTransactionChange("plotNumber", e.target.value)
                     }
-                    className="w-full bg-slate-50 border border-slate-200 rounded-md px-3 text-slate-800 focus:outline-none focus:border-blue-500"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-md px-3 text-slate-800 outline-none focus:border-blue-500 h-[34px] text-[12px]"
                     placeholder="رقم القطعة"
-                    style={{ height: "34px", fontSize: "12px" }}
                   />
                 </div>
                 <div>
-                  <label
-                    className="block mb-1.5 text-slate-600"
-                    style={{ fontSize: "11px", fontWeight: 700 }}
-                  >
+                  <label className="block mb-1.5 text-slate-600 text-[11px] font-bold">
                     المخطط
                   </label>
                   <div className="relative">
@@ -1056,8 +945,7 @@ const Dashboard = () => {
                       onChange={(e) =>
                         handleTransactionChange("planId", e.target.value)
                       }
-                      className="w-full bg-slate-50 border border-slate-200 rounded-md px-3 text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer appearance-none"
-                      style={{ height: "34px", fontSize: "12px" }}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-md px-3 text-slate-800 outline-none focus:border-blue-500 appearance-none h-[34px] text-[12px]"
                     >
                       <option value="">-- اختر المخطط --</option>
                       {plans.map((plan) => (
@@ -1070,14 +958,9 @@ const Dashboard = () => {
                   </div>
                 </div>
               </div>
-
-              {/* === القسم الجديد: مبلغ المعاملة (المالية) === */}
               <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-100 mb-4">
                 <div className="flex items-center justify-between mb-2">
-                  <label
-                    className="text-slate-700 flex items-center gap-1.5"
-                    style={{ fontSize: "12px", fontWeight: 700 }}
-                  >
+                  <label className="text-slate-700 flex items-center gap-1.5 text-[12px] font-bold">
                     <Banknote className="w-4 h-4 text-blue-600" />
                     إجمالي أتعاب المعاملة (ر.س){" "}
                     <span className="text-red-500">*</span>
@@ -1090,19 +973,13 @@ const Dashboard = () => {
                   onChange={(e) =>
                     handleTransactionChange("totalFees", e.target.value)
                   }
-                  className="w-full bg-white border border-blue-200 rounded-lg px-4 text-blue-700 font-mono focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all text-lg font-bold"
+                  className="w-full bg-white border border-blue-200 rounded-lg px-4 text-blue-700 font-mono outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition-all text-lg font-bold h-[42px]"
                   placeholder="مثال: 4500"
-                  style={{ height: "42px" }}
                 />
               </div>
-
-              {/* 5. الحي والقطاع */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="relative">
-                  <label
-                    className="mb-1.5 text-slate-600 flex justify-between"
-                    style={{ fontSize: "11px", fontWeight: 700 }}
-                  >
+                  <label className="mb-1.5 text-slate-600 flex justify-between text-[11px] font-bold">
                     <span>الحي *</span>
                     {isLoadingZones && (
                       <Loader2 className="w-3 h-3 animate-spin text-blue-500" />
@@ -1113,8 +990,7 @@ const Dashboard = () => {
                     <select
                       value={transactionFormData.districtId}
                       onChange={(e) => handleDistrictChange(e.target.value)}
-                      className="w-full bg-slate-50 border border-slate-200 rounded-md pr-8 pl-8 text-slate-800 focus:outline-none focus:border-blue-500 cursor-pointer appearance-none"
-                      style={{ height: "34px", fontSize: "12px" }}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-md pr-8 pl-8 text-slate-800 outline-none focus:border-blue-500 appearance-none h-[34px] text-[12px]"
                     >
                       <option value="">ابحث عن الحي...</option>
                       {riyadhZones.map((sector) => (
@@ -1131,24 +1007,13 @@ const Dashboard = () => {
                   </div>
                 </div>
                 <div>
-                  <label
-                    className="block mb-1.5 text-slate-600"
-                    style={{ fontSize: "11px", fontWeight: 700 }}
-                  >
+                  <label className="block mb-1.5 text-slate-600 text-[11px] font-bold">
                     القطاع (تلقائي)
                   </label>
-                  <div
-                    className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-md px-3"
-                    style={{ height: "34px", fontSize: "12px" }}
-                  >
+                  <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-md px-3 h-[34px] text-[12px]">
                     <MapPin className="w-3 h-3 text-slate-400" />
                     <span
-                      className={
-                        transactionFormData.sectorName
-                          ? "text-slate-800"
-                          : "text-slate-400"
-                      }
-                      style={{ fontWeight: 600 }}
+                      className={`font-bold ${transactionFormData.sectorName ? "text-slate-800" : "text-slate-400"}`}
                     >
                       {transactionFormData.sectorName
                         ? `قطاع ${transactionFormData.sectorName}`
@@ -1157,13 +1022,8 @@ const Dashboard = () => {
                   </div>
                 </div>
               </div>
-
-              {/* 6. الجهة */}
               <div>
-                <label
-                  className="block mb-1.5 text-slate-600"
-                  style={{ fontSize: "11px", fontWeight: 700 }}
-                >
+                <label className="block mb-1.5 text-slate-600 text-[11px] font-bold">
                   الجهة
                 </label>
                 <div className="flex gap-4">
@@ -1180,52 +1040,40 @@ const Dashboard = () => {
                         }
                         className="accent-blue-600 w-3.5 h-3.5"
                       />
-                      <span
-                        className="text-slate-600"
-                        style={{ fontSize: "12px" }}
-                      >
+                      <span className="text-slate-600 text-[12px]">
                         {entity}
                       </span>
                     </label>
                   ))}
                 </div>
               </div>
-
-              {/* 7. مصدر المعاملة */}
               <div>
-                <label
-                  className="block mb-1.5 text-slate-600"
-                  style={{ fontSize: "11px", fontWeight: 700 }}
-                >
-                  مصدر المعاملة
+                <label className="block mb-1.5 text-slate-600 flex justify-between text-[11px] font-bold">
+                  <span>مصدر المعاملة</span>
+                  {isLoadingOffices && (
+                    <Loader2 className="w-3 h-3 animate-spin text-blue-500" />
+                  )}
                 </label>
-                <div className="flex gap-2">
-                  {["مكتب ديتيلز", "مكتب خارجي"].map((source) => (
-                    <button
-                      key={source}
-                      onClick={() => handleTransactionChange("source", source)}
-                      className={`px-3 py-1.5 rounded-md cursor-pointer transition-colors ${
-                        transactionFormData.source === source
-                          ? "bg-blue-600 text-white"
-                          : "bg-slate-50 text-slate-600 hover:text-slate-800 border border-slate-200"
-                      }`}
-                      style={{ fontSize: "11px", fontWeight: 600 }}
-                    >
-                      {source}
-                    </button>
-                  ))}
+                <div className="relative">
+                  <select
+                    value={transactionFormData.source}
+                    onChange={(e) =>
+                      handleTransactionChange("source", e.target.value)
+                    }
+                    className="w-full bg-slate-50 border border-slate-200 rounded-md px-3 text-slate-800 outline-none focus:border-blue-500 appearance-none h-[34px] text-[12px]"
+                  >
+                    <option value="مكتب ديتيلز">مكتب ديتيلز (داخلي)</option>
+                    {offices.map((office) => (
+                      <option key={office.id} value={office.name}>
+                        {office.name}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
                 </div>
               </div>
-
-              {/* 8. المرفقات */}
-              <div
-                className="p-3 rounded-lg border border-blue-100"
-                style={{ backgroundColor: "#eff6ff" }} // blue-50
-              >
-                <label
-                  className="block mb-2 text-slate-600"
-                  style={{ fontSize: "11px", fontWeight: 700 }}
-                >
+              <div className="p-3 rounded-lg border border-blue-100 bg-blue-50/50">
+                <label className="block mb-2 text-slate-600 text-[11px] font-bold">
                   المرفقات المستلمة
                 </label>
                 <div className="flex flex-wrap gap-3">
@@ -1248,187 +1096,139 @@ const Dashboard = () => {
                         }
                         className="accent-blue-600 w-3.5 h-3.5"
                       />
-                      <span
-                        className="text-slate-600"
-                        style={{ fontSize: "11px" }}
-                      >
-                        {doc}
-                      </span>
+                      <span className="text-slate-600 text-[11px]">{doc}</span>
                     </label>
                   ))}
                 </div>
               </div>
-
-              {/* 9. الوسطاء والمعقبين */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="relative">
-                  <label
-                    className="block mb-1.5 text-slate-600"
-                    style={{ fontSize: "11px", fontWeight: 700 }}
-                  >
+                  <label className="block mb-1.5 text-slate-600 text-[11px] font-bold">
                     الوسيط
                   </label>
-                  <div className="relative">
-                    <select
-                      value={transactionFormData.brokerId}
-                      onChange={(e) =>
-                        handleTransactionChange("brokerId", e.target.value)
-                      }
-                      className="w-full flex items-center justify-between bg-slate-50 border border-slate-200 rounded-md px-3 text-right cursor-pointer hover:border-blue-300 transition-colors appearance-none focus:outline-none focus:border-blue-500 text-slate-700"
-                      style={{ height: "34px", fontSize: "12px" }}
-                    >
-                      <option value="">اختر وسيط...</option>
-                      {employees.map((emp) => (
-                        <option key={emp.id} value={emp.id}>
-                          {emp.name}
-                        </option>
-                      ))}
-                    </select>
-                    <ChevronDown className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
-                  </div>
-                </div>
-
-                <div className="relative">
-                  <label
-                    className="block mb-1.5 text-slate-600"
-                    style={{ fontSize: "11px", fontWeight: 700 }}
+                  <select
+                    value={transactionFormData.brokerId}
+                    onChange={(e) =>
+                      handleTransactionChange("brokerId", e.target.value)
+                    }
+                    className="w-full bg-slate-50 border border-slate-200 rounded-md px-3 text-slate-800 outline-none focus:border-blue-500 appearance-none h-[34px] text-[12px]"
                   >
+                    <option value="">اختر وسيط...</option>
+                    {brokers.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+                </div>
+                <div className="relative">
+                  <label className="block mb-1.5 text-slate-600 text-[11px] font-bold">
                     المعقب
                   </label>
-                  <div className="relative">
-                    <select
-                      value={transactionFormData.followUpAgentId}
-                      onChange={(e) =>
-                        handleTransactionChange(
-                          "followUpAgentId",
-                          e.target.value,
-                        )
-                      }
-                      className="w-full flex items-center justify-between bg-slate-50 border border-slate-200 rounded-md px-3 text-right cursor-pointer hover:border-blue-300 transition-colors appearance-none focus:outline-none focus:border-blue-500 text-slate-700"
-                      style={{ height: "34px", fontSize: "12px" }}
-                    >
-                      <option value="">اختر معقب...</option>
-                      {employees.map((emp) => (
-                        <option key={emp.id} value={emp.id}>
-                          {emp.name}
-                        </option>
-                      ))}
-                    </select>
-                    <ChevronDown className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="relative">
-                  <label
-                    className="block mb-1.5 text-slate-600"
-                    style={{ fontSize: "11px", fontWeight: 700 }}
-                  >
-                    صاحب المصلحة
-                  </label>
-                  <div className="relative">
-                    <select
-                      value={transactionFormData.stakeholderId}
-                      onChange={(e) =>
-                        handleTransactionChange("stakeholderId", e.target.value)
-                      }
-                      className="w-full flex items-center justify-between bg-slate-50 border border-slate-200 rounded-md px-3 text-right cursor-pointer hover:border-blue-300 transition-colors appearance-none focus:outline-none focus:border-blue-500 text-slate-700"
-                      style={{ height: "34px", fontSize: "12px" }}
-                    >
-                      <option value="">اختر صاحب مصلحة...</option>
-                      {employees.map((emp) => (
-                        <option key={emp.id} value={emp.id}>
-                          {emp.name}
-                        </option>
-                      ))}
-                    </select>
-                    <ChevronDown className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
-                  </div>
-                </div>
-
-                <div className="relative">
-                  <label
-                    className="block mb-1.5 text-slate-600"
-                    style={{ fontSize: "11px", fontWeight: 700 }}
-                  >
-                    المستلم
-                  </label>
-                  <div className="relative">
-                    <select
-                      value={transactionFormData.receiverId}
-                      onChange={(e) =>
-                        handleTransactionChange("receiverId", e.target.value)
-                      }
-                      className="w-full flex items-center justify-between bg-slate-50 border border-slate-200 rounded-md px-3 text-right cursor-pointer hover:border-blue-300 transition-colors appearance-none focus:outline-none focus:border-blue-500 text-slate-700"
-                      style={{ height: "34px", fontSize: "12px" }}
-                    >
-                      <option value="">اختر مستلم...</option>
-                      {employees.map((emp) => (
-                        <option key={emp.id} value={emp.id}>
-                          {emp.name}
-                        </option>
-                      ))}
-                    </select>
-                    <ChevronDown className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
-                  </div>
-                </div>
-              </div>
-
-              <div className="relative">
-                <label
-                  className="block mb-1.5 text-slate-600"
-                  style={{ fontSize: "11px", fontWeight: 700 }}
-                >
-                  وسيط المكتب الهندسي
-                </label>
-                <div className="relative">
                   <select
-                    value={transactionFormData.engOfficeBrokerId}
+                    value={transactionFormData.followUpAgentId}
                     onChange={(e) =>
-                      handleTransactionChange(
-                        "engOfficeBrokerId",
-                        e.target.value,
-                      )
+                      handleTransactionChange("followUpAgentId", e.target.value)
                     }
-                    className="w-full flex items-center justify-between bg-slate-50 border border-slate-200 rounded-md px-3 text-right cursor-pointer hover:border-blue-300 transition-colors appearance-none focus:outline-none focus:border-blue-500 text-slate-700"
-                    style={{ height: "34px", fontSize: "12px" }}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-md px-3 text-slate-800 outline-none focus:border-blue-500 appearance-none h-[34px] text-[12px]"
                   >
-                    <option value="">اختر وسيط المكتب الهندسي...</option>
-                    {employees.map((emp) => (
-                      <option key={emp.id} value={emp.id}>
-                        {emp.name}
+                    <option value="">اختر معقب...</option>
+                    {agents.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
                       </option>
                     ))}
                   </select>
                   <ChevronDown className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
                 </div>
               </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="relative">
+                  <label className="block mb-1.5 text-slate-600 text-[11px] font-bold">
+                    صاحب المصلحة
+                  </label>
+                  <select
+                    value={transactionFormData.stakeholderId}
+                    onChange={(e) =>
+                      handleTransactionChange("stakeholderId", e.target.value)
+                    }
+                    className="w-full bg-slate-50 border border-slate-200 rounded-md px-3 text-slate-800 outline-none focus:border-blue-500 appearance-none h-[34px] text-[12px]"
+                  >
+                    <option value="">اختر صاحب مصلحة...</option>
+                    {stakeholders.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+                </div>
+                <div className="relative">
+                  <label className="block mb-1.5 text-slate-600 text-[11px] font-bold">
+                    المستلم (موظف)
+                  </label>
+                  <select
+                    value={transactionFormData.receiverId}
+                    onChange={(e) =>
+                      handleTransactionChange("receiverId", e.target.value)
+                    }
+                    className="w-full bg-slate-50 border border-slate-200 rounded-md px-3 text-slate-800 outline-none focus:border-blue-500 appearance-none h-[34px] text-[12px]"
+                  >
+                    <option value="">اختر مستلم...</option>
+                    {employeesList.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+                </div>
+              </div>
+              <div className="relative">
+                <label className="block mb-1.5 text-slate-600 text-[11px] font-bold">
+                  وسيط المكتب الهندسي
+                </label>
+                <select
+                  value={transactionFormData.engOfficeBrokerId}
+                  onChange={(e) =>
+                    handleTransactionChange("engOfficeBrokerId", e.target.value)
+                  }
+                  className="w-full bg-slate-50 border border-slate-200 rounded-md px-3 text-slate-800 outline-none focus:border-blue-500 appearance-none h-[34px] text-[12px]"
+                >
+                  <option value="">اختر وسيط المكتب الهندسي...</option>
+                  {engBrokers.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+              </div>
             </div>
-
-            {/* أزرار الإجراءات السفلية */}
-            <div
-              className="flex items-center justify-end gap-3 px-5 py-3 border-t border-slate-200 shrink-0"
-              style={{ backgroundColor: "#f8fafc" }}
-            >
+            <div className="flex items-center justify-end gap-3 px-5 py-3 border-t border-slate-200 bg-slate-50 shrink-0">
               <button
                 onClick={() => setIsNewTransactionModalOpen(false)}
-                className="px-4 py-1.5 rounded-md text-slate-600 hover:bg-slate-200 transition-colors"
-                style={{ fontSize: "12px", fontWeight: 600 }}
+                className="px-4 py-1.5 rounded-md text-slate-600 hover:bg-slate-200 transition-colors text-[12px] font-bold"
               >
                 إلغاء
               </button>
               <button
-                onClick={handleTransactionSubmit}
+                onClick={() => {
+                  if (!transactionFormData.clientId)
+                    return toast.error("الرجاء اختيار المالك");
+                  if (!transactionFormData.districtId)
+                    return toast.error("الرجاء اختيار الحي");
+                  submitTransactionMutation.mutate(transactionFormData);
+                }}
                 disabled={submitTransactionMutation.isPending}
-                className="px-4 py-1.5 rounded-md bg-blue-600 text-white hover:bg-blue-700 transition-colors flex items-center gap-2 disabled:opacity-50"
-                style={{ fontSize: "12px", fontWeight: 600 }}
+                className="px-4 py-1.5 rounded-md bg-blue-600 text-white hover:bg-blue-700 transition-colors flex items-center gap-2 disabled:opacity-50 text-[12px] font-bold"
               >
                 {submitTransactionMutation.isPending ? (
                   <Loader2 className="w-3.5 h-3.5 animate-spin" />
                 ) : (
                   <Send className="w-3.5 h-3.5" />
-                )}
+                )}{" "}
                 حفظ وإنشاء المعاملة
               </button>
             </div>
@@ -1437,48 +1237,32 @@ const Dashboard = () => {
       )}
 
       {/* ================================================== */}
-      {/* 2. نافذة (Modal) تسجيل تحصيل (Collection) */}
+      {/* 2. Modal: تسجيل تحصيل (Collection) */}
       {/* ================================================== */}
       {isCollectionModalOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4"
-          style={{ backgroundColor: "rgba(15, 23, 42, 0.6)" }}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60"
           dir="rtl"
         >
-          <div
-            className="w-full max-w-lg max-h-[90vh] flex flex-col rounded-xl shadow-2xl overflow-hidden border border-slate-200 animate-in zoom-in-95 duration-200"
-            style={{ backgroundColor: "#ffffff" }}
-          >
-            {/* عنوان المودال */}
-            <div
-              className="flex justify-between items-center px-5 py-3 border-b border-slate-200 shrink-0"
-              style={{ backgroundColor: "#f8fafc" }}
-            >
-              <h2
-                className="font-bold flex items-center gap-2 text-slate-800"
-                style={{ fontSize: "14px" }}
-              >
+          <div className="w-full max-w-lg max-h-[90vh] flex flex-col rounded-xl shadow-2xl overflow-hidden border border-slate-200 bg-white animate-in zoom-in-95 duration-200">
+            <div className="flex justify-between items-center px-5 py-3 border-b border-slate-200 shrink-0 bg-slate-50">
+              <h2 className="font-bold flex items-center gap-2 text-slate-800 text-[14px]">
                 <Banknote className="w-4 h-4 text-emerald-600" />
                 تسجيل تحصيل مالي
               </h2>
               <button
                 onClick={() => setIsCollectionModalOpen(false)}
-                className="text-slate-400 hover:text-red-500 transition-colors cursor-pointer p-1 rounded-md hover:bg-red-50"
+                className="text-slate-400 hover:text-red-500 transition-colors p-1 rounded-md hover:bg-red-50"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
-
-            {/* محتوى المودال */}
             <div className="p-5 space-y-4 overflow-y-auto custom-scrollbar-slim">
-              {/* 1. رقم المعاملة */}
               <div>
-                <label
-                  className="mb-1.5 text-slate-600 flex justify-between"
-                  style={{ fontSize: "11px", fontWeight: 700 }}
-                >
+                <label className="mb-1.5 text-slate-600 flex justify-between text-[11px] font-bold">
                   <span>
-                    رقم المعاملة * <span className="text-red-500">*</span>
+                    رقم المعاملة واسم العميل *{" "}
+                    <span className="text-red-500">*</span>
                   </span>
                   {isLoadingTransactions && (
                     <Loader2 className="w-3 h-3 animate-spin text-emerald-500" />
@@ -1490,74 +1274,40 @@ const Dashboard = () => {
                     onChange={(e) =>
                       handleCollectionChange("transactionId", e.target.value)
                     }
-                    className="w-full bg-slate-50 border border-slate-200 rounded-md px-3 text-slate-800 focus:outline-none focus:border-emerald-500 cursor-pointer appearance-none"
-                    style={{ height: "34px", fontSize: "12px" }}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-md px-3 text-slate-800 outline-none focus:border-emerald-500 appearance-none h-[34px] text-[12px]"
                   >
                     <option value="">-- اختر المعاملة --</option>
                     {privateTransactions.map((tx) => (
-                      <option key={tx.id} value={tx.id}>
-                        {tx.ref} - {tx.client} ({tx.type})
+                      <option key={tx.dbId || tx.id} value={tx.dbId || tx.id}>
+                        {tx.id} - {tx.owner || tx.client} ({tx.type})
                       </option>
                     ))}
                   </select>
                   <ChevronDown className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
                 </div>
               </div>
-
-              {/* 2. ملخص المبالغ (يظهر فقط إذا تم اختيار معاملة) */}
               {selectedTransactionDetails && (
                 <div className="grid grid-cols-2 gap-3 animate-in fade-in">
-                  <div
-                    className="p-2.5 rounded-md border border-blue-200"
-                    style={{ backgroundColor: "#eff6ff" }}
-                  >
-                    <div
-                      className="text-blue-600 font-bold"
-                      style={{ fontSize: "10px" }}
-                    >
+                  <div className="p-2.5 rounded-md border border-blue-200 bg-blue-50/50">
+                    <div className="text-blue-600 font-bold text-[10px]">
                       إجمالي أتعاب المعاملة
                     </div>
-                    <div
-                      className="font-mono mt-0.5"
-                      style={{
-                        fontSize: "15px",
-                        fontWeight: 700,
-                        color: "#1d4ed8",
-                      }}
-                    >
+                    <div className="font-mono mt-0.5 text-[15px] font-bold text-blue-700">
                       {selectedTransactionDetails.totalFees.toLocaleString()}
                     </div>
                   </div>
-                  <div
-                    className="p-2.5 rounded-md border border-amber-200"
-                    style={{ backgroundColor: "#fffbeb" }}
-                  >
-                    <div
-                      className="text-amber-600 font-bold"
-                      style={{ fontSize: "10px" }}
-                    >
+                  <div className="p-2.5 rounded-md border border-amber-200 bg-amber-50/50">
+                    <div className="text-amber-600 font-bold text-[10px]">
                       المبلغ المتبقي للتحصيل
                     </div>
-                    <div
-                      className="font-mono mt-0.5"
-                      style={{
-                        fontSize: "15px",
-                        fontWeight: 700,
-                        color: "#b45309",
-                      }}
-                    >
+                    <div className="font-mono mt-0.5 text-[15px] font-bold text-amber-700">
                       {selectedTransactionDetails.remainingAmount.toLocaleString()}
                     </div>
                   </div>
                 </div>
               )}
-
-              {/* 3. ممن تم التحصيل */}
               <div>
-                <label
-                  className="block mb-1.5 text-slate-600"
-                  style={{ fontSize: "11px", fontWeight: 700 }}
-                >
+                <label className="block mb-1.5 text-slate-600 text-[11px] font-bold">
                   ممن تم التحصيل
                 </label>
                 <div className="flex gap-2 mb-2">
@@ -1568,12 +1318,7 @@ const Dashboard = () => {
                         "من أشخاص النظام",
                       )
                     }
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md cursor-pointer transition-colors ${
-                      collectionFormData.collectedFromType === "من أشخاص النظام"
-                        ? "bg-emerald-600 text-white"
-                        : "bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200"
-                    }`}
-                    style={{ fontSize: "11px", fontWeight: 600 }}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md transition-colors text-[11px] font-bold ${collectionFormData.collectedFromType === "من أشخاص النظام" ? "bg-emerald-600 text-white" : "bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200"}`}
                   >
                     من أشخاص النظام
                   </button>
@@ -1581,17 +1326,11 @@ const Dashboard = () => {
                     onClick={() =>
                       handleCollectionChange("collectedFromType", "شخص آخر")
                     }
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md cursor-pointer transition-colors ${
-                      collectionFormData.collectedFromType === "شخص آخر"
-                        ? "bg-emerald-600 text-white"
-                        : "bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200"
-                    }`}
-                    style={{ fontSize: "11px", fontWeight: 600 }}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md transition-colors text-[11px] font-bold ${collectionFormData.collectedFromType === "شخص آخر" ? "bg-emerald-600 text-white" : "bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200"}`}
                   >
                     شخص آخر (خارجي)
                   </button>
                 </div>
-
                 {collectionFormData.collectedFromType === "من أشخاص النظام" ? (
                   <div className="relative">
                     <select
@@ -1602,10 +1341,9 @@ const Dashboard = () => {
                           e.target.value,
                         )
                       }
-                      className="w-full bg-slate-50 border border-slate-200 rounded-md px-3 text-slate-800 focus:outline-none focus:border-emerald-500 cursor-pointer appearance-none"
-                      style={{ height: "34px", fontSize: "12px" }}
+                      className="w-full bg-slate-50 border border-slate-200 rounded-md px-3 text-slate-800 outline-none focus:border-emerald-500 appearance-none h-[34px] text-[12px]"
                     >
-                      <option value="">-- ابحث عن العميل أو الموظف --</option>
+                      <option value="">-- ابحث عن العميل أو الشخص --</option>
                       <optgroup label="العملاء (الملاك)">
                         {clients.map((c) => (
                           <option key={`c-${c.id}`} value={c.id}>
@@ -1613,10 +1351,10 @@ const Dashboard = () => {
                           </option>
                         ))}
                       </optgroup>
-                      <optgroup label="الموظفين والوسطاء">
-                        {employees.map((e) => (
-                          <option key={`e-${e.id}`} value={e.id}>
-                            {e.name}
+                      <optgroup label="سجل الأشخاص (موظفين، وسطاء...)">
+                        {persons.map((p) => (
+                          <option key={`p-${p.id}`} value={p.id}>
+                            {p.name} ({p.role})
                           </option>
                         ))}
                       </optgroup>
@@ -1633,19 +1371,13 @@ const Dashboard = () => {
                         e.target.value,
                       )
                     }
-                    className="w-full bg-slate-50 border border-slate-200 rounded-md px-3 text-slate-800 focus:outline-none focus:border-emerald-500"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-md px-3 text-slate-800 outline-none focus:border-emerald-500 h-[34px] text-[12px]"
                     placeholder="اكتب اسم الشخص المحول للمبلغ..."
-                    style={{ height: "34px", fontSize: "12px" }}
                   />
                 )}
               </div>
-
-              {/* 4. المبلغ المحصل */}
               <div>
-                <label
-                  className="block mb-1.5 text-slate-600"
-                  style={{ fontSize: "11px", fontWeight: 700 }}
-                >
+                <label className="block mb-1.5 text-slate-600 text-[11px] font-bold">
                   المبلغ المحصّل *
                 </label>
                 <input
@@ -1654,32 +1386,23 @@ const Dashboard = () => {
                   onChange={(e) =>
                     handleCollectionChange("amount", e.target.value)
                   }
-                  className="w-full bg-slate-50 border border-slate-200 rounded-md px-3 text-slate-800 font-mono focus:outline-none focus:border-emerald-500 text-lg font-bold"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-md px-3 text-slate-800 font-mono outline-none focus:border-emerald-500 text-lg font-bold h-[40px]"
                   placeholder="0"
-                  style={{ height: "40px" }}
                 />
-
-                {/* أزرار النسب المئوية */}
                 <div className="flex gap-2 mt-2">
                   {[25, 50, 75, 100].map((percent) => (
                     <button
                       key={percent}
                       onClick={() => calculatePercentageAmount(percent)}
                       disabled={!selectedTransactionDetails?.totalFees}
-                      className="flex-1 py-1.5 rounded-md bg-slate-100 text-slate-600 hover:bg-emerald-500 hover:text-white cursor-pointer transition-colors disabled:opacity-50"
-                      style={{ fontSize: "11px", fontWeight: 600 }}
+                      className="flex-1 py-1.5 rounded-md bg-slate-100 text-slate-600 hover:bg-emerald-500 hover:text-white transition-colors disabled:opacity-50 text-[11px] font-bold"
                     >
                       {percent}%
                     </button>
                   ))}
                 </div>
-
-                {/* حساب المتبقي بعد هذا التحصيل ديناميكياً */}
                 {selectedTransactionDetails && collectionFormData.amount && (
-                  <div
-                    className="mt-2 text-slate-500"
-                    style={{ fontSize: "11px" }}
-                  >
+                  <div className="mt-2 text-slate-500 text-[11px]">
                     المتبقي بعد هذا التحصيل:{" "}
                     <span
                       className="font-mono font-bold"
@@ -1701,13 +1424,8 @@ const Dashboard = () => {
                   </div>
                 )}
               </div>
-
-              {/* 5. فترة التحصيل / طريقة التحصيل / المستلم */}
               <div>
-                <label
-                  className="block mb-1.5 text-slate-600"
-                  style={{ fontSize: "11px", fontWeight: 700 }}
-                >
+                <label className="block mb-1.5 text-slate-600 text-[11px] font-bold">
                   فترة التحصيل / مرجعية التحصيل
                 </label>
                 <input
@@ -1716,17 +1434,12 @@ const Dashboard = () => {
                   onChange={(e) =>
                     handleCollectionChange("periodRef", e.target.value)
                   }
-                  className="w-full bg-slate-50 border border-slate-200 rounded-md px-3 text-slate-800 focus:outline-none focus:border-emerald-500"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-md px-3 text-slate-800 outline-none focus:border-emerald-500 h-[34px] text-[12px]"
                   placeholder="مثال: الدفعة الثانية — فبراير 2026"
-                  style={{ height: "34px", fontSize: "12px" }}
                 />
               </div>
-
               <div>
-                <label
-                  className="block mb-1.5 text-slate-600"
-                  style={{ fontSize: "11px", fontWeight: 700 }}
-                >
+                <label className="block mb-1.5 text-slate-600 text-[11px] font-bold">
                   طريقة التحصيل
                 </label>
                 <div className="flex gap-2">
@@ -1734,12 +1447,7 @@ const Dashboard = () => {
                     onClick={() =>
                       handleCollectionChange("paymentMethod", "بنكي")
                     }
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md cursor-pointer transition-colors ${
-                      collectionFormData.paymentMethod === "بنكي"
-                        ? "bg-emerald-600 text-white"
-                        : "bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200"
-                    }`}
-                    style={{ fontSize: "11px", fontWeight: 600 }}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md transition-colors text-[11px] font-bold ${collectionFormData.paymentMethod === "بنكي" ? "bg-emerald-600 text-white" : "bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200"}`}
                   >
                     <CreditCard className="w-3.5 h-3.5" />
                     <span>بنكي</span>
@@ -1748,12 +1456,7 @@ const Dashboard = () => {
                     onClick={() =>
                       handleCollectionChange("paymentMethod", "نقدي")
                     }
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md cursor-pointer transition-colors ${
-                      collectionFormData.paymentMethod === "نقدي"
-                        ? "bg-emerald-600 text-white"
-                        : "bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200"
-                    }`}
-                    style={{ fontSize: "11px", fontWeight: 600 }}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md transition-colors text-[11px] font-bold ${collectionFormData.paymentMethod === "نقدي" ? "bg-emerald-600 text-white" : "bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200"}`}
                   >
                     <Banknote className="w-3.5 h-3.5" />
                     <span>نقدي</span>
@@ -1762,33 +1465,17 @@ const Dashboard = () => {
                     onClick={() =>
                       handleCollectionChange("paymentMethod", "غير مسلم للشركة")
                     }
-                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md cursor-pointer transition-colors ${
-                      collectionFormData.paymentMethod === "غير مسلم للشركة"
-                        ? "bg-amber-500 text-white"
-                        : "bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200"
-                    }`}
-                    style={{ fontSize: "11px", fontWeight: 600 }}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md transition-colors text-[11px] font-bold ${collectionFormData.paymentMethod === "غير مسلم للشركة" ? "bg-amber-500 text-white" : "bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200"}`}
                   >
                     <User className="w-3.5 h-3.5" />
                     <span>غير مسلم للشركة</span>
                   </button>
                 </div>
               </div>
-
-              {/* إذا كان بنكي، نطلب الحساب */}
               {collectionFormData.paymentMethod === "بنكي" && (
-                <div
-                  className="rounded-lg p-3 space-y-3"
-                  style={{
-                    backgroundColor: "rgba(16, 185, 129, 0.05)", // emerald-50
-                    border: "1px solid rgba(16, 185, 129, 0.2)",
-                  }}
-                >
+                <div className="rounded-lg p-3 space-y-3 bg-emerald-50/50 border border-emerald-200/50">
                   <div className="relative">
-                    <label
-                      className="block mb-1.5 text-slate-600"
-                      style={{ fontSize: "11px", fontWeight: 700 }}
-                    >
+                    <label className="block mb-1.5 text-slate-600 text-[11px] font-bold">
                       حساب البنك
                     </label>
                     <select
@@ -1796,33 +1483,28 @@ const Dashboard = () => {
                       onChange={(e) =>
                         handleCollectionChange("bankAccountId", e.target.value)
                       }
-                      className="w-full flex items-center justify-between bg-white border border-emerald-200 rounded-md px-3 text-right cursor-pointer hover:border-emerald-300 transition-colors appearance-none focus:outline-none focus:border-emerald-500 text-slate-700"
-                      style={{ height: "34px", fontSize: "12px" }}
+                      className="w-full bg-white border border-emerald-200 rounded-md px-3 text-slate-800 outline-none focus:border-emerald-500 appearance-none h-[34px] text-[12px]"
                     >
                       <option value="">-- اختر الحساب البنكي --</option>
-                      <option value="bank_1">البنك الأهلي - حساب الشركة</option>
-                      <option value="bank_2">مصرف الراجحي - حساب الشركة</option>
+                      {bankAccounts.map((acc) => (
+                        <option key={acc.id} value={acc.id}>
+                          {acc.bankName} - {acc.accountNumber}
+                        </option>
+                      ))}
                     </select>
                     <ChevronDown className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
                   </div>
                   <div className="flex items-start gap-1.5 mt-2">
                     <Info className="w-3 h-3 mt-0.5 shrink-0 text-emerald-600" />
-                    <span
-                      className="text-emerald-700"
-                      style={{ fontSize: "10px" }}
-                    >
+                    <span className="text-emerald-700 text-[10px]">
                       هذا المبلغ سيدخل ضمن رصيد البنك الرسمي للشركة.
                     </span>
                   </div>
                 </div>
               )}
-
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label
-                    className="block mb-1.5 text-slate-600"
-                    style={{ fontSize: "11px", fontWeight: 700 }}
-                  >
+                  <label className="block mb-1.5 text-slate-600 text-[11px] font-bold">
                     تاريخ التحصيل
                   </label>
                   <input
@@ -1831,15 +1513,11 @@ const Dashboard = () => {
                     onChange={(e) =>
                       handleCollectionChange("date", e.target.value)
                     }
-                    className="w-full bg-slate-50 border border-slate-200 rounded-md px-3 text-slate-800 focus:outline-none focus:border-emerald-500"
-                    style={{ height: "34px", fontSize: "12px" }}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-md px-3 text-slate-800 outline-none focus:border-emerald-500 h-[34px] text-[12px]"
                   />
                 </div>
                 <div className="relative">
-                  <label
-                    className="block mb-1.5 text-slate-600"
-                    style={{ fontSize: "11px", fontWeight: 700 }}
-                  >
+                  <label className="block mb-1.5 text-slate-600 text-[11px] font-bold">
                     المستلم (الموظف)
                   </label>
                   <select
@@ -1847,26 +1525,20 @@ const Dashboard = () => {
                     onChange={(e) =>
                       handleCollectionChange("receiverId", e.target.value)
                     }
-                    className="w-full flex items-center justify-between bg-slate-50 border border-slate-200 rounded-md px-3 text-right cursor-pointer hover:border-emerald-300 transition-colors appearance-none focus:outline-none focus:border-emerald-500 text-slate-700"
-                    style={{ height: "34px", fontSize: "12px" }}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-md px-3 text-slate-800 outline-none focus:border-emerald-500 appearance-none h-[34px] text-[12px]"
                   >
                     <option value="">-- من استلم المبلغ؟ --</option>
-                    {employees.map((e) => (
-                      <option key={e.id} value={e.id}>
-                        {e.name}
+                    {employeesList.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
                       </option>
                     ))}
                   </select>
                   <ChevronDown className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
                 </div>
               </div>
-
-              {/* 6. المرفقات والملاحظات */}
               <div>
-                <label
-                  className="block mb-1.5 text-slate-600"
-                  style={{ fontSize: "11px", fontWeight: 700 }}
-                >
+                <label className="block mb-1.5 text-slate-600 text-[11px] font-bold">
                   ملاحظات إضافية
                 </label>
                 <textarea
@@ -1874,23 +1546,15 @@ const Dashboard = () => {
                   onChange={(e) =>
                     handleCollectionChange("notes", e.target.value)
                   }
-                  className="w-full bg-slate-50 border border-slate-200 rounded-md px-3 py-2 text-slate-800 resize-none focus:outline-none focus:border-emerald-500"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-md px-3 py-2 text-slate-800 resize-none outline-none focus:border-emerald-500 h-[60px] text-[12px]"
                   placeholder="ملاحظات حول هذه الدفعة..."
-                  style={{ height: "60px", fontSize: "12px" }}
                 ></textarea>
               </div>
-
               <div>
-                <label
-                  className="block mb-1.5 text-slate-600"
-                  style={{ fontSize: "11px", fontWeight: 700 }}
-                >
+                <label className="block mb-1.5 text-slate-600 text-[11px] font-bold">
                   إرفاق إيصال الحوالة / السند
                 </label>
-                <label
-                  className="flex flex-col items-center justify-center gap-2 p-3 border-2 border-dashed border-slate-300 rounded-lg text-slate-400 cursor-pointer hover:border-emerald-500 hover:bg-emerald-50 transition-colors"
-                  style={{ fontSize: "11px" }}
-                >
+                <label className="flex flex-col items-center justify-center gap-2 p-3 border-2 border-dashed border-slate-300 rounded-lg text-slate-400 cursor-pointer hover:border-emerald-500 hover:bg-emerald-50 transition-colors text-[11px]">
                   <Upload className="w-5 h-5" />
                   <span>
                     {collectionFormData.attachment
@@ -1907,43 +1571,754 @@ const Dashboard = () => {
                   />
                 </label>
               </div>
-
-              <div className="flex items-start gap-1.5 bg-slate-50 p-2 rounded-md">
-                <Info className="w-3 h-3 mt-0.5 shrink-0 text-slate-400" />
-                <span
-                  className="text-slate-500"
-                  style={{ fontSize: "9px", opacity: 0.8 }}
-                >
-                  هذا النظام مخصص للتسويات والمتابعة الداخلية المبسطة، والأرقام
-                  المعروضة تقديرية تشغيلية وليست معالجة محاسبية أو ضريبية رسمية.
-                </span>
-              </div>
             </div>
-
-            {/* أزرار الإجراءات السفلية */}
-            <div
-              className="flex items-center justify-end gap-3 px-5 py-3 border-t border-slate-200 shrink-0"
-              style={{ backgroundColor: "#f8fafc" }}
-            >
+            <div className="flex items-center justify-end gap-3 px-5 py-3 border-t border-slate-200 bg-slate-50 shrink-0">
               <button
                 onClick={() => setIsCollectionModalOpen(false)}
-                className="px-4 py-1.5 rounded-md text-slate-600 hover:bg-slate-200 transition-colors"
-                style={{ fontSize: "12px", fontWeight: 600 }}
+                className="px-4 py-1.5 rounded-md text-slate-600 hover:bg-slate-200 transition-colors text-[12px] font-bold"
               >
                 إلغاء
               </button>
               <button
-                onClick={handleCollectionSubmit}
+                onClick={() => {
+                  if (
+                    !collectionFormData.transactionId ||
+                    !collectionFormData.amount
+                  )
+                    return toast.error("أكمل الحقول");
+                  submitCollectionMutation.mutate(collectionFormData);
+                }}
                 disabled={submitCollectionMutation.isPending}
-                className="px-6 py-1.5 rounded-md bg-emerald-600 text-white hover:bg-emerald-700 transition-colors flex items-center gap-2 disabled:opacity-50 shadow-sm"
-                style={{ fontSize: "12px", fontWeight: 600 }}
+                className="px-6 py-1.5 rounded-md bg-emerald-600 text-white hover:bg-emerald-700 transition-colors flex items-center gap-2 disabled:opacity-50 shadow-sm text-[12px] font-bold"
               >
                 {submitCollectionMutation.isPending ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
                 ) : (
                   <Banknote className="w-4 h-4" />
-                )}
+                )}{" "}
                 تسجيل التحصيل
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ================================================== */}
+      {/* 3. Modal: تسجيل تسوية (Record Settlement) */}
+      {/* ================================================== */}
+      {isSettlementModalOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4 animate-in fade-in"
+          dir="rtl"
+        >
+          <div className="bg-white border border-[var(--wms-border)] rounded-xl shadow-2xl w-full max-w-[460px] overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--wms-border)] bg-gray-50">
+              <span className="text-[var(--wms-text)] text-[15px] font-bold">
+                تسجيل تسوية (مستحق)
+              </span>
+              <button
+                onClick={() => setIsSettlementModalOpen(false)}
+                className="text-[var(--wms-text-muted)] hover:text-red-500"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block mb-1.5 text-[var(--wms-text-sec)] text-[11px] font-bold">
+                  نوع التسوية
+                </label>
+                <div className="flex gap-2">
+                  {["شريك", "وسيط", "معقب", "موظف"].map((type) => (
+                    <button
+                      key={type}
+                      onClick={() => {
+                        handleSetChange("targetType", type);
+                        handleSetChange("targetId", "");
+                      }}
+                      className={`px-3 py-1.5 rounded-md transition-colors text-[11px] font-bold ${settlementForm.targetType === type ? "bg-[var(--wms-accent-blue)] text-white" : "bg-[var(--wms-surface-2)] text-[var(--wms-text-sec)] border border-[var(--wms-border)]"}`}
+                    >
+                      {type}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="relative">
+                <label className="block mb-1.5 text-[var(--wms-text-sec)] text-[11px] font-bold">
+                  الاسم ({settlementForm.targetType}) *
+                </label>
+                <select
+                  value={settlementForm.targetId}
+                  onChange={(e) => handleSetChange("targetId", e.target.value)}
+                  className="w-full bg-[var(--wms-surface-2)] border border-[var(--wms-border)] rounded-md px-2 text-[var(--wms-text)] h-[34px] text-[12px] appearance-none outline-none focus:border-blue-500"
+                >
+                  <option value="">اختر الاسم...</option>
+                  {getTargetList(settlementForm.targetType).map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="absolute left-2 top-[26px] w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+              </div>
+              <div>
+                <label className="block mb-1.5 text-[var(--wms-text-sec)] text-[11px] font-bold">
+                  المبلغ *
+                </label>
+                <input
+                  type="number"
+                  value={settlementForm.amount}
+                  onChange={(e) => handleSetChange("amount", e.target.value)}
+                  className="w-full bg-[var(--wms-surface-2)] border border-[var(--wms-border)] rounded-md px-3 text-[var(--wms-text)] font-mono h-[34px] text-[13px] outline-none focus:border-blue-500"
+                  placeholder="0"
+                />
+              </div>
+              <div>
+                <label className="block mb-1.5 text-[var(--wms-text-sec)] text-[11px] font-bold">
+                  المصدر (اختياري)
+                </label>
+                <input
+                  type="text"
+                  value={settlementForm.source}
+                  onChange={(e) => handleSetChange("source", e.target.value)}
+                  className="w-full bg-[var(--wms-surface-2)] border border-[var(--wms-border)] rounded-md px-3 text-[var(--wms-text)] h-[34px] text-[12px] outline-none focus:border-blue-500"
+                  placeholder="مصدر التسوية (رقم معاملة، مشروع...)"
+                />
+              </div>
+              <div>
+                <label className="block mb-1.5 text-[var(--wms-text-sec)] text-[11px] font-bold">
+                  ملاحظات
+                </label>
+                <textarea
+                  value={settlementForm.notes}
+                  onChange={(e) => handleSetChange("notes", e.target.value)}
+                  className="w-full bg-[var(--wms-surface-2)] border border-[var(--wms-border)] rounded-md px-3 py-2 text-[var(--wms-text)] resize-none h-[60px] text-[12px] outline-none focus:border-blue-500"
+                  placeholder="ملاحظات إضافية..."
+                ></textarea>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-[var(--wms-border)] bg-gray-50">
+              <button
+                onClick={() => setIsSettlementModalOpen(false)}
+                className="px-4 py-1.5 rounded-md bg-white border border-gray-300 text-gray-600 text-[12px] font-bold"
+              >
+                إلغاء
+              </button>
+              <button
+                onClick={() => {
+                  if (!settlementForm.targetId || !settlementForm.amount)
+                    return toast.error("أكمل الحقول المطلوبة");
+                  settleMutation.mutate(settlementForm);
+                }}
+                disabled={settleMutation.isPending}
+                className="px-4 py-1.5 rounded-md bg-[var(--wms-accent-blue)] text-white hover:opacity-90 text-[12px] font-bold flex gap-2 disabled:opacity-50"
+              >
+                {settleMutation.isPending && (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                )}{" "}
+                تسجيل التسوية
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ================================================== */}
+      {/* 4. Modal: تسليم تسوية (Deliver Settlement) */}
+      {/* ================================================== */}
+      {isDeliverModalOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4 animate-in fade-in"
+          dir="rtl"
+        >
+          <div className="bg-white border border-[var(--wms-border)] rounded-xl shadow-2xl w-full max-w-[500px] overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--wms-border)] bg-gray-50 shrink-0">
+              <span className="text-[var(--wms-text)] text-[15px] font-bold">
+                تسليم تسوية (دفع فعلي)
+              </span>
+              <button
+                onClick={() => setIsDeliverModalOpen(false)}
+                className="text-[var(--wms-text-muted)] hover:text-red-500"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-5 space-y-4 overflow-y-auto custom-scrollbar-slim">
+              <div>
+                <label className="block mb-1.5 text-[var(--wms-text-sec)] text-[11px] font-bold">
+                  نوع الطرف *
+                </label>
+                <div className="flex gap-1.5 flex-wrap">
+                  {["وسيط", "معقب", "صاحب مصلحة", "شريك", "موظف"].map(
+                    (type) => (
+                      <button
+                        key={type}
+                        onClick={() => {
+                          handleDelChange("targetType", type);
+                          handleDelChange("targetId", "");
+                        }}
+                        className={`px-3 py-1.5 rounded-md transition-colors text-[11px] font-bold ${deliverForm.targetType === type ? "bg-[var(--wms-accent-blue)] text-white" : "bg-[var(--wms-surface-2)] text-[var(--wms-text-sec)] border border-[var(--wms-border)]"}`}
+                      >
+                        {type}
+                      </button>
+                    ),
+                  )}
+                </div>
+              </div>
+              <div className="relative">
+                <label className="block mb-1.5 text-[var(--wms-text-sec)] text-[11px] font-bold">
+                  المستلم *
+                </label>
+                <select
+                  value={deliverForm.targetId}
+                  onChange={(e) => handleDelChange("targetId", e.target.value)}
+                  className="w-full bg-[var(--wms-surface-2)] border border-[var(--wms-border)] rounded-md px-2 text-[var(--wms-text)] h-[34px] text-[12px] appearance-none outline-none focus:border-blue-500"
+                >
+                  <option value="">اختر الاسم...</option>
+                  {getTargetList(deliverForm.targetType).map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="absolute left-2 top-[26px] w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+              </div>
+              <div>
+                <label className="block mb-1.5 text-[var(--wms-text-sec)] text-[11px] font-bold">
+                  المبلغ المسلم *
+                </label>
+                <input
+                  type="number"
+                  value={deliverForm.amount}
+                  onChange={(e) => handleDelChange("amount", e.target.value)}
+                  className="w-full bg-[var(--wms-surface-2)] border border-[var(--wms-border)] rounded-md px-3 text-[var(--wms-text)] font-mono h-[34px] text-[13px] outline-none focus:border-blue-500"
+                  placeholder="0"
+                />
+              </div>
+              <div>
+                <label className="block mb-1.5 text-[var(--wms-text-sec)] text-[11px] font-bold">
+                  طريقة التسليم
+                </label>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleDelChange("method", "نقدي")}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md transition-colors text-[11px] font-bold ${deliverForm.method === "نقدي" ? "bg-[var(--wms-accent-blue)] text-white" : "bg-[var(--wms-surface-2)] text-[var(--wms-text-sec)] border border-[var(--wms-border)]"}`}
+                  >
+                    <Banknote className="w-3.5 h-3.5" />
+                    <span>نقدي</span>
+                  </button>
+                  <button
+                    onClick={() => handleDelChange("method", "تحويل بنكي")}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md transition-colors text-[11px] font-bold ${deliverForm.method === "تحويل بنكي" ? "bg-[var(--wms-accent-blue)] text-white" : "bg-[var(--wms-surface-2)] text-[var(--wms-text-sec)] border border-[var(--wms-border)]"}`}
+                  >
+                    <CreditCard className="w-3.5 h-3.5" />
+                    <span>تحويل بنكي</span>
+                  </button>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block mb-1.5 text-[var(--wms-text-sec)] text-[11px] font-bold">
+                    تاريخ التسليم
+                  </label>
+                  <input
+                    type="date"
+                    value={deliverForm.date}
+                    onChange={(e) => handleDelChange("date", e.target.value)}
+                    className="w-full bg-[var(--wms-surface-2)] border border-[var(--wms-border)] rounded-md px-3 text-[var(--wms-text)] outline-none focus:border-blue-500 h-[34px] text-[12px]"
+                  />
+                </div>
+                <div className="relative">
+                  <label className="block mb-1.5 text-[var(--wms-text-sec)] text-[11px] font-bold">
+                    المسلِّم (الموظف)
+                  </label>
+                  <select
+                    value={deliverForm.deliveredById}
+                    onChange={(e) =>
+                      handleDelChange("deliveredById", e.target.value)
+                    }
+                    className="w-full bg-[var(--wms-surface-2)] border border-[var(--wms-border)] rounded-md px-2 text-[var(--wms-text)] h-[34px] text-[12px] appearance-none outline-none focus:border-blue-500"
+                  >
+                    <option value="">اختر المسلِّم...</option>
+                    {employeesList.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="absolute left-2 top-[26px] w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+                </div>
+              </div>
+              <div>
+                <label className="block mb-1.5 text-[var(--wms-text-sec)] text-[11px] font-bold">
+                  ملاحظات
+                </label>
+                <textarea
+                  value={deliverForm.notes}
+                  onChange={(e) => handleDelChange("notes", e.target.value)}
+                  className="w-full bg-[var(--wms-surface-2)] border border-[var(--wms-border)] rounded-md px-3 py-2 text-[var(--wms-text)] resize-none h-[50px] text-[12px] outline-none focus:border-blue-500"
+                  placeholder="ملاحظات إضافية..."
+                ></textarea>
+              </div>
+              <div>
+                <label className="block mb-1.5 text-[var(--wms-text-sec)] text-[11px] font-bold">
+                  مرفق (صورة أو PDF)
+                </label>
+                <label className="flex items-center justify-center gap-2 p-3 border-2 border-dashed border-[var(--wms-border)] rounded-lg text-[var(--wms-text-muted)] cursor-pointer hover:border-[var(--wms-accent-blue)] bg-gray-50 transition-colors text-[12px]">
+                  <Upload className="w-4 h-4 text-blue-500" />
+                  <span>
+                    {deliverForm.attachment
+                      ? deliverForm.attachment.name
+                      : "اضغط لاختيار ملف"}
+                  </span>
+                  <input
+                    type="file"
+                    className="hidden"
+                    onChange={(e) =>
+                      handleDelChange("attachment", e.target.files[0])
+                    }
+                  />
+                </label>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-[var(--wms-border)] bg-gray-50 shrink-0">
+              <button
+                onClick={() => setIsDeliverModalOpen(false)}
+                className="px-4 py-1.5 rounded-md bg-white border border-gray-300 text-gray-600 text-[12px] font-bold"
+              >
+                إلغاء
+              </button>
+              <button
+                onClick={() => {
+                  if (!deliverForm.targetId || !deliverForm.amount)
+                    return toast.error("أكمل الحقول المطلوبة");
+                  deliverMutation.mutate(deliverForm);
+                }}
+                disabled={deliverMutation.isPending}
+                className="px-4 py-1.5 rounded-md bg-[var(--wms-success)] text-white hover:opacity-90 text-[12px] font-bold flex gap-2 disabled:opacity-50"
+              >
+                {deliverMutation.isPending && (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                )}{" "}
+                تسليم التسوية
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ================================================== */}
+      {/* 5. Modal: جرد خزنة (Vault Inventory) */}
+      {/* ================================================== */}
+      {isVaultInvModalOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4 animate-in fade-in"
+          dir="rtl"
+        >
+          <div className="bg-white border border-[var(--wms-border)] rounded-xl shadow-2xl w-full max-w-[520px] overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--wms-border)] bg-gray-50">
+              <span className="text-[var(--wms-text)] text-[15px] font-bold">
+                جرد الخزنة
+              </span>
+              <button
+                onClick={() => setIsVaultInvModalOpen(false)}
+                className="text-[var(--wms-text-muted)] hover:text-red-500"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block mb-1.5 text-[var(--wms-text-sec)] text-[11px] font-bold">
+                  الرصيد المسجل في النظام
+                </label>
+                <div className="w-full bg-gray-100 border border-gray-200 rounded-md px-3 flex items-center font-mono text-[var(--wms-text)] h-[34px] text-[13px] font-bold text-gray-600">
+                  {(dashboardStats.vaultBalance || 0).toLocaleString()} ر.س
+                </div>
+              </div>
+              <div>
+                <label className="block mb-1.5 text-[var(--wms-text-sec)] text-[11px] font-bold">
+                  الرصيد الفعلي في الخزنة *
+                </label>
+                <input
+                  type="number"
+                  value={vaultInvForm.actualBalance}
+                  onChange={(e) =>
+                    handleVaultChange("actualBalance", e.target.value)
+                  }
+                  className="w-full bg-[var(--wms-surface-2)] border border-[var(--wms-border)] rounded-md px-3 text-[var(--wms-text)] font-mono outline-none focus:border-amber-500 h-[34px] text-[13px]"
+                  placeholder="أدخل الرصيد الفعلي الموجود حالياً"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="relative">
+                  <label className="block mb-1.5 text-[var(--wms-text-sec)] text-[11px] font-bold">
+                    من سجل الجرد
+                  </label>
+                  <select
+                    value={vaultInvForm.recordedById}
+                    onChange={(e) =>
+                      handleVaultChange("recordedById", e.target.value)
+                    }
+                    className="w-full bg-[var(--wms-surface-2)] border border-[var(--wms-border)] rounded-md px-2 text-[var(--wms-text)] h-[34px] text-[12px] appearance-none outline-none focus:border-amber-500"
+                  >
+                    <option value="">اسم المسؤول...</option>
+                    {employeesList.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="absolute left-2 top-[26px] w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+                </div>
+                <div>
+                  <label className="block mb-1.5 text-[var(--wms-text-sec)] text-[11px] font-bold">
+                    التاريخ
+                  </label>
+                  <input
+                    type="date"
+                    value={vaultInvForm.date}
+                    onChange={(e) => handleVaultChange("date", e.target.value)}
+                    className="w-full bg-[var(--wms-surface-2)] border border-[var(--wms-border)] rounded-md px-3 text-[var(--wms-text)] outline-none focus:border-amber-500 h-[34px] text-[12px]"
+                  />
+                </div>
+              </div>
+              <div className="flex items-start gap-1.5 bg-amber-50 p-2 rounded border border-amber-100">
+                <Info className="w-3 h-3 mt-0.5 shrink-0 text-amber-600" />
+                <span className="text-amber-700 text-[9px] font-bold">
+                  سيتم تسجيل هذا الجرد كحركة توثيق في النظام ولن يغير القيود
+                  القديمة.
+                </span>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-[var(--wms-border)] bg-gray-50">
+              <button
+                onClick={() => setIsVaultInvModalOpen(false)}
+                className="px-4 py-1.5 rounded-md bg-white border border-gray-300 text-gray-600 text-[12px] font-bold"
+              >
+                إلغاء
+              </button>
+              <button
+                onClick={() => {
+                  if (!vaultInvForm.actualBalance)
+                    return toast.error("أدخل الرصيد الفعلي");
+                  inventoryMutation.mutate({ ...vaultInvForm, type: "vault" });
+                }}
+                disabled={inventoryMutation.isPending}
+                className="px-4 py-1.5 rounded-md bg-amber-500 text-white hover:bg-amber-600 text-[12px] font-bold flex gap-2 disabled:opacity-50"
+              >
+                {inventoryMutation.isPending && (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                )}{" "}
+                تسجيل الجرد
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ================================================== */}
+      {/* 6. Modal: جرد حساب بنكي (Bank Inventory) */}
+      {/* ================================================== */}
+      {isBankInvModalOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4 animate-in fade-in"
+          dir="rtl"
+        >
+          <div className="bg-white border border-[var(--wms-border)] rounded-xl shadow-2xl w-full max-w-[520px] overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--wms-border)] bg-gray-50">
+              <span className="text-[var(--wms-text)] text-[15px] font-bold">
+                تحديث وجرد حساب بنكي
+              </span>
+              <button
+                onClick={() => setIsBankInvModalOpen(false)}
+                className="text-[var(--wms-text-muted)] hover:text-red-500"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div className="relative">
+                <label className="block mb-1.5 text-[var(--wms-text-sec)] text-[11px] font-bold">
+                  الحساب البنكي *
+                </label>
+                <select
+                  value={bankInvForm.accountId}
+                  onChange={(e) =>
+                    handleBankInvChange("accountId", e.target.value)
+                  }
+                  className="w-full bg-[var(--wms-surface-2)] border border-[var(--wms-border)] rounded-md px-2 text-[var(--wms-text)] outline-none appearance-none focus:border-amber-500 h-[34px] text-[12px]"
+                >
+                  <option value="">اختر الحساب البنكي...</option>
+                  {bankAccounts.map((acc) => (
+                    <option key={acc.id} value={acc.id}>
+                      {acc.bankName} — {acc.accountNumber}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="absolute left-2 top-[26px] w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+              </div>
+              <div>
+                <label className="block mb-1.5 text-[var(--wms-text-sec)] text-[11px] font-bold">
+                  الرصيد الفعلي (الجديد) *
+                </label>
+                <input
+                  type="number"
+                  value={bankInvForm.actualBalance}
+                  onChange={(e) =>
+                    handleBankInvChange("actualBalance", e.target.value)
+                  }
+                  className="w-full bg-[var(--wms-surface-2)] border border-[var(--wms-border)] rounded-md px-3 text-[var(--wms-text)] font-mono outline-none focus:border-amber-500 h-[34px] text-[13px]"
+                  placeholder="0"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="relative">
+                  <label className="block mb-1.5 text-[var(--wms-text-sec)] text-[11px] font-bold">
+                    من سجل الجرد
+                  </label>
+                  <select
+                    value={bankInvForm.recordedById}
+                    onChange={(e) =>
+                      handleBankInvChange("recordedById", e.target.value)
+                    }
+                    className="w-full bg-[var(--wms-surface-2)] border border-[var(--wms-border)] rounded-md px-2 text-[var(--wms-text)] h-[34px] text-[12px] appearance-none outline-none focus:border-amber-500"
+                  >
+                    <option value="">اسم المسؤول...</option>
+                    {employeesList.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="absolute left-2 top-[26px] w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+                </div>
+                <div>
+                  <label className="block mb-1.5 text-[var(--wms-text-sec)] text-[11px] font-bold">
+                    التاريخ
+                  </label>
+                  <input
+                    type="date"
+                    value={bankInvForm.date}
+                    onChange={(e) =>
+                      handleBankInvChange("date", e.target.value)
+                    }
+                    className="w-full bg-[var(--wms-surface-2)] border border-[var(--wms-border)] rounded-md px-3 text-[var(--wms-text)] outline-none focus:border-amber-500 h-[34px] text-[12px]"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block mb-1.5 text-[var(--wms-text-sec)] text-[11px] font-bold">
+                  سبب التحديث / ملاحظات
+                </label>
+                <textarea
+                  value={bankInvForm.notes}
+                  onChange={(e) => handleBankInvChange("notes", e.target.value)}
+                  className="w-full bg-[var(--wms-surface-2)] border border-[var(--wms-border)] rounded-md px-3 py-2 text-[var(--wms-text)] resize-none h-[50px] text-[12px] outline-none focus:border-amber-500"
+                  placeholder="مثال: تسوية شهرية، عمولة بنكية..."
+                ></textarea>
+              </div>
+              <div>
+                <label className="block mb-1.5 text-[var(--wms-text-sec)] text-[11px] font-bold">
+                  صورة كشف الحساب (اختياري)
+                </label>
+                <label className="flex items-center justify-center gap-2 p-3 border-2 border-dashed border-[var(--wms-border)] bg-gray-50 rounded-lg text-[var(--wms-text-muted)] cursor-pointer hover:border-amber-500 transition-colors text-[12px]">
+                  <Upload className="w-4 h-4 text-amber-500" />
+                  <span>
+                    {bankInvForm.attachment
+                      ? bankInvForm.attachment.name
+                      : "اضغط لاختيار كشف الحساب"}
+                  </span>
+                  <input
+                    type="file"
+                    className="hidden"
+                    onChange={(e) =>
+                      handleBankInvChange("attachment", e.target.files[0])
+                    }
+                  />
+                </label>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-[var(--wms-border)] bg-gray-50">
+              <button
+                onClick={() => setIsBankInvModalOpen(false)}
+                className="px-4 py-1.5 rounded-md bg-white border border-gray-300 text-gray-600 text-[12px] font-bold"
+              >
+                إلغاء
+              </button>
+              <button
+                onClick={() => {
+                  if (!bankInvForm.accountId || !bankInvForm.actualBalance)
+                    return toast.error("أكمل الحقول المطلوبة");
+                  inventoryMutation.mutate({ ...bankInvForm, type: "bank" });
+                }}
+                disabled={inventoryMutation.isPending}
+                className="px-4 py-1.5 rounded-md bg-amber-500 text-white hover:bg-amber-600 text-[12px] font-bold flex gap-2 disabled:opacity-50"
+              >
+                {inventoryMutation.isPending && (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                )}{" "}
+                تحديث الرصيد
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ================================================== */}
+      {/* 7. Modal: تسجيل مصروف (Record Expense) */}
+      {/* ================================================== */}
+      {isExpenseModalOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4 animate-in fade-in"
+          dir="rtl"
+        >
+          <div className="bg-white border border-[var(--wms-border)] rounded-xl shadow-2xl w-full max-w-[480px] overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--wms-border)] bg-gray-50">
+              <span className="text-[var(--wms-text)] text-[15px] font-bold">
+                تسجيل مصروف تشغيلي
+              </span>
+              <button
+                onClick={() => setIsExpenseModalOpen(false)}
+                className="text-[var(--wms-text-muted)] hover:text-red-500"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block mb-1.5 text-[var(--wms-text-sec)] text-[11px] font-bold">
+                  البند *
+                </label>
+                <input
+                  type="text"
+                  value={expenseForm.item}
+                  onChange={(e) => handleExpChange("item", e.target.value)}
+                  className="w-full bg-[var(--wms-surface-2)] border border-[var(--wms-border)] rounded-md px-3 text-[var(--wms-text)] outline-none focus:border-blue-500 h-[34px] text-[12px]"
+                  placeholder="اسم البند (مثال: إيجار، رواتب...)"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block mb-1.5 text-[var(--wms-text-sec)] text-[11px] font-bold">
+                    المبلغ *
+                  </label>
+                  <input
+                    type="number"
+                    value={expenseForm.amount}
+                    onChange={(e) => handleExpChange("amount", e.target.value)}
+                    className="w-full bg-[var(--wms-surface-2)] border border-[var(--wms-border)] rounded-md px-3 text-[var(--wms-text)] font-mono outline-none focus:border-blue-500 h-[34px] text-[13px]"
+                    placeholder="0"
+                  />
+                </div>
+                <div className="relative">
+                  <label className="block mb-1.5 text-[var(--wms-text-sec)] text-[11px] font-bold">
+                    من دفع
+                  </label>
+                  <select
+                    value={expenseForm.payerId}
+                    onChange={(e) => handleExpChange("payerId", e.target.value)}
+                    className="w-full bg-[var(--wms-surface-2)] border border-[var(--wms-border)] rounded-md px-2 text-[var(--wms-text)] h-[34px] text-[12px] appearance-none outline-none focus:border-blue-500"
+                  >
+                    <option value="">اسم الشخص...</option>
+                    {employeesList.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="absolute left-2 top-[26px] w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="relative">
+                  <label className="block mb-1.5 text-[var(--wms-text-sec)] text-[11px] font-bold">
+                    المصدر *
+                  </label>
+                  <select
+                    value={expenseForm.source}
+                    onChange={(e) => handleExpChange("source", e.target.value)}
+                    className="w-full bg-[var(--wms-surface-2)] border border-[var(--wms-border)] rounded-md px-2 text-[var(--wms-text)] h-[34px] text-[12px] appearance-none outline-none focus:border-blue-500"
+                  >
+                    <option value="">اختر المصدر</option>
+                    <option value="خزنة">خزنة</option>
+                    <option value="حساب بنكي">حساب بنكي</option>
+                    <option value="دفع شخصي شريك">دفع شخصي شريك</option>
+                    <option value="دفع شخصي موظف">دفع شخصي موظف</option>
+                    <option value="من تحصيل غير مسلم">من تحصيل غير مسلم</option>
+                  </select>
+                  <ChevronDown className="absolute left-2 top-[26px] w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+                </div>
+                <div>
+                  <label className="block mb-1.5 text-[var(--wms-text-sec)] text-[11px] font-bold">
+                    التاريخ
+                  </label>
+                  <input
+                    type="date"
+                    value={expenseForm.date}
+                    onChange={(e) => handleExpChange("date", e.target.value)}
+                    className="w-full bg-[var(--wms-surface-2)] border border-[var(--wms-border)] rounded-md px-3 text-[var(--wms-text)] outline-none focus:border-blue-500 h-[34px] text-[12px]"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="block mb-1.5 text-[var(--wms-text-sec)] text-[11px] font-bold">
+                  ملاحظات
+                </label>
+                <textarea
+                  value={expenseForm.notes}
+                  onChange={(e) => handleExpChange("notes", e.target.value)}
+                  className="w-full bg-[var(--wms-surface-2)] border border-[var(--wms-border)] rounded-md px-3 py-2 text-[var(--wms-text)] resize-none h-[50px] text-[12px] outline-none focus:border-blue-500"
+                  placeholder="ملاحظات إضافية..."
+                ></textarea>
+              </div>
+              <div>
+                <label className="block mb-1.5 text-[var(--wms-text-sec)] text-[11px] font-bold">
+                  المرفق (فاتورة / إيصال)
+                </label>
+                <label className="flex items-center justify-center gap-2 p-3 border-2 border-dashed border-[var(--wms-border)] bg-gray-50 rounded-lg text-[var(--wms-text-muted)] cursor-pointer hover:border-blue-500 transition-colors text-[12px]">
+                  <Upload className="w-4 h-4 text-blue-500" />
+                  <span>
+                    {expenseForm.attachment
+                      ? expenseForm.attachment.name
+                      : "اضغط لإرفاق ملف"}
+                  </span>
+                  <input
+                    type="file"
+                    className="hidden"
+                    onChange={(e) =>
+                      handleExpChange("attachment", e.target.files[0])
+                    }
+                  />
+                </label>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-[var(--wms-border)] bg-gray-50">
+              <button
+                onClick={() => setIsExpenseModalOpen(false)}
+                className="px-4 py-1.5 rounded-md bg-white border border-gray-300 text-gray-600 text-[12px] font-bold"
+              >
+                إلغاء
+              </button>
+              <button
+                onClick={() => {
+                  if (
+                    !expenseForm.item ||
+                    !expenseForm.amount ||
+                    !expenseForm.source
+                  )
+                    return toast.error("أكمل الحقول المطلوبة");
+                  expenseMutation.mutate(expenseForm);
+                }}
+                disabled={expenseMutation.isPending}
+                className="px-4 py-1.5 rounded-md bg-[var(--wms-accent-blue)] text-white hover:opacity-90 text-[12px] font-bold flex gap-2 disabled:opacity-50"
+              >
+                {expenseMutation.isPending ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Banknote className="w-3.5 h-3.5" />
+                )}{" "}
+                تسجيل المصروف
               </button>
             </div>
           </div>
