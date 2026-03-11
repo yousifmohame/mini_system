@@ -29,6 +29,8 @@ import PersonsDirectoryPage from "./pages/PersonsDirectoryPage";
 import RiyadhDivisionScreen from "./pages/Riyadh/RiyadhDivisionScreen";
 import FinancialDashboardPage from "./pages/FinancialDashboardPage";
 import RemoteWorkAccountsPage from "./pages/RemoteWorkAccountsPage";
+import SettingsPage from "./pages/SettingsPage";
+import {ScreenSpecialAccount}  from "./pages/ScreenSpecialAccount"; // تأكد من مسار الاستيراد
 
 // --- Icons & Context ---
 import { Wrench } from "lucide-react";
@@ -74,7 +76,10 @@ const ComingSoonScreen = ({ screenId }) => (
 
 const AppContent = () => {
   const { user, loading } = useAuth();
-  const { activeScreenId } = useAppStore();
+  const { activeScreenId, openScreens } = useAppStore(); 
+  
+  // 💡 التعديل 2: جلب بيانات الشاشة النشطة حالياً
+  const activeScreen = openScreens.find((s) => s.id === activeScreenId);
 
   if (loading) {
     return (
@@ -109,6 +114,8 @@ const AppContent = () => {
     "SET_ZONES",
     "FINANCE_DASH",
     "REMOTE_WORK",
+    "SET_DELAYS",
+    "SPECIAL_ACCOUNT"
   ];
   const isImplemented = implementedScreens.includes(activeScreenId);
 
@@ -275,6 +282,25 @@ const AppContent = () => {
               }
             >
               <RemoteWorkAccountsPage />
+            </div>
+
+            <div
+              className={
+                activeScreenId === "SET_DELAYS" ? "block h-full" : "hidden"
+              }
+            >
+              <SettingsPage />
+            </div>
+
+            {/* 💡 تم تمرير accountName من خصائص الشاشة النشطة */}
+            <div
+              className={
+                activeScreenId === "SPECIAL_ACCOUNT" ? "block h-full" : "hidden"
+              }
+            >
+              {activeScreenId === "SPECIAL_ACCOUNT" && (
+                <ScreenSpecialAccount accountName={activeScreen?.props?.accountName || "حساب خاص"} />
+              )}
             </div>
 
             {/* --- شاشة Fallback لأي كود غير مبرمج --- */}

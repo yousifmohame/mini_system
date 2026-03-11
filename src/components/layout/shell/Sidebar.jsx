@@ -1,8 +1,9 @@
 import React, { useState } from "react";
 import { useAppStore } from "../../../stores/useAppStore";
 import { useAuth } from "../../../context/AuthContext";
+import { useQuery } from "@tanstack/react-query";
 import { usePermissionBuilder } from "../../../context/PermissionBuilderContext";
-
+import api from "../../../api/axios";
 import {
   Building2,
   LayoutDashboard,
@@ -30,6 +31,7 @@ import {
   CircleUser,
   BookUser,
   Workflow,
+  Loader2
 } from "lucide-react";
 
 const Sidebar = () => {
@@ -61,6 +63,13 @@ const Sidebar = () => {
     openScreen(screenId, screenTitle, screenProps);
   };
 
+  // 💡 جلب أسماء الحسابات الخاصة من إعدادات النظام (Database)
+  const { data: settings, isLoading: isLoadingSettings } = useQuery({
+    queryKey: ["system-settings-sidebar"],
+    queryFn: async () => (await api.get("/settings")).data.data,
+  });
+
+  const specialAccounts = settings?.specialAccounts || [];
   // مكون مساعد (Component) لزر القائمة للحفاظ على تناسق التصميم
   const NavItem = ({ screenId, title, icon: Icon, props = {} }) => {
     // 1. نتأكد أولاً أن معرف الشاشة متطابق
@@ -70,6 +79,9 @@ const Sidebar = () => {
     if (isActive && props.sector) {
       isActive = activeScreen?.props?.sector === props.sector;
     }
+
+    if (isActive && props.accountName)
+      isActive = activeScreen?.props?.accountName === props.accountName;
 
     return (
       <button
@@ -263,30 +275,30 @@ const Sidebar = () => {
         {/* ===================== المجموعة السادسة: حسابات خاصة ===================== */}
         <div className="mb-1 border-t border-slate-800/50 pt-1">
           <CategoryHeader id="CAT_SPECIAL" title="حسابات خاصة" />
-
           <div
             className={`overflow-hidden transition-all duration-300 ease-in-out ${openCategories.includes("CAT_SPECIAL") ? "max-h-[500px] opacity-100" : "max-h-0 opacity-0"}`}
           >
-            <NavItem
-              screenId="ACC_ALABOUDY"
-              title="حسابات العبودي"
-              icon={CircleUser}
-            />
-            <NavItem
-              screenId="ACC_ALRAJHI"
-              title="حسابات إبراهيم الراجحي"
-              icon={CircleUser}
-            />
-            <NavItem
-              screenId="ACC_TALAAT"
-              title="حسابات أحمد طلعت"
-              icon={CircleUser}
-            />
-            <NavItem
-              screenId="ACC_FOUAD"
-              title="حسابات محمد فؤاد"
-              icon={CircleUser}
-            />
+            {isLoadingSettings ? (
+              <div className="px-5 py-2 text-slate-500 text-xs flex items-center gap-2">
+                <Loader2 className="w-3 h-3 animate-spin" /> جاري تحميل
+                الحسابات...
+              </div>
+            ) : specialAccounts.length > 0 ? (
+              specialAccounts.map((acc, idx) => (
+                <NavItem
+                  key={idx}
+                  // نستخدم شاشة موحدة اسمها SPECIAL_ACCOUNT
+                  screenId="SPECIAL_ACCOUNT"
+                  title={acc.systemName} // الاسم الذي يظهر في القائمة
+                  icon={CircleUser}
+                  props={{ accountName: acc.reportName }} // نمرر اسم العرض كـ prop للشاشة
+                />
+              ))
+            ) : (
+              <div className="px-5 py-2 text-slate-500 text-xs">
+                لا توجد حسابات مضافة
+              </div>
+            )}
           </div>
         </div>
 
@@ -319,15 +331,10 @@ const Sidebar = () => {
             />
             <NavItem
               screenId="SET_DELAYS"
-              title="إعدادات التأخير"
+              title="إعدادات النظام"
               icon={Clock}
             />
-            <NavItem
-              screenId="SET_TAX"
-              title="إعدادات التقدير الضريبي"
-              icon={Calculator}
-            />
-            <NavItem screenId="SET_API" title="بوابة الربط" icon={Link2} />
+            
           </div>
         </div>
       </nav>
