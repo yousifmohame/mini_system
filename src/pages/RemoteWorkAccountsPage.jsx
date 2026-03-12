@@ -9,7 +9,6 @@ import {
   Eye,
   Download,
   Camera,
-  CodeXml,
   Search,
   User,
   ClipboardList,
@@ -30,9 +29,17 @@ import {
   Loader2,
   Edit3,
   Trash2,
+  Phone,
+  Globe2,
+  Upload,
+  Paperclip,
+  Save,
+  Wallet
 } from "lucide-react";
 
-// 💡 دوال الحماية لمنع انهيار الواجهة
+// ==========================================
+// 💡 دوال مساعدة لحماية الواجهة
+// ==========================================
 const safeText = (val) => {
   if (!val) return "—";
   if (typeof val === "object") return val.ar || val.name || JSON.stringify(val);
@@ -44,6 +51,20 @@ const safeNum = (val) => {
   return isNaN(num) ? 0 : num;
 };
 
+// ==========================================
+// 💡 قائمة رموز الدول الشائعة
+// ==========================================
+const COUNTRY_CODES = [
+  { code: "+20", label: "مصر 🇪🇬" },
+  { code: "+966", label: "السعودية 🇸🇦" },
+  { code: "+971", label: "الإمارات 🇦🇪" },
+  { code: "+965", label: "الكويت 🇰🇼" },
+  { code: "+973", label: "قطر 🇶🇦" },
+  { code: "+974", label: "البحرين 🇧🇭" },
+  { code: "+968", label: "عمان 🇴🇲" },
+  { code: "+962", label: "الأردن 🇯🇴" },
+];
+
 const RemoteWorkAccountsPage = () => {
   const queryClient = useQueryClient();
 
@@ -53,7 +74,7 @@ const RemoteWorkAccountsPage = () => {
   const [activeTab, setActiveTab] = useState("overview");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedEmpId, setSelectedEmpId] = useState(null);
-  const [selectedTaskToSettle, setSelectedTaskToSettle] = useState(null); // لتسوية مهمة معينة
+  const [selectedTaskToSettle, setSelectedTaskToSettle] = useState(null);
 
   // Modals States
   const [isAddEmpOpen, setIsAddEmpOpen] = useState(false);
@@ -66,12 +87,34 @@ const RemoteWorkAccountsPage = () => {
   const [isEditRateOpen, setIsEditRateOpen] = useState(false);
 
   // Forms States
-  const [empForm, setEmpForm] = useState({
+  const initialEmpForm = {
+    id: null,
     name: "",
+    phoneCode: "+20", // افتراضي مصر لأن الغالبية عن بعد من مصر
+    phoneWithoutCode: "",
+    whatsappCode: "+20",
+    whatsappWithoutCode: "",
     phone: "",
+    whatsapp: "",
+    telegram: "",
     email: "",
-    currency: "EGP",
-  });
+    country: "",
+    currency: "EGP", // العملة المفضلة
+    transferMethod: "",
+    transferDetails: {},
+    firstNameAr: "",
+    secondNameAr: "",
+    thirdNameAr: "",
+    fourthNameAr: "",
+    firstNameEn: "",
+    secondNameEn: "",
+    thirdNameEn: "",
+    fourthNameEn: "",
+    notes: "",
+    files: [],
+  };
+  const [empForm, setEmpForm] = useState(initialEmpForm);
+
   const [transferForm, setTransferForm] = useState({
     amount: "",
     date: new Date().toISOString().split("T")[0],
@@ -128,7 +171,7 @@ const RemoteWorkAccountsPage = () => {
   });
 
   // ==========================================
-  // Derived State (useMemo) - لمنع الـ Infinite Loop
+  // Derived State (useMemo)
   // ==========================================
   const filteredEmployees = useMemo(() => {
     return workers.filter(
@@ -154,22 +197,27 @@ const RemoteWorkAccountsPage = () => {
   // ==========================================
   // Mutations - إرسال البيانات للباك إند
   // ==========================================
-  const addEmpMutation = useMutation({
-    mutationFn: async (data) => api.post("/remote-workers", data),
-    onSuccess: (res) => {
-      toast.success("تم إضافة الموظف بنجاح");
-      queryClient.invalidateQueries(["remote-workers"]);
-      setIsAddEmpOpen(false);
-      setEmpForm({ name: "", phone: "", email: "", currency: "EGP" });
-      setSelectedEmpId(res.data.data.id); // تحديد الموظف الجديد فوراً
-    },
-    onError: () => toast.error("حدث خطأ أثناء الإضافة"),
-  });
-
   const saveEmpMutation = useMutation({
     mutationFn: async (data) => {
-      if (modalMode === "add") return api.post("/remote-workers", data);
-      return api.put(`/remote-workers/${data.id}`, data);
+      const fd = new FormData();
+      Object.keys(data).forEach((key) => {
+        if (key === "files") {
+          Array.from(data.files || []).forEach((f) => fd.append("files", f));
+        } else if (key === "transferDetails") {
+          fd.append("transferDetails", JSON.stringify(data[key]));
+        } else {
+          fd.append(key, data[key]);
+        }
+      });
+
+      if (modalMode === "add") {
+        return api.post("/remote-workers", fd, {
+          headers: { "Content-Type": "multipart/form-data" },
+        });
+      }
+      return api.put(`/remote-workers/${data.id}`, fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
     },
     onSuccess: (res) => {
       toast.success(
@@ -181,7 +229,7 @@ const RemoteWorkAccountsPage = () => {
       setIsAddEmpOpen(false);
       if (modalMode === "add") setSelectedEmpId(res.data.data.id);
     },
-    onError: () => toast.error("حدث خطأ"),
+    onError: (err) => toast.error(err.response?.data?.message || "حدث خطأ"),
   });
 
   const deleteEmpMutation = useMutation({
@@ -277,16 +325,73 @@ const RemoteWorkAccountsPage = () => {
     setIsSettleTxOpen(true);
   };
 
+  const handlePhoneChange = (field, val) => {
+    if (!val.startsWith("+")) val = "+" + val.replace(/\+/g, "");
+    setEmpForm({ ...empForm, [field]: val });
+  };
+
+  const handleOpenAdd = () => {
+    setModalMode("add");
+    setEmpForm(initialEmpForm);
+    setIsAddEmpOpen(true);
+  };
+
   const handleOpenEdit = () => {
+    let pCode = "+20",
+      pNum = selectedEmp.phone || "";
+    if (selectedEmp.phone && selectedEmp.phone.startsWith("+")) {
+      const matched = COUNTRY_CODES.find((c) =>
+        selectedEmp.phone.startsWith(c.code),
+      );
+      if (matched) {
+        pCode = matched.code;
+        pNum = selectedEmp.phone.slice(matched.code.length);
+      }
+    }
+
+    let wCode = "+20",
+      wNum = selectedEmp.whatsapp || "";
+    if (selectedEmp.whatsapp && selectedEmp.whatsapp.startsWith("+")) {
+      const matched = COUNTRY_CODES.find((c) =>
+        selectedEmp.whatsapp.startsWith(c.code),
+      );
+      if (matched) {
+        wCode = matched.code;
+        wNum = selectedEmp.whatsapp.slice(matched.code.length);
+      }
+    }
+
     setEmpForm({
-      id: selectedEmp.id,
-      name: selectedEmp.name,
-      phone: selectedEmp.phone,
-      email: selectedEmp.email,
-      currency: selectedEmp.currency,
+      ...initialEmpForm,
+      ...selectedEmp,
+      phoneCode: pCode,
+      phoneWithoutCode: pNum,
+      whatsappCode: wCode,
+      whatsappWithoutCode: wNum,
+      files: [],
     });
     setModalMode("edit");
     setIsAddEmpOpen(true);
+  };
+
+  const handleSaveEmp = () => {
+    let finalData = { ...empForm };
+
+    // تجميع الاسم الرباعي
+    finalData.name =
+      `${finalData.firstNameAr || ""} ${finalData.secondNameAr || ""} ${finalData.thirdNameAr || ""} ${finalData.fourthNameAr || ""}`.trim();
+
+    if (!finalData.name) return toast.error("الاسم الأول على الأقل مطلوب");
+
+    // دمج رمز الدولة مع الرقم النهائي
+    finalData.phone = finalData.phoneWithoutCode
+      ? `${finalData.phoneCode}${finalData.phoneWithoutCode}`
+      : "";
+    finalData.whatsapp = finalData.whatsappWithoutCode
+      ? `${finalData.whatsappCode}${finalData.whatsappWithoutCode}`
+      : "";
+
+    saveEmpMutation.mutate(finalData);
   };
 
   return (
@@ -314,8 +419,8 @@ const RemoteWorkAccountsPage = () => {
           <div className="flex-1"></div>
 
           <button
-            onClick={() => setIsAddEmpOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-blue-600 text-white hover:bg-blue-700 transition-colors text-[12px] font-semibold"
+            onClick={handleOpenAdd}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-blue-600 text-white hover:bg-blue-700 transition-colors text-[12px] font-semibold shadow-sm"
           >
             <Plus className="w-3.5 h-3.5" />
             <span>إضافة موظف</span>
@@ -323,18 +428,10 @@ const RemoteWorkAccountsPage = () => {
           <button
             onClick={() => setIsReportPreviewOpen(true)}
             disabled={!selectedEmp}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-[var(--wms-border)] text-[var(--wms-text-sec)] bg-white hover:bg-gray-50 transition-colors text-[12px] font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-[var(--wms-border)] text-[var(--wms-text-sec)] bg-white hover:bg-gray-50 transition-colors text-[12px] font-semibold disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
           >
             <Eye className="w-3.5 h-3.5 text-blue-600" />
             <span>معاينة تقرير</span>
-          </button>
-          <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-[var(--wms-border)] text-[var(--wms-text-sec)] bg-white hover:bg-gray-50 transition-colors text-[12px] font-semibold">
-            <Download className="w-3.5 h-3.5 text-purple-600" />
-            <span>تصدير القائمة</span>
-          </button>
-          <button className="flex items-center gap-1 rounded-md border border-[var(--wms-border)] text-[var(--wms-text-sec)] bg-white hover:bg-gray-50 transition-colors text-[10px] px-2 py-1 font-semibold">
-            <Camera className="w-3 h-3 text-purple-600" />
-            <span>لقطة شاشة</span>
           </button>
         </div>
       </div>
@@ -406,7 +503,7 @@ const RemoteWorkAccountsPage = () => {
             <div className="flex-1 flex flex-col items-center justify-center text-gray-400">
               <User className="w-16 h-16 mb-4 opacity-20" />
               <span className="font-bold text-[14px]">
-                الرجاء تحديد موظف من القائمة الجانبية לעرض حساباته
+                الرجاء تحديد موظف من القائمة الجانبية لعرض حساباته
               </span>
             </div>
           ) : (
@@ -441,9 +538,9 @@ const RemoteWorkAccountsPage = () => {
                       <div className="flex items-center gap-2">
                         <button
                           onClick={handleOpenEdit}
-                          className="p-2 rounded border hover:bg-amber-50 hover:text-amber-600 hover:border-amber-200 transition-colors text-gray-500"
+                          className="p-1.5 rounded border hover:bg-amber-50 hover:text-amber-600 hover:border-amber-200 transition-colors text-gray-500 shadow-sm bg-white"
                         >
-                          <Edit3 className="w-4 h-4" />
+                          <Edit3 className="w-3.5 h-3.5" />
                         </button>
                         <button
                           onClick={() => {
@@ -451,14 +548,14 @@ const RemoteWorkAccountsPage = () => {
                               deleteEmpMutation.mutate(selectedEmp.id);
                           }}
                           disabled={deleteEmpMutation.isPending}
-                          className="p-2 rounded border hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors text-gray-500 disabled:opacity-50"
+                          className="p-1.5 rounded border hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors text-gray-500 disabled:opacity-50 shadow-sm bg-white"
                         >
-                          <Trash2 className="w-4 h-4" />
+                          <Trash2 className="w-3.5 h-3.5" />
                         </button>
                       </div>
                       <span className="bg-gray-100 px-2 py-0.5 rounded border">
-                        العملة المفضلة:{" "}
-                        <strong className="text-gray-700">
+                        العملة:{" "}
+                        <strong className="text-gray-700 font-mono">
                           {selectedEmp.currency}
                         </strong>
                       </span>
@@ -665,7 +762,6 @@ const RemoteWorkAccountsPage = () => {
                               {(selectedEmp.tasks || [])
                                 .slice(0, 5)
                                 .map((task, idx) => {
-                                  // التحقق هل تم تسوية هذه المهمة بناء على سجل التسويات
                                   const isSettled = (
                                     selectedEmp.settlements || []
                                   ).some((s) =>
@@ -727,7 +823,9 @@ const RemoteWorkAccountsPage = () => {
                                   المبلغ (ر.س)
                                 </th>
                                 <th className="px-3 py-2 font-bold">الطريقة</th>
-                                <th className="px-3 py-2 font-bold">ملاحظات</th>
+                                <th className="px-3 py-2 font-bold">
+                                  ملاحظات / السند
+                                </th>
                               </tr>
                             </thead>
                             <tbody>
@@ -773,7 +871,7 @@ const RemoteWorkAccountsPage = () => {
                     </div>
                   )}
 
-                  {/* === TAB 2: PREV PAYMENTS (الرصيد الافتتاحي) === */}
+                  {/* === TAB 2: PREV PAYMENTS === */}
                   {activeTab === "prev_payments" && (
                     <div className="space-y-4">
                       <div className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-blue-50 border border-blue-100">
@@ -821,20 +919,6 @@ const RemoteWorkAccountsPage = () => {
                                   </td>
                                 </tr>
                               ))}
-                            {!(selectedEmp.settlements || []).some(
-                              (s) =>
-                                s.source === "رصيد افتتاحي" ||
-                                s.notes?.includes("دفعة سابقة"),
-                            ) && (
-                              <tr>
-                                <td
-                                  colSpan="4"
-                                  className="text-center py-8 text-gray-400"
-                                >
-                                  لا توجد أرصدة سابقة مسجلة
-                                </td>
-                              </tr>
-                            )}
                           </tbody>
                         </table>
                       </div>
@@ -939,32 +1023,11 @@ const RemoteWorkAccountsPage = () => {
                               <td className="px-4 py-2.5 font-bold text-gray-700">
                                 {pay.method}
                               </td>
-                              <td className="px-4 py-2.5 text-gray-500 text-[11px] font-semibold flex justify-between items-center">
+                              <td className="px-4 py-2.5 text-gray-500 text-[11px] font-semibold">
                                 {pay.notes}
-                                {pay.attachment && (
-                                  <button
-                                    className="text-blue-500 hover:underline flex items-center gap-1"
-                                    onClick={(e) =>
-                                      handleViewAttachment(e, pay.attachment)
-                                    }
-                                  >
-                                    <ImageIcon className="w-3 h-3" /> عرض السند
-                                  </button>
-                                )}
                               </td>
                             </tr>
                           ))}
-                          {(!selectedEmp.transfers ||
-                            selectedEmp.transfers.length === 0) && (
-                            <tr>
-                              <td
-                                colSpan="4"
-                                className="text-center py-8 text-gray-400"
-                              >
-                                لا توجد تحويلات مسجلة
-                              </td>
-                            </tr>
-                          )}
                         </tbody>
                         <tfoot className="bg-purple-50/50 border-t-2 border-purple-100">
                           <tr>
@@ -1157,96 +1220,565 @@ const RemoteWorkAccountsPage = () => {
       {/* Modals Portals */}
       {/* ========================================================================= */}
 
-      {/* 1. Modal: إضافة موظف عن بعد */}
+      {/* 1. Modal: إضافة/تعديل موظف عن بعد (النموذج الشامل Enterprise) */}
       {isAddEmpOpen && (
-        <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 animate-in fade-in">
-          <div
-            className="bg-white rounded-xl shadow-2xl w-full max-w-[500px] overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between px-5 py-4 bg-slate-800 border-b border-slate-700">
-              <span className="text-[15px] font-bold text-white">
-                إضافة موظف عن بعد
+        <div
+          className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 animate-in fade-in"
+          dir="rtl"
+        >
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl flex flex-col max-h-[90vh]">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gray-50 shrink-0 rounded-t-2xl">
+              <span className="text-gray-800 text-[16px] font-black">
+                {modalMode === "add"
+                  ? "إضافة موظف عن بعد جديد"
+                  : "تعديل بيانات الموظف"}
               </span>
               <button
                 onClick={() => setIsAddEmpOpen(false)}
-                className="text-white/70 hover:text-white transition-colors bg-white/10 hover:bg-red-500 p-1.5 rounded-md"
+                className="text-gray-400 hover:text-red-500 bg-white border border-gray-300 shadow-sm p-1.5 rounded-md"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <div className="p-6 space-y-5">
-              <div>
-                <label className="block text-[12px] font-bold text-gray-700 mb-1.5">
-                  اسم الموظف *
-                </label>
-                <input
-                  value={empForm.name}
-                  onChange={(e) =>
-                    setEmpForm({ ...empForm, name: e.target.value })
-                  }
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50 font-bold text-[13px] outline-none focus:border-blue-500 focus:bg-white transition-colors"
-                  placeholder="الاسم الكامل"
-                />
+
+            <div className="p-6 space-y-6 overflow-y-auto custom-scrollbar-slim flex-1 bg-gray-50/30">
+              <div className="bg-pink-50 border border-pink-200 p-3 rounded-lg flex items-start gap-2">
+                <Info className="w-4 h-4 text-pink-600 shrink-0 mt-0.5" />
+                <span className="text-pink-800 text-[11px] font-bold leading-relaxed">
+                  هذا الملف مستقل تماماً عن الفرع الرئيسي ولا يتزامن إلا إذا تم
+                  تحويله إلى "موظف رسمي". قم بتعبئة بيانات التحويل المالي بدقة
+                  لتسهيل صرف أتعابه.
+                </span>
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-[12px] font-bold text-gray-700 mb-1.5">
-                    رقم الهاتف
+
+              {/* الأسماء 4 رباعية */}
+              <div className="bg-white p-5 border border-gray-200 rounded-xl shadow-sm">
+                <label className="block mb-3 text-[14px] font-black text-gray-800 border-b border-gray-100 pb-2">
+                  <User className="w-4 h-4 inline-block text-blue-500 ml-1" />{" "}
+                  الاسم الرباعي والبيانات الديموغرافية
+                </label>
+                <div className="grid grid-cols-4 gap-3 mb-4">
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-500 mb-1 block">
+                      الاسم الأول *
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="الاسم الأول (Ar)"
+                      value={empForm.firstNameAr}
+                      onChange={(e) =>
+                        setEmpForm({ ...empForm, firstNameAr: e.target.value })
+                      }
+                      className="w-full bg-gray-50 border border-gray-300 rounded-lg px-3 py-2 text-xs font-bold focus:border-blue-500 focus:bg-white outline-none transition-colors"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-500 mb-1 block">
+                      الاسم الثاني
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="الاسم الثاني"
+                      value={empForm.secondNameAr}
+                      onChange={(e) =>
+                        setEmpForm({ ...empForm, secondNameAr: e.target.value })
+                      }
+                      className="w-full bg-gray-50 border border-gray-300 rounded-lg px-3 py-2 text-xs focus:border-blue-500 focus:bg-white outline-none transition-colors"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-500 mb-1 block">
+                      الاسم الثالث
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="الاسم الثالث"
+                      value={empForm.thirdNameAr}
+                      onChange={(e) =>
+                        setEmpForm({ ...empForm, thirdNameAr: e.target.value })
+                      }
+                      className="w-full bg-gray-50 border border-gray-300 rounded-lg px-3 py-2 text-xs focus:border-blue-500 focus:bg-white outline-none transition-colors"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-500 mb-1 block">
+                      الاسم الرابع (العائلة)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="الاسم الرابع"
+                      value={empForm.fourthNameAr}
+                      onChange={(e) =>
+                        setEmpForm({ ...empForm, fourthNameAr: e.target.value })
+                      }
+                      className="w-full bg-gray-50 border border-gray-300 rounded-lg px-3 py-2 text-xs font-bold focus:border-blue-500 focus:bg-white outline-none transition-colors"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-4 gap-3 mb-4">
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-500 mb-1 block text-right">
+                      First Name
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="First Name"
+                      value={empForm.firstNameEn}
+                      onChange={(e) =>
+                        setEmpForm({ ...empForm, firstNameEn: e.target.value })
+                      }
+                      className="w-full bg-gray-50 border border-gray-300 rounded-lg px-3 py-2 text-xs font-mono focus:border-blue-500 focus:bg-white outline-none transition-colors"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-500 mb-1 block text-right">
+                      Second Name
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Second Name"
+                      value={empForm.secondNameEn}
+                      onChange={(e) =>
+                        setEmpForm({ ...empForm, secondNameEn: e.target.value })
+                      }
+                      className="w-full bg-gray-50 border border-gray-300 rounded-lg px-3 py-2 text-xs font-mono focus:border-blue-500 focus:bg-white outline-none transition-colors"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-500 mb-1 block text-right">
+                      Third Name
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Third Name"
+                      value={empForm.thirdNameEn}
+                      onChange={(e) =>
+                        setEmpForm({ ...empForm, thirdNameEn: e.target.value })
+                      }
+                      className="w-full bg-gray-50 border border-gray-300 rounded-lg px-3 py-2 text-xs font-mono focus:border-blue-500 focus:bg-white outline-none transition-colors"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-500 mb-1 block text-right">
+                      Last Name
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Last Name"
+                      value={empForm.fourthNameEn}
+                      onChange={(e) =>
+                        setEmpForm({ ...empForm, fourthNameEn: e.target.value })
+                      }
+                      className="w-full bg-gray-50 border border-gray-300 rounded-lg px-3 py-2 text-xs font-mono focus:border-blue-500 focus:bg-white outline-none transition-colors"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-5">
+                  <div>
+                    <label className="block mb-1 text-[11px] font-bold text-gray-700">
+                      دولة الإقامة الحالية
+                    </label>
+                    <div className="relative">
+                      <Globe2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                      <input
+                        type="text"
+                        value={empForm.country}
+                        onChange={(e) =>
+                          setEmpForm({ ...empForm, country: e.target.value })
+                        }
+                        placeholder="مثال: السعودية، مصر..."
+                        className="w-full border border-gray-300 rounded-lg pr-9 pl-3 py-2 text-xs outline-none focus:border-blue-500 bg-gray-50 focus:bg-white transition-colors"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block mb-1 text-[11px] font-bold text-gray-700">
+                      عملة التحويل المفضلة
+                    </label>
+                    <select
+                      value={empForm.currency}
+                      onChange={(e) =>
+                        setEmpForm({ ...empForm, currency: e.target.value })
+                      }
+                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs font-bold outline-none focus:border-blue-500 bg-gray-50 focus:bg-white transition-colors"
+                    >
+                      <option value="SAR">ريال سعودي (SAR)</option>
+                      <option value="USD">دولار أمريكي (USD)</option>
+                      <option value="EGP">جنيه مصري (EGP)</option>
+                      <option value="USDT">عملة رقمية (USDT)</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* التواصل بالصيغة الدولية (الحديثة المدمجة) */}
+              <div className="bg-white p-5 border border-gray-200 rounded-xl shadow-sm">
+                <h3 className="text-[14px] font-black text-gray-800 border-b border-gray-100 pb-2 mb-4">
+                  <Phone className="w-4 h-4 inline-block text-blue-500 ml-1" />{" "}
+                  معلومات التواصل (مدمجة بالرمز الدولي)
+                </h3>
+                <div className="grid grid-cols-3 gap-5">
+                  {/* Phone Input with Country Code */}
+                  <div>
+                    <label className="block mb-1.5 text-[11px] font-bold text-gray-700">
+                      رقم الجوال الأساسي *
+                    </label>
+                    <div className="flex" dir="ltr">
+                      <select
+                        value={empForm.phoneCode}
+                        onChange={(e) =>
+                          setEmpForm({ ...empForm, phoneCode: e.target.value })
+                        }
+                        className="bg-gray-100 border border-gray-300 border-r-0 rounded-l-lg px-2 text-xs font-mono outline-none focus:border-blue-500 w-24"
+                      >
+                        {COUNTRY_CODES.map((c) => (
+                          <option key={c.code} value={c.code}>
+                            {c.code} {c.label.split(" ")[1]}
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        type="text"
+                        value={empForm.phoneWithoutCode}
+                        onChange={(e) =>
+                          setEmpForm({
+                            ...empForm,
+                            phoneWithoutCode: e.target.value,
+                          })
+                        }
+                        className="flex-1 bg-white border border-gray-300 rounded-r-lg px-3 py-2 text-xs font-mono font-bold outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-200"
+                        placeholder="5XXXXXXXX"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Whatsapp Input with Country Code */}
+                  <div>
+                    <label className="block mb-1.5 text-[11px] font-bold text-green-700">
+                      رقم الواتساب
+                    </label>
+                    <div className="flex" dir="ltr">
+                      <select
+                        value={empForm.whatsappCode}
+                        onChange={(e) =>
+                          setEmpForm({
+                            ...empForm,
+                            whatsappCode: e.target.value,
+                          })
+                        }
+                        className="bg-green-50 border border-green-300 border-r-0 rounded-l-lg px-2 text-xs font-mono outline-none focus:border-green-500 w-24 text-green-800"
+                      >
+                        {COUNTRY_CODES.map((c) => (
+                          <option key={c.code} value={c.code}>
+                            {c.code} {c.label.split(" ")[1]}
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        type="text"
+                        value={empForm.whatsappWithoutCode}
+                        onChange={(e) =>
+                          setEmpForm({
+                            ...empForm,
+                            whatsappWithoutCode: e.target.value,
+                          })
+                        }
+                        className="flex-1 bg-white border border-green-300 rounded-r-lg px-3 py-2 text-xs font-mono font-bold outline-none focus:border-green-500 focus:ring-1 focus:ring-green-200"
+                        placeholder="5XXXXXXXX"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Telegram */}
+                  <div dir="ltr">
+                    <label className="block mb-1.5 text-[11px] font-bold text-blue-500 text-right">
+                      معرّف التليجرام (Telegram)
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-blue-400 font-mono text-xs">
+                        @
+                      </span>
+                      <input
+                        type="text"
+                        value={empForm.telegram}
+                        onChange={(e) =>
+                          setEmpForm({ ...empForm, telegram: e.target.value })
+                        }
+                        className="w-full bg-white border border-blue-300 rounded-lg pl-8 pr-3 py-2 text-xs font-mono font-bold outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-200"
+                        placeholder="username"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* تفاصيل التحويل */}
+              <div className="bg-white p-5 border border-gray-200 rounded-xl shadow-sm">
+                <label className="block mb-3 text-[14px] font-black text-gray-800 border-b border-gray-100 pb-2">
+                  <Wallet className="w-4 h-4 inline-block text-blue-500 ml-1" />{" "}
+                  بيانات استلام المستحقات (Transfer Details)
+                </label>
+                <div className="flex gap-3 mb-4 flex-wrap">
+                  {[
+                    "حساب بنكي محلي/دولي",
+                    "ويسترن يونيون",
+                    "InstaPay",
+                    "محفظة رقمية USDT",
+                  ].map((method) => (
+                    <label
+                      key={method}
+                      className={`flex items-center gap-2 px-4 py-2 border-2 rounded-xl cursor-pointer transition-colors ${empForm.transferMethod === method ? "border-blue-600 bg-blue-50 shadow-sm" : "border-gray-200 bg-gray-50 hover:bg-gray-100"}`}
+                    >
+                      <input
+                        type="radio"
+                        checked={empForm.transferMethod === method}
+                        onChange={() =>
+                          setEmpForm({
+                            ...empForm,
+                            transferMethod: method,
+                            transferDetails: {},
+                          })
+                        }
+                        className="accent-blue-600 w-4 h-4"
+                      />
+                      <span className="text-xs font-bold text-gray-700">
+                        {method}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+
+                {/* حقول ديناميكية حسب الطريقة */}
+                <div className="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-xl border border-gray-200">
+                  {!empForm.transferMethod && (
+                    <div className="col-span-2 text-center text-xs text-gray-400 font-bold">
+                      يرجى اختيار طريقة التحويل لعرض الحقول المناسبة
+                    </div>
+                  )}
+                  {empForm.transferMethod === "حساب بنكي محلي/دولي" && (
+                    <>
+                      <div>
+                        <label className="text-[10px] font-bold text-gray-500 mb-1 block">
+                          اسم البنك
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="اسم البنك"
+                          value={empForm.transferDetails?.bankName || ""}
+                          onChange={(e) =>
+                            setEmpForm({
+                              ...empForm,
+                              transferDetails: {
+                                ...empForm.transferDetails,
+                                bankName: e.target.value,
+                              },
+                            })
+                          }
+                          className="w-full border border-gray-300 p-2 rounded-lg text-xs focus:border-blue-500 outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-bold text-gray-500 mb-1 block">
+                          IBAN / رقم الحساب
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="IBAN"
+                          value={empForm.transferDetails?.iban || ""}
+                          onChange={(e) =>
+                            setEmpForm({
+                              ...empForm,
+                              transferDetails: {
+                                ...empForm.transferDetails,
+                                iban: e.target.value,
+                              },
+                            })
+                          }
+                          className="w-full border border-gray-300 p-2 rounded-lg text-xs font-mono focus:border-blue-500 outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-bold text-gray-500 mb-1 block">
+                          SWIFT Code
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="SWIFT Code"
+                          value={empForm.transferDetails?.swift || ""}
+                          onChange={(e) =>
+                            setEmpForm({
+                              ...empForm,
+                              transferDetails: {
+                                ...empForm.transferDetails,
+                                swift: e.target.value,
+                              },
+                            })
+                          }
+                          className="w-full border border-gray-300 p-2 rounded-lg text-xs font-mono focus:border-blue-500 outline-none"
+                        />
+                      </div>
+                    </>
+                  )}
+                  {empForm.transferMethod === "InstaPay" && (
+                    <div className="col-span-2">
+                      <label className="text-[10px] font-bold text-gray-500 mb-1 block">
+                        عنوان InstaPay
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="username@instapay"
+                        value={empForm.transferDetails?.instapayAddress || ""}
+                        onChange={(e) =>
+                          setEmpForm({
+                            ...empForm,
+                            transferDetails: {
+                              ...empForm.transferDetails,
+                              instapayAddress: e.target.value,
+                            },
+                          })
+                        }
+                        className="w-full border border-gray-300 p-2 rounded-lg text-xs font-mono focus:border-blue-500 outline-none"
+                      />
+                    </div>
+                  )}
+                  {empForm.transferMethod === "ويسترن يونيون" && (
+                    <div className="col-span-2">
+                      <label className="text-[10px] font-bold text-gray-500 mb-1 block">
+                        الاسم المطابق للهوية بالإنجليزية
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Full Name in English"
+                        value={empForm.transferDetails?.westernNameEn || ""}
+                        onChange={(e) =>
+                          setEmpForm({
+                            ...empForm,
+                            transferDetails: {
+                              ...empForm.transferDetails,
+                              westernNameEn: e.target.value,
+                            },
+                          })
+                        }
+                        className="w-full border border-gray-300 p-2 rounded-lg text-xs font-mono focus:border-blue-500 outline-none"
+                        dir="ltr"
+                      />
+                    </div>
+                  )}
+                  {empForm.transferMethod === "محفظة رقمية USDT" && (
+                    <>
+                      <div>
+                        <label className="text-[10px] font-bold text-gray-500 mb-1 block">
+                          الشبكة (Network)
+                        </label>
+                        <select
+                          value={empForm.transferDetails?.network || ""}
+                          onChange={(e) =>
+                            setEmpForm({
+                              ...empForm,
+                              transferDetails: {
+                                ...empForm.transferDetails,
+                                network: e.target.value,
+                              },
+                            })
+                          }
+                          className="w-full border border-gray-300 p-2 rounded-lg text-xs focus:border-blue-500 outline-none"
+                        >
+                          <option value="">اختر الشبكة...</option>
+                          <option>TRC20 (Tron)</option>
+                          <option>ERC20 (Ethereum)</option>
+                          <option>BEP20 (BSC)</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-bold text-gray-500 mb-1 block">
+                          عنوان المحفظة (Address)
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="Wallet Address"
+                          value={empForm.transferDetails?.address || ""}
+                          onChange={(e) =>
+                            setEmpForm({
+                              ...empForm,
+                              transferDetails: {
+                                ...empForm.transferDetails,
+                                address: e.target.value,
+                              },
+                            })
+                          }
+                          className="w-full border border-gray-300 p-2 rounded-lg text-xs font-mono focus:border-blue-500 outline-none"
+                        />
+                      </div>
+                    </>
+                  )}
+                </div>
+              </div>
+
+              {/* الملاحظات والمرفقات */}
+              <div className="grid grid-cols-2 gap-4 border-t border-gray-200 pt-4">
+                <div className="bg-white p-5 border border-gray-200 rounded-xl shadow-sm">
+                  <label className="block mb-2 text-[13px] font-black text-gray-800">
+                    ملاحظات داخلية (الإدارة فقط)
                   </label>
-                  <input
-                    value={empForm.phone}
+                  <textarea
+                    value={empForm.notes}
                     onChange={(e) =>
-                      setEmpForm({ ...empForm, phone: e.target.value })
+                      setEmpForm({ ...empForm, notes: e.target.value })
                     }
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50 font-mono text-[13px] outline-none focus:border-blue-500 focus:bg-white transition-colors"
-                    placeholder="05XXXXXXXX"
+                    className="w-full bg-gray-50 border border-gray-300 rounded-lg px-3 py-2 text-xs font-semibold outline-none focus:border-blue-500 h-[110px] resize-none"
+                    placeholder="أي ملاحظات، تقييم، الخ..."
                   />
                 </div>
-                <div>
-                  <label className="block text-[12px] font-bold text-gray-700 mb-1.5">
-                    البريد الإلكتروني
+
+                <div className="bg-white p-5 border border-gray-200 rounded-xl shadow-sm">
+                  <label className="block mb-2 text-[13px] font-black text-gray-800">
+                    <Paperclip className="w-4 h-4 inline text-gray-500" />{" "}
+                    المستندات والمرفقات (صورة الهوية، الجواز، CV)
                   </label>
-                  <input
-                    value={empForm.email}
-                    onChange={(e) =>
-                      setEmpForm({ ...empForm, email: e.target.value })
-                    }
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md bg-gray-50 font-mono text-[13px] outline-none focus:border-blue-500 focus:bg-white transition-colors"
-                    placeholder="email@domain.com"
-                  />
+                  <label className="flex flex-col items-center justify-center gap-2 p-5 border-2 border-dashed border-gray-300 bg-gray-50 hover:bg-blue-50 hover:border-blue-400 rounded-xl text-gray-500 cursor-pointer transition-all h-[110px]">
+                    <Upload className="w-6 h-6 text-gray-400" />
+                    <span className="text-[11px] font-bold text-gray-600">
+                      {empForm.files.length > 0
+                        ? `تم تحديد ${empForm.files.length} ملف للرفع`
+                        : "اضغط هنا لرفع المرفقات"}
+                    </span>
+                    <input
+                      type="file"
+                      multiple
+                      className="hidden"
+                      onChange={(e) =>
+                        setEmpForm({
+                          ...empForm,
+                          files: Array.from(e.target.files),
+                        })
+                      }
+                    />
+                  </label>
                 </div>
-              </div>
-              <div>
-                <label className="block text-[12px] font-bold text-gray-700 mb-1.5">
-                  العملة المفضلة للتحويل
-                </label>
-                <select
-                  value={empForm.currency}
-                  onChange={(e) =>
-                    setEmpForm({ ...empForm, currency: e.target.value })
-                  }
-                  className="w-full px-3 py-2.5 border border-gray-300 rounded-md bg-gray-50 font-bold text-[13px] outline-none focus:border-blue-500 focus:bg-white transition-colors appearance-none"
-                >
-                  <option value="EGP">جنيه مصري (EGP)</option>
-                  <option value="USD">دولار أمريكي (USD)</option>
-                  <option value="SAR">ريال سعودي (SAR)</option>
-                </select>
               </div>
             </div>
-            <div className="p-4 border-t bg-gray-50 flex justify-end gap-2">
+
+            {/* Footer */}
+            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-200 bg-white rounded-b-2xl shrink-0 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
               <button
                 onClick={() => setIsAddEmpOpen(false)}
-                className="px-4 py-1.5 border rounded bg-white text-sm font-bold"
+                className="px-6 py-2.5 rounded-xl bg-gray-100 border border-gray-300 text-gray-700 text-[12px] font-bold hover:bg-gray-200 transition-colors shadow-sm"
               >
-                إلغاء
+                إلغاء الأمر
               </button>
               <button
-                onClick={() => saveEmpMutation.mutate(empForm)}
-                disabled={saveEmpMutation.isPending || !empForm.name}
-                className="px-4 py-1.5 bg-blue-600 text-white rounded text-sm font-bold disabled:opacity-50"
+                onClick={handleSaveEmp}
+                disabled={saveEmpMutation.isPending}
+                className="flex items-center gap-2 px-8 py-2.5 rounded-xl bg-blue-600 text-white text-[13px] font-bold hover:bg-blue-700 transition-colors shadow-md disabled:opacity-50"
               >
-                {saveEmpMutation.isPending ? "جاري الحفظ..." : "حفظ"}
+                {saveEmpMutation.isPending ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Save className="w-4 h-4" />
+                )}
+                {modalMode === "add"
+                  ? "اعتماد وحفظ الملف"
+                  : "تحديث بيانات الملف"}
               </button>
             </div>
           </div>
@@ -1673,7 +2205,7 @@ const RemoteWorkAccountsPage = () => {
         </div>
       )}
 
-      {/* 2. Modal: تعيين معاملة ومهام */}
+      {/* 3. Modal: تعيين معاملة ومهام */}
       {isAssignTxOpen && selectedEmp && (
         <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 animate-in fade-in">
           <div
@@ -1847,7 +2379,7 @@ const RemoteWorkAccountsPage = () => {
         </div>
       )}
 
-      {/* 3. Modal: تسوية مهمة/معاملة */}
+      {/* 4. Modal: تسوية مهمة/معاملة */}
       {isSettleTxOpen && selectedTaskToSettle && (
         <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 animate-in fade-in">
           <div
@@ -1932,7 +2464,7 @@ const RemoteWorkAccountsPage = () => {
         </div>
       )}
 
-      {/* 4. Modal: تسجيل تحويل مالي */}
+      {/* 5. Modal: تسجيل تحويل مالي */}
       {isTransferOpen && selectedEmp && (
         <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 animate-in fade-in">
           <div
@@ -2113,7 +2645,7 @@ const RemoteWorkAccountsPage = () => {
         </div>
       )}
 
-      {/* 5. Modal: تسجيل دفعة سابقة */}
+      {/* 6. Modal: تسجيل دفعة سابقة */}
       {isPrevPaymentOpen && selectedEmp && (
         <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 animate-in fade-in">
           <div
@@ -2200,7 +2732,7 @@ const RemoteWorkAccountsPage = () => {
         </div>
       )}
 
-      {/* 6. Edit Exchange Rate Modal */}
+      {/* 7. Edit Exchange Rate Modal */}
       {isEditRateOpen && (
         <div className="fixed inset-0 bg-black/60 z-[150] flex items-center justify-center p-4">
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden">
