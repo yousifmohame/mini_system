@@ -10,10 +10,11 @@ import {
   Globe2,
   Save,
   Wallet,
+  Banknote, // ✅ أيقونة جديدة للنقدي
 } from "lucide-react";
 import { toast } from "sonner";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import api from "../api/axios"; // 👈 تأكد من المسار
+import api from "../api/axios";
 
 // ==========================================
 // 💡 قائمة رموز الدول الشائعة
@@ -31,7 +32,6 @@ const COUNTRY_CODES = [
 
 export function AddPersonModal({ type, onClose }) {
   const queryClient = useQueryClient();
-
   const [formData, setFormData] = useState({
     firstNameAr: "",
     secondNameAr: "",
@@ -74,55 +74,58 @@ export function AddPersonModal({ type, onClose }) {
   const config = typeConfig[type] || typeConfig["وسيط"];
   const isRemoteWorker = type === "موظف عن بعد";
 
-  // 💡 ربط الإضافة بالباك إند عبر FormData لدعم الملفات
   const addMutation = useMutation({
     mutationFn: async (payload) => {
       const fd = new FormData();
+      fd.append("name", payload.name);
+      fd.append("role", payload.role);
       Object.keys(payload).forEach((key) => {
-        if (key === "files") {
-          Array.from(payload.files).forEach((f) => fd.append("files", f));
-        } else if (key === "transferDetails") {
-          fd.append("transferDetails", JSON.stringify(payload[key]));
-        } else {
-          fd.append(key, payload[key]);
+        if (key !== "files" && key !== "name" && key !== "role") {
+          if (key === "transferDetails") {
+            fd.append("transferDetails", JSON.stringify(payload[key] || {}));
+          } else {
+            fd.append(key, payload[key] || "");
+          }
         }
       });
+      if (payload.files && payload.files.length > 0) {
+        payload.files.forEach((f) => fd.append("files", f));
+      }
       return await api.post("/persons", fd, {
         headers: { "Content-Type": "multipart/form-data" },
       });
     },
     onSuccess: () => {
-      toast.success(`تم تسجيل ${type} بنجاح وإضافته لقاعدة البيانات`);
-      queryClient.invalidateQueries(["persons-directory"]); // تحديث القوائم
-      queryClient.invalidateQueries(["persons-list"]);
+      toast.success(`تم تسجيل ${type} بنجاح`);
+      queryClient.invalidateQueries(["persons-directory"]);
+      queryClient.invalidateQueries(["persons-directory-modal"]);
       onClose();
     },
     onError: (err) => {
-      toast.error(err.response?.data?.message || "حدث خطأ أثناء إضافة الشخص");
+      toast.error(err.response?.data?.message || "الاسم والدور مطلوبان");
     },
   });
 
   const handleSubmit = () => {
-    let finalData = { ...formData };
+    const fullName =
+      `${formData.firstNameAr || ""} ${formData.secondNameAr || ""} ${formData.thirdNameAr || ""} ${formData.fourthNameAr || ""}`.trim();
 
-    // تجميع الاسم الرباعي
-    finalData.name =
-      `${finalData.firstNameAr || ""} ${finalData.secondNameAr || ""} ${finalData.thirdNameAr || ""} ${finalData.fourthNameAr || ""}`.trim();
+    if (!formData.firstNameAr) {
+      return toast.error("يرجى إدخال الاسم الأول على الأقل");
+    }
 
-    if (!finalData.name) return toast.error("يرجى إدخال الاسم الأول على الأقل");
-
-    // دمج رمز الدولة مع الرقم النهائي
-    finalData.phone = finalData.phoneWithoutCode
-      ? `${finalData.phoneCode}${finalData.phoneWithoutCode}`
-      : "";
-    finalData.whatsapp = finalData.whatsappWithoutCode
-      ? `${finalData.whatsappCode}${finalData.whatsappWithoutCode}`
-      : "";
-
-    finalData.role = type;
-    finalData.status = "نشط";
-
-    addMutation.mutate(finalData);
+    const finalPayload = {
+      ...formData,
+      name: fullName,
+      role: type,
+      phone: formData.phoneWithoutCode
+        ? `${formData.phoneCode}${formData.phoneWithoutCode}`
+        : "",
+      whatsapp: formData.whatsappWithoutCode
+        ? `${formData.whatsappCode}${formData.whatsappWithoutCode}`
+        : "",
+    };
+    addMutation.mutate(finalPayload);
   };
 
   return (
@@ -162,120 +165,72 @@ export function AddPersonModal({ type, onClose }) {
               الرباعي والبيانات الديموغرافية
             </label>
             <div className="grid grid-cols-4 gap-3 mb-4">
-              <div>
-                <label className="text-[10px] font-bold text-gray-500 mb-1 block">
-                  الاسم الأول *
-                </label>
-                <input
-                  type="text"
-                  placeholder="الاسم الأول (Ar)"
-                  value={formData.firstNameAr}
-                  onChange={(e) =>
-                    setFormData({ ...formData, firstNameAr: e.target.value })
-                  }
-                  className="w-full bg-gray-50 border border-gray-300 rounded-lg px-3 py-2 text-xs font-bold focus:border-blue-500 focus:bg-white outline-none transition-colors"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-gray-500 mb-1 block">
-                  الاسم الثاني
-                </label>
-                <input
-                  type="text"
-                  placeholder="الاسم الثاني"
-                  value={formData.secondNameAr}
-                  onChange={(e) =>
-                    setFormData({ ...formData, secondNameAr: e.target.value })
-                  }
-                  className="w-full bg-gray-50 border border-gray-300 rounded-lg px-3 py-2 text-xs focus:border-blue-500 focus:bg-white outline-none transition-colors"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-gray-500 mb-1 block">
-                  الاسم الثالث
-                </label>
-                <input
-                  type="text"
-                  placeholder="الاسم الثالث"
-                  value={formData.thirdNameAr}
-                  onChange={(e) =>
-                    setFormData({ ...formData, thirdNameAr: e.target.value })
-                  }
-                  className="w-full bg-gray-50 border border-gray-300 rounded-lg px-3 py-2 text-xs focus:border-blue-500 focus:bg-white outline-none transition-colors"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-gray-500 mb-1 block">
-                  الاسم الرابع (العائلة)
-                </label>
-                <input
-                  type="text"
-                  placeholder="الاسم الرابع"
-                  value={formData.fourthNameAr}
-                  onChange={(e) =>
-                    setFormData({ ...formData, fourthNameAr: e.target.value })
-                  }
-                  className="w-full bg-gray-50 border border-gray-300 rounded-lg px-3 py-2 text-xs font-bold focus:border-blue-500 focus:bg-white outline-none transition-colors"
-                />
-              </div>
+              {[
+                "firstNameAr",
+                "secondNameAr",
+                "thirdNameAr",
+                "fourthNameAr",
+              ].map((field, idx) => (
+                <div key={field}>
+                  <label className="text-[10px] font-bold text-gray-500 mb-1 block">
+                    {
+                      [
+                        "الاسم الأول *",
+                        "الاسم الثاني",
+                        "الاسم الثالث",
+                        "الاسم الرابع (العائلة)",
+                      ][idx]
+                    }
+                  </label>
+                  <input
+                    type="text"
+                    placeholder={
+                      [
+                        "الاسم الأول (Ar)",
+                        "الاسم الثاني",
+                        "الاسم الثالث",
+                        "الاسم الرابع",
+                      ][idx]
+                    }
+                    value={formData[field]}
+                    onChange={(e) =>
+                      setFormData({ ...formData, [field]: e.target.value })
+                    }
+                    className="w-full bg-gray-50 border border-gray-300 rounded-lg px-3 py-2 text-xs font-bold focus:border-blue-500 focus:bg-white outline-none transition-colors"
+                  />
+                </div>
+              ))}
             </div>
             <div className="grid grid-cols-4 gap-3 mb-4">
-              <div>
-                <label className="text-[10px] font-bold text-gray-500 mb-1 block text-right">
-                  First Name
-                </label>
-                <input
-                  type="text"
-                  placeholder="First Name"
-                  value={formData.firstNameEn}
-                  onChange={(e) =>
-                    setFormData({ ...formData, firstNameEn: e.target.value })
-                  }
-                  className="w-full bg-gray-50 border border-gray-300 rounded-lg px-3 py-2 text-xs font-mono focus:border-blue-500 focus:bg-white outline-none transition-colors"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-gray-500 mb-1 block text-right">
-                  Second Name
-                </label>
-                <input
-                  type="text"
-                  placeholder="Second Name"
-                  value={formData.secondNameEn}
-                  onChange={(e) =>
-                    setFormData({ ...formData, secondNameEn: e.target.value })
-                  }
-                  className="w-full bg-gray-50 border border-gray-300 rounded-lg px-3 py-2 text-xs font-mono focus:border-blue-500 focus:bg-white outline-none transition-colors"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-gray-500 mb-1 block text-right">
-                  Third Name
-                </label>
-                <input
-                  type="text"
-                  placeholder="Third Name"
-                  value={formData.thirdNameEn}
-                  onChange={(e) =>
-                    setFormData({ ...formData, thirdNameEn: e.target.value })
-                  }
-                  className="w-full bg-gray-50 border border-gray-300 rounded-lg px-3 py-2 text-xs font-mono focus:border-blue-500 focus:bg-white outline-none transition-colors"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] font-bold text-gray-500 mb-1 block text-right">
-                  Last Name
-                </label>
-                <input
-                  type="text"
-                  placeholder="Last Name"
-                  value={formData.fourthNameEn}
-                  onChange={(e) =>
-                    setFormData({ ...formData, fourthNameEn: e.target.value })
-                  }
-                  className="w-full bg-gray-50 border border-gray-300 rounded-lg px-3 py-2 text-xs font-mono focus:border-blue-500 focus:bg-white outline-none transition-colors"
-                />
-              </div>
+              {[
+                "firstNameEn",
+                "secondNameEn",
+                "thirdNameEn",
+                "fourthNameEn",
+              ].map((field, idx) => (
+                <div key={field}>
+                  <label className="text-[10px] font-bold text-gray-500 mb-1 block text-right">
+                    {
+                      ["First Name", "Second Name", "Third Name", "Last Name"][
+                        idx
+                      ]
+                    }
+                  </label>
+                  <input
+                    type="text"
+                    placeholder={
+                      ["First Name", "Second Name", "Third Name", "Last Name"][
+                        idx
+                      ]
+                    }
+                    value={formData[field]}
+                    onChange={(e) =>
+                      setFormData({ ...formData, [field]: e.target.value })
+                    }
+                    className="w-full bg-gray-50 border border-gray-300 rounded-lg px-3 py-2 text-xs font-mono focus:border-blue-500 focus:bg-white outline-none transition-colors"
+                  />
+                </div>
+              ))}
             </div>
             <div className="grid grid-cols-3 gap-5">
               <div>
@@ -336,6 +291,7 @@ export function AddPersonModal({ type, onClose }) {
               معلومات التواصل (مدمجة بالرمز الدولي)
             </h3>
             <div className="grid grid-cols-3 gap-5">
+              {/* Phone */}
               <div>
                 <label className="block mb-1.5 text-[11px] font-bold text-gray-700">
                   رقم الجوال الأساسي *
@@ -368,6 +324,7 @@ export function AddPersonModal({ type, onClose }) {
                   />
                 </div>
               </div>
+              {/* Whatsapp */}
               <div>
                 <label className="block mb-1.5 text-[11px] font-bold text-green-700">
                   رقم الواتساب
@@ -400,6 +357,7 @@ export function AddPersonModal({ type, onClose }) {
                   />
                 </div>
               </div>
+              {/* Telegram */}
               <div dir="ltr">
                 <label className="block mb-1.5 text-[11px] font-bold text-blue-500 text-right">
                   معرّف التليجرام (Telegram)
@@ -422,7 +380,7 @@ export function AddPersonModal({ type, onClose }) {
             </div>
           </div>
 
-          {/* تفاصيل التحويل (دائماً متاحة ولكن اختيارية) */}
+          {/* ✅ تفاصيل التحويل مع إضافة خيار "نقدي" */}
           <div className="bg-white p-5 border border-gray-200 rounded-xl shadow-sm">
             <div className="flex items-center justify-between mb-3 border-b border-gray-100 pb-2">
               <label className="text-[14px] font-black text-gray-800">
@@ -440,28 +398,39 @@ export function AddPersonModal({ type, onClose }) {
                 "ويسترن يونيون",
                 "InstaPay",
                 "محفظة رقمية USDT",
-              ].map((method) => (
-                <label
-                  key={method}
-                  className={`flex items-center gap-2 px-4 py-2 border-2 rounded-xl cursor-pointer transition-colors ${formData.transferMethod === method ? "border-blue-600 bg-blue-50 shadow-sm" : "border-gray-200 bg-gray-50 hover:bg-gray-100"}`}
-                >
-                  <input
-                    type="radio"
-                    checked={formData.transferMethod === method}
-                    onChange={() =>
-                      setFormData({
-                        ...formData,
-                        transferMethod: method,
-                        transferDetails: {},
-                      })
-                    }
-                    className="accent-blue-600 w-4 h-4"
-                  />
-                  <span className="text-xs font-bold text-gray-700">
-                    {method}
-                  </span>
-                </label>
-              ))}
+                "نقدي", // ✅ تمت الإضافة
+              ].map((method) => {
+                const isCash = method === "نقدي";
+                return (
+                  <label
+                    key={method}
+                    className={`flex items-center gap-2 px-4 py-2 border-2 rounded-xl cursor-pointer transition-colors ${
+                      formData.transferMethod === method
+                        ? "border-blue-600 bg-blue-50 shadow-sm"
+                        : "border-gray-200 bg-gray-50 hover:bg-gray-100"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      checked={formData.transferMethod === method}
+                      onChange={() =>
+                        setFormData({
+                          ...formData,
+                          transferMethod: method,
+                          transferDetails: isCash ? { cashNote: "" } : {},
+                        })
+                      }
+                      className="accent-blue-600 w-4 h-4"
+                    />
+                    <span className="text-xs font-bold text-gray-700 flex items-center gap-1">
+                      {isCash && (
+                        <Banknote className="w-3 h-3 text-green-600" />
+                      )}
+                      {method}
+                    </span>
+                  </label>
+                );
+              })}
             </div>
 
             <div className="grid grid-cols-2 gap-4 bg-gray-50 p-4 rounded-xl border border-gray-200">
@@ -470,6 +439,41 @@ export function AddPersonModal({ type, onClose }) {
                   يرجى اختيار طريقة التحويل لعرض الحقول المناسبة (أو تجاهلها)
                 </div>
               )}
+
+              {/* ✅ حقول طريقة "نقدي" */}
+              {formData.transferMethod === "نقدي" && (
+                <div className="col-span-2 space-y-3">
+                  <div className="flex items-start gap-2 p-3 bg-green-50 border border-green-200 rounded-lg">
+                    <Banknote className="w-4 h-4 text-green-600 shrink-0 mt-0.5" />
+                    <span className="text-[11px] font-bold text-green-800">
+                      سيتم استلام المستحقات يدوياً (كاش) عند التسوية المباشرة.
+                      لا توجد بيانات بنكية مطلوبة.
+                    </span>
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-gray-500 mb-1 block">
+                      ملاحظات إضافية للاستلام النقدي (اختياري)
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="مثال: يستلم يوم الأحد، أو في مقر الشركة..."
+                      value={formData.transferDetails?.cashNote || ""}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          transferDetails: {
+                            ...formData.transferDetails,
+                            cashNote: e.target.value,
+                          },
+                        })
+                      }
+                      className="w-full border border-gray-300 p-2 rounded-lg text-xs focus:border-blue-500 outline-none"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* حساب بنكي */}
               {formData.transferMethod === "حساب بنكي محلي/دولي" && (
                 <>
                   <div>
@@ -553,6 +557,8 @@ export function AddPersonModal({ type, onClose }) {
                   </div>
                 </>
               )}
+
+              {/* InstaPay */}
               {formData.transferMethod === "InstaPay" && (
                 <div className="col-span-2">
                   <label className="text-[10px] font-bold text-gray-500 mb-1 block">
@@ -575,6 +581,8 @@ export function AddPersonModal({ type, onClose }) {
                   />
                 </div>
               )}
+
+              {/* ويسترن يونيون */}
               {formData.transferMethod === "ويسترن يونيون" && (
                 <div className="col-span-2">
                   <label className="text-[10px] font-bold text-gray-500 mb-1 block">
@@ -598,6 +606,8 @@ export function AddPersonModal({ type, onClose }) {
                   />
                 </div>
               )}
+
+              {/* محفظة رقمية USDT */}
               {formData.transferMethod === "محفظة رقمية USDT" && (
                 <>
                   <div>
@@ -648,7 +658,7 @@ export function AddPersonModal({ type, onClose }) {
             </div>
           </div>
 
-          {/* الملاحظات والمرفقات المشتركة */}
+          {/* الملاحظات والمرفقات */}
           <div className="grid grid-cols-2 gap-4 border-t border-gray-200 pt-4">
             <div className="bg-white p-5 border border-gray-200 rounded-xl shadow-sm">
               <label className="block mb-2 text-[13px] font-black text-gray-800">
@@ -663,7 +673,6 @@ export function AddPersonModal({ type, onClose }) {
                 placeholder="أي ملاحظات إضافية، ترتيبات مالية خاصة، الخ..."
               />
             </div>
-
             <div className="bg-white p-5 border border-gray-200 rounded-xl shadow-sm">
               <label className="block mb-2 text-[13px] font-black text-gray-800">
                 <Paperclip className="w-4 h-4 inline text-gray-500" /> المستندات
