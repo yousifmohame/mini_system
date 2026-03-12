@@ -7,10 +7,8 @@ import {
   Plus,
   Eye,
   Download,
-  Camera,
   X,
   Info,
-  CodeXml,
   Loader2,
   Save,
   Printer,
@@ -20,20 +18,34 @@ import {
   FileText,
   Edit3,
   Trash2,
+  ArrowDown,
+  ArrowUp,
+  Receipt,
+  Calculator,
 } from "lucide-react";
 
 const BankAccountsPage = () => {
   const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState("");
 
-  // Modals States
+  // ==========================================
+  // 💡 Modals States
+  // ==========================================
   const [isAddAccountOpen, setIsAddAccountOpen] = useState(false);
-  const [modalMode, setModalMode] = useState("add"); // "add" | "edit"
+  const [modalMode, setModalMode] = useState("add");
   const [selectedAccountId, setSelectedAccountId] = useState(null);
 
   const [isRechargeOpen, setIsRechargeOpen] = useState(false);
   const [isExportOpen, setIsExportOpen] = useState(false);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+
+  // Transaction Modal State
+  const [showTransactionModal, setShowTransactionModal] = useState(false);
+  const [transactionType, setTransactionType] = useState("deposit");
+  const [transactionAmount, setTransactionAmount] = useState("");
+  const [transactionDate, setTransactionDate] = useState("");
+  const [transactionAccount, setTransactionAccount] = useState("");
+  const [transactionNotes, setTransactionNotes] = useState("");
 
   // Forms States
   const initialAccountForm = {
@@ -61,7 +73,7 @@ const BankAccountsPage = () => {
   const [rechargeForm, setRechargeForm] = useState(initialRechargeForm);
 
   // ==========================================
-  // 1. Queries (جلب البيانات)
+  // 💡 Queries
   // ==========================================
   const { data: accounts = [], isLoading } = useQuery({
     queryKey: ["bank-accounts"],
@@ -80,7 +92,7 @@ const BankAccountsPage = () => {
   });
 
   // ==========================================
-  // 2. Mutations (العمليات)
+  // 💡 Mutations
   // ==========================================
   const saveAccountMutation = useMutation({
     mutationFn: async (payload) => {
@@ -97,6 +109,18 @@ const BankAccountsPage = () => {
       setIsAddAccountOpen(false);
     },
     onError: (err) => toast.error(err.response?.data?.message || "حدث خطأ"),
+  });
+
+  const transactionMutation = useMutation({
+    mutationFn: async (payload) =>
+      await api.post("/bank-accounts/transaction", payload),
+    onSuccess: (res) => {
+      toast.success(res.data?.message || "تم تسجيل العملية بنجاح");
+      queryClient.invalidateQueries(["bank-accounts"]);
+      setShowTransactionModal(false);
+    },
+    onError: (err) =>
+      toast.error(err.response?.data?.message || "حدث خطأ أثناء تسجيل العملية"),
   });
 
   const deleteAccountMutation = useMutation({
@@ -121,7 +145,7 @@ const BankAccountsPage = () => {
   });
 
   // ==========================================
-  // 3. Handlers
+  // 💡 Handlers
   // ==========================================
   const handleOpenAdd = () => {
     setModalMode("add");
@@ -180,8 +204,31 @@ const BankAccountsPage = () => {
     rechargeMutation.mutate(rechargeForm);
   };
 
+  const openTransactionModal = (type) => {
+    setTransactionType(type);
+    setTransactionAmount("");
+    setTransactionDate(new Date().toISOString().split("T")[0]);
+    setTransactionAccount(accounts[0]?.id || "");
+    setTransactionNotes("");
+    setShowTransactionModal(true);
+  };
+
+  const handleSaveTransaction = () => {
+    if (!transactionAmount || !transactionDate || !transactionAccount) {
+      toast.error("يرجى تعبئة جميع الحقول المطلوبة");
+      return;
+    }
+    transactionMutation.mutate({
+      accountId: transactionAccount,
+      type: transactionType,
+      amount: transactionAmount,
+      date: transactionDate,
+      notes: transactionNotes,
+    });
+  };
+
   // ==========================================
-  // 4. Stats & Filters
+  // 💡 Stats & Filters
   // ==========================================
   const filteredAccounts = useMemo(() => {
     if (!searchQuery) return accounts;
@@ -206,180 +253,149 @@ const BankAccountsPage = () => {
 
   const taxEstimate = stats.total * 0.15;
 
+  // ==========================================
+  // 💡 Main Render
+  // ==========================================
   return (
     <div
-      className="p-3 flex flex-col h-full overflow-hidden bg-[var(--wms-bg-0)] font-sans"
+      className="p-4 flex flex-col h-full overflow-hidden bg-slate-50 font-sans"
       dir="rtl"
     >
-      <div className="space-y-3 flex-1 flex flex-col min-h-0">
+      <div className="space-y-4 flex-1 flex flex-col min-h-0">
         {/* التقدير الضريبي العلوي */}
-        <div
-          className="flex items-center gap-4 p-3 rounded-lg border shrink-0"
-          style={{
-            backgroundColor: "rgba(59, 130, 246, 0.04)",
-            borderColor: "rgba(59, 130, 246, 0.15)",
-          }}
-        >
-          <div className="flex items-center gap-6 flex-1">
+        <div className="flex items-center gap-4 p-4 rounded-xl border bg-blue-50/50 border-blue-200 shadow-sm shrink-0">
+          <div className="flex items-center gap-8 flex-1">
             <div>
-              <div
-                className="text-[var(--wms-text-muted)]"
-                style={{ fontSize: "10px" }}
-              >
+              <div className="text-gray-500 font-bold text-[11px] mb-1">
                 إجمالي الرصيد البنكي
               </div>
-              <div
-                className="font-mono"
-                style={{
-                  fontSize: "16px",
-                  fontWeight: 700,
-                  color: "var(--wms-accent-blue)",
-                }}
-              >
+              <div className="font-mono text-blue-700 text-lg font-black">
                 {stats.total.toLocaleString()}
               </div>
             </div>
             <div>
-              <div
-                className="text-[var(--wms-text-muted)]"
-                style={{ fontSize: "10px" }}
-              >
+              <div className="text-gray-500 font-bold text-[11px] mb-1">
                 المبلغ الخاضع للتقدير
               </div>
-              <div
-                className="font-mono"
-                style={{
-                  fontSize: "16px",
-                  fontWeight: 700,
-                  color: "var(--wms-warning)",
-                }}
-              >
+              <div className="font-mono text-orange-600 text-lg font-black">
                 {stats.total.toLocaleString()}
               </div>
             </div>
             <div>
-              <div
-                className="text-[var(--wms-text-muted)]"
-                style={{ fontSize: "10px" }}
-              >
+              <div className="text-gray-500 font-bold text-[11px] mb-1">
                 النسبة التقديرية
               </div>
-              <div
-                className="font-mono"
-                style={{
-                  fontSize: "16px",
-                  fontWeight: 700,
-                  color: "var(--wms-warning)",
-                }}
-              >
+              <div className="font-mono text-orange-600 text-lg font-black">
                 15%
               </div>
             </div>
             <div>
-              <div
-                className="text-[var(--wms-text-muted)]"
-                style={{ fontSize: "10px" }}
-              >
+              <div className="text-gray-500 font-bold text-[11px] mb-1">
                 قيمة التقدير الضريبي
               </div>
-              <div
-                className="font-mono"
-                style={{
-                  fontSize: "16px",
-                  fontWeight: 700,
-                  color: "var(--wms-warning)",
-                }}
-              >
+              <div className="font-mono text-orange-600 text-lg font-black">
                 {taxEstimate.toLocaleString()}
               </div>
             </div>
           </div>
-          <div
-            className="flex items-start gap-1.5 shrink-0"
-            style={{ maxWidth: "200px" }}
-          >
-            <Info
-              className="w-3 h-3 mt-0.5 shrink-0 text-[var(--wms-text-muted)]"
-              style={{ opacity: 0.5 }}
-            />
-            <span
-              className="text-[var(--wms-text-muted)]"
-              style={{ fontSize: "9px", opacity: 0.6 }}
-            >
-              هذا الرقم تقديري داخلي وليس احتساباً ضريبياً رسمياً
+          <div className="flex items-start gap-2 shrink-0 max-w-[250px] text-gray-500 bg-white p-2.5 rounded-lg border border-gray-200 shadow-sm">
+            <Info className="w-4 h-4 mt-0.5 shrink-0 text-blue-500" />
+            <span className="text-[10px] font-bold leading-relaxed">
+              هذا الرقم تقديري للاستخدام الداخلي بناءً على إجمالي الأرصدة
+              المتوفرة وليس احتساباً ضريبياً رسمياً.
             </span>
           </div>
         </div>
 
-        {/* شريط الأدوات */}
-        <div className="flex items-center gap-2 shrink-0">
+        {/* شريط الأدوات (الأزرار الجديدة) */}
+        <div className="flex items-center gap-2 bg-white p-3 rounded-xl border border-gray-200 shadow-sm flex-wrap shrink-0">
           <button
             onClick={handleOpenAdd}
-            className="flex items-center gap-1.5 px-3 rounded-md bg-[var(--wms-accent-blue)] text-white cursor-pointer hover:opacity-90"
-            style={{ height: "32px", fontSize: "12px" }}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 shadow-sm text-xs font-bold transition-all"
           >
-            <Plus className="w-3.5 h-3.5" />
-            <span>إضافة حساب</span>
+            <Plus className="w-4 h-4" /> <span>إضافة حساب</span>
           </button>
+
+          <div className="w-px h-6 bg-gray-200 mx-1"></div>
+
+          <button
+            onClick={() => openTransactionModal("deposit")}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-green-50 text-green-700 border border-green-200 hover:bg-green-600 hover:text-white transition-all text-xs font-bold"
+          >
+            <ArrowDown className="w-4 h-4" /> <span>إيداع</span>
+          </button>
+          <button
+            onClick={() => openTransactionModal("withdrawal")}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-orange-50 text-orange-700 border border-orange-200 hover:bg-orange-600 hover:text-white transition-all text-xs font-bold"
+          >
+            <ArrowUp className="w-4 h-4" /> <span>سحب</span>
+          </button>
+          <button
+            onClick={() => openTransactionModal("expense")}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-red-50 text-red-700 border border-red-200 hover:bg-red-600 hover:text-white transition-all text-xs font-bold"
+          >
+            <Receipt className="w-4 h-4" /> <span>مصروف</span>
+          </button>
+
+          <div className="w-px h-6 bg-gray-200 mx-1"></div>
+
           <button
             onClick={() => setIsRechargeOpen(true)}
-            className="flex items-center gap-1.5 px-3 rounded-md bg-[var(--wms-surface-1)] border border-[var(--wms-border)] text-[var(--wms-text-sec)] hover:bg-[var(--wms-surface-2)] cursor-pointer"
-            style={{ height: "32px", fontSize: "12px" }}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-gray-100 text-gray-700 border border-gray-200 hover:bg-gray-200 transition-all text-xs font-bold"
           >
-            <UserPlus className="w-3.5 h-3.5" />
-            <span>شحن شخصي لشريك</span>
+            <UserPlus className="w-4 h-4" /> <span>ايداع لحساب شريك</span>
           </button>
+
+          <div className="flex-1" />
+
+          <div className="relative">
+            <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="بحث بالبنك أو الحساب..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="bg-gray-50 border border-gray-300 rounded-lg pr-9 pl-3 py-2 text-xs outline-none focus:border-blue-500 w-56 font-bold text-gray-700 transition-all"
+            />
+          </div>
+
           <button
             onClick={() => setIsExportOpen(true)}
-            className="flex items-center gap-1.5 px-3 rounded-md bg-[var(--wms-surface-1)] border border-[var(--wms-border)] text-[var(--wms-text-sec)] hover:bg-[var(--wms-surface-2)] cursor-pointer"
-            style={{ height: "32px", fontSize: "12px" }}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all text-xs font-bold shadow-sm"
           >
-            <Download className="w-3.5 h-3.5" />
-            <span>تصدير</span>
+            <Download className="w-4 h-4" /> <span>تصدير</span>
           </button>
           <button
             onClick={() => setIsPreviewOpen(true)}
-            className="flex items-center gap-1.5 px-3 rounded-md bg-[var(--wms-surface-1)] border border-[var(--wms-border)] text-[var(--wms-text-sec)] hover:bg-[var(--wms-surface-2)] cursor-pointer"
-            style={{ height: "32px", fontSize: "12px" }}
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 transition-all text-xs font-bold shadow-sm"
           >
-            <Eye className="w-3.5 h-3.5" />
-            <span>معاينة</span>
+            <Eye className="w-4 h-4" /> <span>معاينة للطباعة</span>
           </button>
         </div>
 
         {/* الجدول الرئيسي */}
-        <div className="bg-[var(--wms-surface-1)] border border-[var(--wms-border)] rounded-lg overflow-hidden flex-1 flex flex-col min-h-0">
+        <div className="bg-white border border-gray-200 rounded-xl overflow-hidden flex-1 flex flex-col shadow-sm min-h-0">
           <div className="overflow-auto custom-scrollbar-slim flex-1">
-            <table
-              className="w-full text-right whitespace-nowrap"
-              style={{ fontSize: "12px" }}
-            >
-              <thead className="sticky top-0 z-10">
-                <tr
-                  style={{
-                    backgroundColor: "var(--wms-surface-2)",
-                    height: "36px",
-                  }}
-                >
-                  <th className="px-3 text-[var(--wms-text-sec)] font-semibold text-[11px]">
-                    البنك
-                  </th>
-                  <th className="px-3 text-[var(--wms-text-sec)] font-semibold text-[11px]">
+            <table className="w-full text-right whitespace-nowrap text-xs">
+              <thead className="sticky top-0 z-10 bg-gray-100 border-b border-gray-200">
+                <tr>
+                  <th className="px-5 py-4 text-gray-700 font-bold">البنك</th>
+                  <th className="px-5 py-4 text-gray-700 font-bold">
                     رقم الحساب
                   </th>
-                  <th className="px-3 text-[var(--wms-text-sec)] font-semibold text-[11px]">
+                  <th className="px-5 py-4 text-gray-700 font-bold">
                     الرصيد الافتتاحي
                   </th>
-                  <th className="px-3 text-[var(--wms-text-sec)] font-semibold text-[11px]">
+                  <th className="px-5 py-4 text-gray-700 font-bold">
                     رصيد النظام
                   </th>
-                  <th className="px-3 text-[var(--wms-text-sec)] font-semibold text-[11px]">
+                  <th className="px-5 py-4 text-gray-700 font-bold">
                     الرصيد الخارجي
                   </th>
-                  <th className="px-3 text-[var(--wms-text-sec)] font-semibold text-[11px]">
+                  <th className="px-5 py-4 text-gray-700 font-bold">
                     الإجمالي
                   </th>
-                  <th className="px-3 text-center text-[var(--wms-text-sec)] font-semibold text-[11px]">
+                  <th className="px-5 py-4 text-center text-gray-700 font-bold">
                     إجراءات
                   </th>
                 </tr>
@@ -387,58 +403,62 @@ const BankAccountsPage = () => {
               <tbody>
                 {isLoading ? (
                   <tr>
-                    <td colSpan="7" className="text-center py-8">
+                    <td colSpan="7" className="text-center py-10">
                       <Loader2 className="w-6 h-6 animate-spin text-blue-500 mx-auto" />
                     </td>
                   </tr>
                 ) : filteredAccounts.length === 0 ? (
                   <tr>
-                    <td colSpan="7" className="text-center py-8 text-gray-500">
-                      لا توجد حسابات مسجلة
+                    <td
+                      colSpan="7"
+                      className="text-center py-10 text-gray-500 font-bold text-sm"
+                    >
+                      لا توجد حسابات بنكية مسجلة
                     </td>
                   </tr>
                 ) : (
                   filteredAccounts.map((acc, index) => (
                     <tr
                       key={acc.id}
-                      className={`border-b border-[var(--wms-border)]/30 hover:bg-[var(--wms-surface-2)]/40 transition-colors ${index % 2 === 1 ? "bg-[var(--wms-row-alt)]" : "bg-transparent"}`}
-                      style={{ height: "36px" }}
+                      className={`border-b border-gray-100 hover:bg-blue-50/40 transition-colors ${index % 2 === 1 ? "bg-gray-50/50" : "bg-white"}`}
                     >
-                      <td className="px-3">
-                        <div className="flex items-center gap-2">
-                          <Landmark className="w-3.5 h-3.5 text-[var(--wms-text-muted)]" />
-                          <span className="text-[var(--wms-text)] font-bold">
+                      <td className="px-5 py-3.5">
+                        <div className="flex items-center gap-3">
+                          <div className="p-1.5 bg-gray-100 rounded-md">
+                            <Landmark className="w-4 h-4 text-gray-500" />
+                          </div>
+                          <span className="text-gray-800 font-bold text-[13px]">
                             {acc.bankName}
                           </span>
                         </div>
                       </td>
-                      <td className="px-3 text-[var(--wms-text-sec)] font-mono text-[11px]">
+                      <td className="px-5 py-3.5 text-gray-600 font-mono font-bold text-[13px]">
                         {acc.accountNumber}
                       </td>
-                      <td className="px-3 text-[var(--wms-text)] font-mono">
+                      <td className="px-5 py-3.5 text-gray-500 font-mono font-bold">
                         {acc.initialBalance.toLocaleString()}
                       </td>
-                      <td className="px-3 font-mono text-[var(--wms-success)]">
+                      <td className="px-5 py-3.5 font-mono font-black text-green-600 text-[13px]">
                         {acc.systemBalance.toLocaleString()}
                       </td>
-                      <td className="px-3 font-mono text-[var(--wms-accent-blue)]">
+                      <td className="px-5 py-3.5 font-mono font-black text-orange-500 text-[13px]">
                         {acc.externalBalance.toLocaleString()}
                       </td>
-                      <td className="px-3 text-[var(--wms-text)] font-mono font-bold">
+                      <td className="px-5 py-3.5 text-blue-700 font-mono font-black text-[14px] bg-blue-50/30">
                         {acc.totalBalance.toLocaleString()}
                       </td>
-                      <td className="px-3 text-center">
+                      <td className="px-5 py-3.5 text-center">
                         <div className="flex items-center justify-center gap-2">
                           <button
                             onClick={() => handleOpenEdit(acc)}
-                            className="text-amber-500 hover:text-amber-700 transition-colors"
+                            className="p-2 bg-amber-50 text-amber-600 hover:bg-amber-600 hover:text-white rounded-lg transition-colors"
                             title="تعديل"
                           >
                             <Edit3 className="w-4 h-4" />
                           </button>
                           <button
                             onClick={() => handleDelete(acc.id)}
-                            className="text-red-500 hover:text-red-700 transition-colors"
+                            className="p-2 bg-red-50 text-red-600 hover:bg-red-600 hover:text-white rounded-lg transition-colors"
                             title="حذف"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -453,68 +473,78 @@ const BankAccountsPage = () => {
           </div>
         </div>
 
-        {/* إحصائيات سفلية */}
-        <div className="flex items-center gap-6 px-4 py-2.5 bg-[var(--wms-surface-1)] border border-[var(--wms-border)] rounded-lg shrink-0 overflow-x-auto custom-scrollbar-slim">
+        {/* إحصائيات سفلية للملخص السريع */}
+        <div className="flex items-center gap-8 px-6 py-4 bg-white border border-gray-200 rounded-xl shrink-0 shadow-sm overflow-x-auto custom-scrollbar-slim">
           <div>
-            <div className="text-[var(--wms-text-muted)] text-[10px]">
+            <div className="text-gray-500 font-bold text-xs mb-1">
               إجمالي الأرصدة البنكية
             </div>
-            <div className="font-mono text-[15px] font-bold text-[var(--wms-success)]">
-              {stats.total.toLocaleString()} ر.س
+            <div className="font-mono text-xl font-black text-green-600">
+              {stats.total.toLocaleString()}{" "}
+              <span className="text-[10px] text-green-800 font-normal">
+                ر.س
+              </span>
             </div>
           </div>
-          <div className="w-px h-7 bg-[var(--wms-border)]"></div>
+          <div className="w-px h-10 bg-gray-200"></div>
           <div>
-            <div className="text-[var(--wms-text-muted)] text-[10px]">
+            <div className="text-gray-500 font-bold text-xs mb-1">
               رصيد معاملات النظام
             </div>
-            <div className="font-mono text-[15px] font-bold text-[var(--wms-accent-blue)]">
-              {stats.system.toLocaleString()} ر.س
+            <div className="font-mono text-xl font-black text-blue-600">
+              {stats.system.toLocaleString()}{" "}
+              <span className="text-[10px] text-blue-800 font-normal">ر.س</span>
             </div>
           </div>
-          <div className="w-px h-7 bg-[var(--wms-border)]"></div>
+          <div className="w-px h-10 bg-gray-200"></div>
           <div>
-            <div className="text-[var(--wms-text-muted)] text-[10px]">
+            <div className="text-gray-500 font-bold text-xs mb-1">
               رصيد التفاصيل الخارجية
             </div>
-            <div className="font-mono text-[15px] font-bold text-[var(--wms-warning)]">
-              {stats.external.toLocaleString()} ر.س
+            <div className="font-mono text-xl font-black text-orange-500">
+              {stats.external.toLocaleString()}{" "}
+              <span className="text-[10px] text-orange-800 font-normal">
+                ر.س
+              </span>
             </div>
           </div>
         </div>
       </div>
 
       {/* ========================================================================= */}
-      {/* 1. Modal: إضافة/تعديل حساب بنكي */}
+      {/* 💡 Modals Windows */}
       {/* ========================================================================= */}
+
+      {/* 1. Modal إضافة/تعديل حساب بنكي */}
       {isAddAccountOpen && (
         <div
-          className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 animate-in fade-in"
+          className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 animate-in fade-in"
           dir="rtl"
         >
-          <div
-            className="bg-[var(--wms-surface-1)] border border-[var(--wms-border)] rounded-xl shadow-2xl w-full overflow-y-auto"
-            style={{ maxWidth: "520px", maxHeight: "90vh" }}
-          >
-            <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--wms-border)]">
-              <span
-                className="text-[var(--wms-text)]"
-                style={{ fontSize: "15px", fontWeight: 700 }}
-              >
-                {modalMode === "add" ? "إضافة حساب بنكي" : "تعديل حساب بنكي"}
-              </span>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gray-50 shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-blue-100 rounded-lg">
+                  <Landmark className="w-5 h-5 text-blue-600" />
+                </div>
+                <span className="text-gray-800 font-black text-lg">
+                  {modalMode === "add"
+                    ? "إضافة حساب بنكي"
+                    : "تعديل بيانات الحساب"}
+                </span>
+              </div>
               <button
                 onClick={() => setIsAddAccountOpen(false)}
-                className="text-[var(--wms-text-muted)] hover:text-red-500 cursor-pointer"
+                className="text-gray-500 hover:text-red-500 p-2 rounded-lg bg-white border border-gray-200 shadow-sm transition-colors"
               >
-                <X className="w-4 h-4" />
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="p-5 space-y-4">
-              <div className="grid grid-cols-2 gap-3">
+            <div className="p-6 space-y-5 overflow-y-auto custom-scrollbar-slim flex-1">
+              <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block mb-1.5 text-[var(--wms-text-sec)] text-[11px] font-bold">
+                  <label className="block mb-2 text-gray-700 text-xs font-bold">
                     اسم البنك *
                   </label>
                   <input
@@ -526,13 +556,13 @@ const BankAccountsPage = () => {
                         bankName: e.target.value,
                       })
                     }
-                    className="w-full bg-[var(--wms-surface-2)] border border-[var(--wms-border)] rounded-md px-3 text-[var(--wms-text)] outline-none focus:border-blue-500 h-[34px] text-[12px]"
+                    className="w-full bg-gray-50 border border-gray-300 rounded-xl p-3 text-sm outline-none focus:border-blue-500 font-bold text-gray-800"
                     placeholder="مثال: البنك الأهلي"
                   />
                 </div>
                 <div>
-                  <label className="block mb-1.5 text-[var(--wms-text-sec)] text-[11px] font-bold">
-                    اسم الحساب
+                  <label className="block mb-2 text-gray-700 text-xs font-bold">
+                    اسم الحساب (مسمى داخلي)
                   </label>
                   <input
                     type="text"
@@ -543,14 +573,14 @@ const BankAccountsPage = () => {
                         accountName: e.target.value,
                       })
                     }
-                    className="w-full bg-[var(--wms-surface-2)] border border-[var(--wms-border)] rounded-md px-3 text-[var(--wms-text)] outline-none focus:border-blue-500 h-[34px] text-[12px]"
-                    placeholder="حساب جاري رئيسي"
+                    className="w-full bg-gray-50 border border-gray-300 rounded-xl p-3 text-sm outline-none focus:border-blue-500 font-bold text-gray-800"
+                    placeholder="مثال: حساب جاري الشركة"
                   />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block mb-1.5 text-[var(--wms-text-sec)] text-[11px] font-bold">
+                  <label className="block mb-2 text-gray-700 text-xs font-bold">
                     رقم الحساب *
                   </label>
                   <input
@@ -562,13 +592,13 @@ const BankAccountsPage = () => {
                         accountNumber: e.target.value,
                       })
                     }
-                    className="w-full bg-[var(--wms-surface-2)] border border-[var(--wms-border)] rounded-md px-3 text-[var(--wms-text)] font-mono outline-none focus:border-blue-500 h-[34px] text-[12px]"
+                    className="w-full bg-gray-50 border border-gray-300 rounded-xl p-3 text-sm font-mono font-bold outline-none focus:border-blue-500"
                     placeholder="**** 0000"
                   />
                 </div>
                 <div>
-                  <label className="block mb-1.5 text-[var(--wms-text-sec)] text-[11px] font-bold">
-                    IBAN
+                  <label className="block mb-2 text-gray-700 text-xs font-bold">
+                    IBAN (الآيبان)
                   </label>
                   <input
                     type="text"
@@ -576,103 +606,22 @@ const BankAccountsPage = () => {
                     onChange={(e) =>
                       setAccountForm({ ...accountForm, iban: e.target.value })
                     }
-                    className="w-full bg-[var(--wms-surface-2)] border border-[var(--wms-border)] rounded-md px-3 text-[var(--wms-text)] font-mono outline-none focus:border-blue-500 h-[34px] text-[12px]"
+                    className="w-full bg-gray-50 border border-gray-300 rounded-xl p-3 text-sm font-mono font-bold outline-none focus:border-blue-500 text-left"
+                    dir="ltr"
                     placeholder="SA00 0000 0000"
                   />
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="relative">
-                  <label className="block mb-1.5 text-[var(--wms-text-sec)] text-[11px] font-bold">
-                    من فتح الحساب
-                  </label>
-                  <select
-                    value={accountForm.openedById}
-                    onChange={(e) =>
-                      setAccountForm({
-                        ...accountForm,
-                        openedById: e.target.value,
-                      })
-                    }
-                    className="w-full bg-[var(--wms-surface-2)] border border-[var(--wms-border)] rounded-md px-2 text-[var(--wms-text)] outline-none h-[34px] text-[12px] appearance-none"
-                  >
-                    <option value="">اختر الشخص...</option>
-                    {persons.map((emp) => (
-                      <option key={emp.id} value={emp.id}>
-                        {emp.name}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown className="absolute left-2 top-[26px] w-3.5 h-3.5 text-gray-400 pointer-events-none" />
-                </div>
-                <div>
-                  <label className="block mb-1.5 text-[var(--wms-text-sec)] text-[11px] font-bold">
-                    تاريخ فتح الحساب
-                  </label>
-                  <input
-                    type="date"
-                    value={accountForm.openDate}
-                    onChange={(e) =>
-                      setAccountForm({
-                        ...accountForm,
-                        openDate: e.target.value,
-                      })
-                    }
-                    className="w-full bg-[var(--wms-surface-2)] border border-[var(--wms-border)] rounded-md px-3 text-[var(--wms-text)] outline-none h-[34px] text-[12px]"
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="relative">
-                  <label className="block mb-1.5 text-[var(--wms-text-sec)] text-[11px] font-bold">
-                    تحت سيطرة من
-                  </label>
-                  <select
-                    value={accountForm.controlledById}
-                    onChange={(e) =>
-                      setAccountForm({
-                        ...accountForm,
-                        controlledById: e.target.value,
-                      })
-                    }
-                    className="w-full bg-[var(--wms-surface-2)] border border-[var(--wms-border)] rounded-md px-2 text-[var(--wms-text)] outline-none h-[34px] text-[12px] appearance-none"
-                  >
-                    <option value="">اختر الشخص...</option>
-                    {persons.map((emp) => (
-                      <option key={emp.id} value={emp.id}>
-                        {emp.name}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown className="absolute left-2 top-[26px] w-3.5 h-3.5 text-gray-400 pointer-events-none" />
-                </div>
-                <div>
-                  <label className="block mb-1.5 text-[var(--wms-text-sec)] text-[11px] font-bold">
-                    المخولون بالسحب (أسماء)
-                  </label>
-                  <input
-                    type="text"
-                    value={accountForm.authorizedPersons}
-                    onChange={(e) =>
-                      setAccountForm({
-                        ...accountForm,
-                        authorizedPersons: e.target.value,
-                      })
-                    }
-                    className="w-full bg-[var(--wms-surface-2)] border border-[var(--wms-border)] rounded-md px-3 text-[var(--wms-text)] outline-none focus:border-blue-500 h-[34px] text-[12px]"
-                    placeholder="مثال: أحمد، محمد"
-                  />
-                </div>
-              </div>
 
-              <div className="border-t border-[var(--wms-border)] pt-3">
-                <div className="text-[var(--wms-text)] mb-2 text-[12px] font-bold">
-                  الرصيد الافتتاحي
+              <div className="border-t border-gray-200 pt-5 mt-2">
+                <div className="text-gray-800 mb-4 text-sm font-black flex items-center gap-2">
+                  <Calculator className="w-4 h-4 text-gray-500" /> تفاصيل الرصيد
+                  الافتتاحي (عند الإضافة)
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="block mb-1.5 text-[var(--wms-text-sec)] text-[11px] font-bold">
-                      الرصيد الافتتاحي *
+                    <label className="block mb-2 text-gray-700 text-xs font-bold">
+                      الرصيد الافتتاحي (ر.س) *
                     </label>
                     <input
                       type="number"
@@ -683,13 +632,13 @@ const BankAccountsPage = () => {
                           initialBalance: e.target.value,
                         })
                       }
-                      className="w-full bg-[var(--wms-surface-2)] border border-[var(--wms-border)] rounded-md px-3 text-[var(--wms-text)] font-mono outline-none focus:border-blue-500 h-[34px] text-[13px]"
+                      className="w-full bg-blue-50 border border-blue-300 rounded-xl p-3 text-lg font-mono font-black text-blue-700 outline-none focus:border-blue-600"
                       placeholder="0"
                     />
                   </div>
                   <div>
-                    <label className="block mb-1.5 text-[var(--wms-text-sec)] text-[11px] font-bold">
-                      تاريخ الرصيد الافتتاحي
+                    <label className="block mb-2 text-gray-700 text-xs font-bold">
+                      تاريخ تسجيل الرصيد
                     </label>
                     <input
                       type="date"
@@ -700,102 +649,237 @@ const BankAccountsPage = () => {
                           initialBalanceDate: e.target.value,
                         })
                       }
-                      className="w-full bg-[var(--wms-surface-2)] border border-[var(--wms-border)] rounded-md px-3 text-[var(--wms-text)] outline-none h-[34px] text-[12px]"
+                      className="w-full bg-gray-50 border border-gray-300 rounded-xl p-3 text-sm font-bold outline-none focus:border-blue-500"
                     />
                   </div>
                 </div>
-                <div className="mt-2">
-                  <label className="block mb-1.5 text-[var(--wms-text-sec)] text-[11px] font-bold">
-                    ملاحظات
-                  </label>
-                  <input
-                    type="text"
-                    value={accountForm.initialBalanceNotes}
-                    onChange={(e) =>
-                      setAccountForm({
-                        ...accountForm,
-                        initialBalanceNotes: e.target.value,
-                      })
-                    }
-                    className="w-full bg-[var(--wms-surface-2)] border border-[var(--wms-border)] rounded-md px-3 text-[var(--wms-text)] outline-none h-[34px] text-[12px]"
-                    placeholder="ملاحظات اختيارية"
-                  />
-                </div>
               </div>
             </div>
-            <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-[var(--wms-border)]">
+
+            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-200 bg-gray-50 shrink-0">
               <button
                 onClick={() => setIsAddAccountOpen(false)}
-                className="px-4 py-1.5 rounded-md bg-[var(--wms-surface-2)] text-[var(--wms-text-sec)] cursor-pointer hover:bg-gray-200 text-[12px]"
+                className="px-6 py-2.5 rounded-xl bg-white border border-gray-300 text-gray-700 font-bold text-sm hover:bg-gray-100 transition-colors shadow-sm"
               >
                 إلغاء
               </button>
               <button
                 onClick={handleSaveAccount}
                 disabled={saveAccountMutation.isPending}
-                className="flex items-center gap-2 px-4 py-1.5 rounded-md bg-[var(--wms-accent-blue)] text-white cursor-pointer hover:opacity-90 disabled:opacity-50 text-[12px] font-bold"
+                className="flex items-center gap-2 px-8 py-2.5 rounded-xl bg-blue-600 text-white font-bold text-sm shadow-md hover:bg-blue-700 disabled:opacity-50 transition-colors"
               >
-                {saveAccountMutation.isPending && (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                {saveAccountMutation.isPending ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Save className="w-4 h-4" />
                 )}
-                {modalMode === "add" ? "إضافة الحساب" : "حفظ التعديلات"}
+                {modalMode === "add" ? "حفظ الحساب" : "تحديث البيانات"}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* 2. Modal: شحن شخصي لشريك */}
-      {/* ========================================================================= */}
-      {isRechargeOpen && (
+      {/* 2. Modal تسجيل معاملة بنكية (إيداع/سحب/مصروف) */}
+      {showTransactionModal && (
         <div
-          className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 animate-in fade-in"
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 animate-in fade-in"
           dir="rtl"
         >
-          <div className="bg-[var(--wms-surface-1)] border border-[var(--wms-border)] rounded-xl shadow-2xl w-full max-w-[480px]">
-            <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--wms-border)]">
-              <span className="text-[var(--wms-text)] text-[15px] font-bold">
-                شحن شخصي لشريك
-              </span>
+          <div className="bg-white border border-gray-200 rounded-2xl shadow-2xl w-full max-w-xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gray-50 shrink-0">
+              <div className="flex items-center gap-3">
+                {transactionType === "deposit" ? (
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-xl bg-green-100">
+                      <ArrowDown className="w-6 h-6 text-green-600" />
+                    </div>
+                    <span className="text-gray-800 text-lg font-black">
+                      تسجيل إيداع في البنك
+                    </span>
+                  </div>
+                ) : transactionType === "withdrawal" ? (
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-xl bg-orange-100">
+                      <ArrowUp className="w-6 h-6 text-orange-600" />
+                    </div>
+                    <span className="text-gray-800 text-lg font-black">
+                      تسجيل سحب من البنك
+                    </span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-xl bg-red-100">
+                      <Receipt className="w-6 h-6 text-red-600" />
+                    </div>
+                    <span className="text-gray-800 text-lg font-black">
+                      تسجيل مصروف بنكي
+                    </span>
+                  </div>
+                )}
+              </div>
               <button
-                onClick={() => setIsRechargeOpen(false)}
-                className="text-[var(--wms-text-muted)] hover:text-red-500 cursor-pointer"
+                onClick={() => setShowTransactionModal(false)}
+                className="text-gray-500 hover:text-red-500 p-2 rounded-lg border border-gray-200 bg-white transition-colors shadow-sm"
               >
-                <X className="w-4 h-4" />
+                <X className="w-5 h-5" />
               </button>
             </div>
-            <div className="p-5 space-y-4">
-              <div>
-                <label className="block mb-1.5 text-[var(--wms-text-sec)] text-[11px] font-bold">
-                  اسم الشريك *
-                </label>
-                <div className="relative">
-                  <select
-                    value={rechargeForm.partnerId}
-                    onChange={(e) =>
-                      setRechargeForm({
-                        ...rechargeForm,
-                        partnerId: e.target.value,
-                      })
-                    }
-                    className="w-full bg-[var(--wms-surface-2)] border border-[var(--wms-border)] rounded-md px-2 text-[var(--wms-text)] outline-none h-[34px] text-[12px] appearance-none"
-                  >
-                    <option value="">اختر الشريك...</option>
-                    {persons
-                      .filter((p) => p.role === "شريك")
-                      .map((emp) => (
-                        <option key={emp.id} value={emp.id}>
-                          {emp.name}
-                        </option>
-                      ))}
-                  </select>
-                  <ChevronDown className="absolute left-2 top-[10px] w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+
+            <div className="p-6 space-y-5 overflow-y-auto custom-scrollbar-slim flex-1">
+              <div className="grid grid-cols-3 gap-2 p-1.5 bg-gray-100 border border-gray-200 rounded-xl">
+                <button
+                  onClick={() => setTransactionType("deposit")}
+                  className={`flex items-center justify-center gap-2 py-2.5 rounded-lg font-bold text-sm transition-all ${transactionType === "deposit" ? "bg-green-600 text-white shadow-md" : "text-gray-600 hover:bg-gray-200"}`}
+                >
+                  <ArrowDown className="w-4 h-4" /> إيداع
+                </button>
+                <button
+                  onClick={() => setTransactionType("withdrawal")}
+                  className={`flex items-center justify-center gap-2 py-2.5 rounded-lg font-bold text-sm transition-all ${transactionType === "withdrawal" ? "bg-orange-500 text-white shadow-md" : "text-gray-600 hover:bg-gray-200"}`}
+                >
+                  <ArrowUp className="w-4 h-4" /> سحب
+                </button>
+                <button
+                  onClick={() => setTransactionType("expense")}
+                  className={`flex items-center justify-center gap-2 py-2.5 rounded-lg font-bold text-sm transition-all ${transactionType === "expense" ? "bg-red-600 text-white shadow-md" : "text-gray-600 hover:bg-gray-200"}`}
+                >
+                  <Receipt className="w-4 h-4" /> مصروف
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block mb-2 text-gray-700 text-xs font-bold">
+                    المبلغ (ر.س) *
+                  </label>
+                  <input
+                    type="number"
+                    value={transactionAmount}
+                    onChange={(e) => setTransactionAmount(e.target.value)}
+                    className={`w-full bg-white border-2 rounded-xl p-3 text-2xl font-mono font-black outline-none transition-colors ${transactionType === "deposit" ? "border-green-300 text-green-700 focus:border-green-500 bg-green-50" : transactionType === "withdrawal" ? "border-orange-300 text-orange-700 focus:border-orange-500 bg-orange-50" : "border-red-300 text-red-700 focus:border-red-500 bg-red-50"}`}
+                    placeholder="0"
+                  />
+                </div>
+                <div>
+                  <label className="block mb-2 text-gray-700 text-xs font-bold">
+                    تاريخ العملية *
+                  </label>
+                  <input
+                    type="date"
+                    value={transactionDate}
+                    onChange={(e) => setTransactionDate(e.target.value)}
+                    className="w-full bg-gray-50 border border-gray-300 rounded-xl p-4 text-sm font-bold outline-none focus:border-blue-500 text-gray-800"
+                  />
                 </div>
               </div>
+
               <div>
-                <label className="block mb-1.5 text-[var(--wms-text-sec)] text-[11px] font-bold">
-                  المبلغ *
+                <label className="block mb-2 text-gray-700 text-xs font-bold">
+                  في أي حساب بنكي؟ *
+                </label>
+                <select
+                  value={transactionAccount}
+                  onChange={(e) => setTransactionAccount(e.target.value)}
+                  className="w-full bg-gray-50 border border-gray-300 rounded-xl p-3 text-sm font-bold outline-none focus:border-blue-500 text-gray-800"
+                >
+                  <option value="">اختر الحساب...</option>
+                  {accounts.map((acc) => (
+                    <option key={acc.id} value={acc.id}>
+                      {acc.bankName} - {acc.accountNumber}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block mb-2 text-gray-700 text-xs font-bold">
+                  ملاحظات وسبب العملية
+                </label>
+                <textarea
+                  value={transactionNotes}
+                  onChange={(e) => setTransactionNotes(e.target.value)}
+                  className="w-full bg-gray-50 border border-gray-300 rounded-xl p-3 text-sm font-bold outline-none focus:border-blue-500 resize-none h-24 text-gray-800"
+                  placeholder="اكتب تفاصيل الدفعة، رقم الحوالة، أو اسم المودع..."
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-200 bg-gray-50 shrink-0">
+              <button
+                onClick={() => setShowTransactionModal(false)}
+                className="px-6 py-2.5 rounded-xl bg-white border border-gray-300 text-gray-700 font-bold text-sm hover:bg-gray-100 shadow-sm transition-colors"
+              >
+                إلغاء الأمر
+              </button>
+              <button
+                onClick={handleSaveTransaction}
+                disabled={transactionMutation.isPending}
+                className={`flex items-center gap-2 px-10 py-2.5 rounded-xl text-white font-black text-sm shadow-md transition-colors disabled:opacity-50 ${transactionType === "deposit" ? "bg-green-600 hover:bg-green-700" : transactionType === "withdrawal" ? "bg-orange-500 hover:bg-orange-600" : "bg-red-600 hover:bg-red-700"}`}
+              >
+                {transactionMutation.isPending ? (
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                ) : (
+                  <Save className="w-5 h-5" />
+                )}
+                تسجيل وحفظ
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 3. Modal: شحن شخصي لشريك */}
+      {isRechargeOpen && (
+        <div
+          className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 animate-in fade-in"
+          dir="rtl"
+        >
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gray-50">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-purple-100 rounded-lg">
+                  <UserPlus className="w-5 h-5 text-purple-600" />
+                </div>
+                <span className="text-gray-800 text-lg font-black">
+                  ايداع لحساب شريك
+                </span>
+              </div>
+              <button
+                onClick={() => setIsRechargeOpen(false)}
+                className="text-gray-500 hover:text-red-500 p-2 rounded-lg border bg-white shadow-sm transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 space-y-5">
+              <div>
+                <label className="block mb-2 text-gray-700 text-xs font-bold">
+                  اسم الشريك *
+                </label>
+                <select
+                  value={rechargeForm.partnerId}
+                  onChange={(e) =>
+                    setRechargeForm({
+                      ...rechargeForm,
+                      partnerId: e.target.value,
+                    })
+                  }
+                  className="w-full bg-gray-50 border border-gray-300 rounded-xl p-3 text-sm font-bold outline-none focus:border-purple-500 text-gray-800"
+                >
+                  <option value="">اختر الشريك...</option>
+                  {persons
+                    .filter((p) => p.role === "شريك")
+                    .map((emp) => (
+                      <option key={emp.id} value={emp.id}>
+                        {emp.name}
+                      </option>
+                    ))}
+                </select>
+              </div>
+              <div>
+                <label className="block mb-2 text-gray-700 text-xs font-bold">
+                  المبلغ (ر.س) *
                 </label>
                 <input
                   type="number"
@@ -803,373 +887,252 @@ const BankAccountsPage = () => {
                   onChange={(e) =>
                     setRechargeForm({ ...rechargeForm, amount: e.target.value })
                   }
-                  className="w-full bg-[var(--wms-surface-2)] border border-[var(--wms-border)] rounded-md px-3 text-[var(--wms-text)] font-mono outline-none focus:border-blue-500 h-[34px] text-[12px]"
-                  placeholder="المبلغ المراد شحنه"
+                  className="w-full bg-purple-50 border border-purple-300 rounded-xl p-3 text-xl font-mono font-black text-purple-700 outline-none focus:border-purple-600"
+                  placeholder="0"
                 />
               </div>
               <div>
-                <label className="block mb-1.5 text-[var(--wms-text-sec)] text-[11px] font-bold">
+                <label className="block mb-2 text-gray-700 text-xs font-bold">
                   الحساب البنكي المودع فيه *
                 </label>
-                <div className="relative">
-                  <select
-                    value={rechargeForm.accountId}
-                    onChange={(e) =>
-                      setRechargeForm({
-                        ...rechargeForm,
-                        accountId: e.target.value,
-                      })
-                    }
-                    className="w-full bg-[var(--wms-surface-2)] border border-[var(--wms-border)] rounded-md px-2 text-[var(--wms-text)] outline-none focus:border-blue-500 h-[34px] text-[12px] appearance-none"
-                  >
-                    <option value="">اختر الحساب البنكي...</option>
-                    {accounts.map((acc) => (
-                      <option key={acc.id} value={acc.id}>
-                        {acc.bankName} - {acc.accountNumber}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown className="absolute left-2 top-[10px] w-3.5 h-3.5 text-gray-400 pointer-events-none" />
-                </div>
+                <select
+                  value={rechargeForm.accountId}
+                  onChange={(e) =>
+                    setRechargeForm({
+                      ...rechargeForm,
+                      accountId: e.target.value,
+                    })
+                  }
+                  className="w-full bg-gray-50 border border-gray-300 rounded-xl p-3 text-sm font-bold outline-none focus:border-purple-500 text-gray-800"
+                >
+                  <option value="">اختر الحساب البنكي...</option>
+                  {accounts.map((acc) => (
+                    <option key={acc.id} value={acc.id}>
+                      {acc.bankName} - {acc.accountNumber}
+                    </option>
+                  ))}
+                </select>
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block mb-1.5 text-[var(--wms-text-sec)] text-[11px] font-bold">
-                    التاريخ
-                  </label>
-                  <input
-                    type="date"
-                    value={rechargeForm.date}
-                    onChange={(e) =>
-                      setRechargeForm({ ...rechargeForm, date: e.target.value })
-                    }
-                    className="w-full bg-[var(--wms-surface-2)] border border-[var(--wms-border)] rounded-md px-3 text-[var(--wms-text)] outline-none h-[34px] text-[12px]"
-                  />
-                </div>
-                <div>
-                  <label className="block mb-1.5 text-[var(--wms-text-sec)] text-[11px] font-bold">
-                    ملاحظات
-                  </label>
-                  <input
-                    type="text"
-                    value={rechargeForm.notes}
-                    onChange={(e) =>
-                      setRechargeForm({
-                        ...rechargeForm,
-                        notes: e.target.value,
-                      })
-                    }
-                    className="w-full bg-[var(--wms-surface-2)] border border-[var(--wms-border)] rounded-md px-3 text-[var(--wms-text)] outline-none h-[34px] text-[12px]"
-                    placeholder="ملاحظات اختيارية"
-                  />
-                </div>
-              </div>
-              <div
-                className="flex items-start gap-1.5 p-2 rounded-md border border-[var(--wms-warning)]/30"
-                style={{ backgroundColor: "rgba(217, 119, 6, 0.06)" }}
-              >
-                <Info className="w-3.5 h-3.5 mt-0.5 shrink-0 text-[var(--wms-warning)]" />
-                <span className="text-[var(--wms-text-sec)] text-[10px]">
-                  هذا الشحن يزيد رصيد البنك لكنه{" "}
-                  <b className="text-[var(--wms-danger)]">
-                    لا يُدخل في توزيع أرباح الشركاء
-                  </b>{" "}
-                  — يُصنّف كحركة شخصية غير قابلة للتوزيع.
+              <div className="flex items-start gap-2 p-4 rounded-xl border border-orange-200 bg-orange-50 shadow-sm mt-4">
+                <Info className="w-5 h-5 text-orange-600 shrink-0" />
+                <span className="text-orange-900 text-xs font-bold leading-relaxed">
+                  هذا الشحن سيزيد من رصيد البنك في النظام ولكنه لا يُحتسب كإيراد
+                  ولا يُدخل في توزيع أرباح الشركاء (يُصنّف كحركة خارجية).
                 </span>
               </div>
             </div>
-            <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-[var(--wms-border)]">
+            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-200 bg-gray-50">
               <button
                 onClick={() => setIsRechargeOpen(false)}
-                className="px-4 py-1.5 rounded-md bg-[var(--wms-surface-2)] text-[var(--wms-text-sec)] cursor-pointer hover:bg-gray-200 text-[12px]"
+                className="px-6 py-2.5 rounded-xl bg-white border border-gray-300 text-gray-700 font-bold text-sm hover:bg-gray-100 shadow-sm transition-colors"
               >
                 إلغاء
               </button>
               <button
                 onClick={handleRecharge}
                 disabled={rechargeMutation.isPending}
-                className="flex items-center gap-2 px-4 py-1.5 rounded-md bg-[var(--wms-accent-blue)] text-white cursor-pointer hover:opacity-90 disabled:opacity-50 text-[12px] font-bold"
+                className="flex items-center gap-2 px-8 py-2.5 rounded-xl bg-purple-600 text-white font-black text-sm shadow-md hover:bg-purple-700 disabled:opacity-50 transition-colors"
               >
-                {rechargeMutation.isPending && (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                {rechargeMutation.isPending ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Save className="w-4 h-4" />
                 )}{" "}
-                شحن الشريك
+                تنفيذ الشحن
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* 3. Export Modal */}
+      {/* 4. Export & Preview Modals */}
       {isExportOpen && (
         <div
-          className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 animate-in fade-in"
+          className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 animate-in fade-in"
           dir="rtl"
         >
-          <div
-            className="bg-[var(--wms-surface-1)] border border-[var(--wms-border)] rounded-xl shadow-2xl w-full"
-            style={{ maxWidth: "440px" }}
-          >
-            <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--wms-border)]">
-              <span
-                className="text-[var(--wms-text)]"
-                style={{ fontSize: "15px", fontWeight: 700 }}
-              >
+          <div className="bg-white border border-gray-200 rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gray-50">
+              <span className="text-gray-800 text-lg font-black">
                 تصدير تقرير البنوك
               </span>
               <button
                 onClick={() => setIsExportOpen(false)}
-                className="text-[var(--wms-text-muted)] hover:text-red-500 cursor-pointer"
+                className="text-gray-400 hover:text-red-500 p-1.5 rounded-lg border bg-white shadow-sm"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <div className="p-5 space-y-4">
-              <div>
-                <label
-                  className="block mb-1.5 text-[var(--wms-text-sec)]"
-                  style={{ fontSize: "11px", fontWeight: 700 }}
-                >
-                  صيغة الملف
-                </label>
-                <div className="flex gap-2">
-                  <label className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-[var(--wms-border)] cursor-pointer hover:bg-[var(--wms-surface-2)] transition-colors">
-                    <input
-                      type="radio"
-                      name="bankFormat"
-                      className="accent-blue-600"
-                      defaultChecked
-                    />
-                    <span
-                      className="text-[var(--wms-text)]"
-                      style={{ fontSize: "12px" }}
-                    >
-                      PDF
-                    </span>
-                  </label>
-                  <label className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-[var(--wms-border)] cursor-pointer hover:bg-[var(--wms-surface-2)] transition-colors">
-                    <input
-                      type="radio"
-                      name="bankFormat"
-                      className="accent-blue-600"
-                    />
-                    <span
-                      className="text-[var(--wms-text)]"
-                      style={{ fontSize: "12px" }}
-                    >
-                      Excel
-                    </span>
-                  </label>
-                </div>
-              </div>
+            <div className="p-8 space-y-4 text-center">
+              <Download className="w-14 h-14 text-blue-500 mx-auto mb-2 opacity-80" />
+              <p className="text-sm font-bold text-gray-700 leading-relaxed">
+                سيتم تصدير كشف الحسابات البنكية والأرصدة الحالية بصيغة Excel
+                لغرض المراجعة.
+              </p>
             </div>
-            <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-[var(--wms-border)]">
+            <div className="flex items-center justify-center gap-3 px-6 py-4 border-t border-gray-200 bg-gray-50">
               <button
-                onClick={() => {
-                  setIsExportOpen(false);
-                  setIsPreviewOpen(true);
-                }}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-[var(--wms-surface-2)] text-[var(--wms-text-sec)] cursor-pointer"
-                style={{ fontSize: "12px" }}
+                onClick={() => setIsExportOpen(false)}
+                className="px-6 py-2.5 rounded-xl bg-white border border-gray-300 text-gray-700 font-bold text-sm hover:bg-gray-100 transition-colors"
               >
-                <Eye className="w-3.5 h-3.5" />
-                <span>معاينة التقرير</span>
+                إلغاء
               </button>
               <button
                 onClick={() => {
                   toast.success("جاري التصدير...");
                   setIsExportOpen(false);
                 }}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-[var(--wms-accent-blue)] text-white cursor-pointer hover:opacity-90"
-                style={{ fontSize: "12px", fontWeight: 600 }}
+                className="px-8 py-2.5 rounded-xl bg-blue-600 text-white font-black text-sm shadow-md hover:bg-blue-700 transition-colors"
               >
-                <Download className="w-3.5 h-3.5" />
-                <span>تصدير</span>
+                تأكيد التصدير
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* 4. Preview Modal (A4 Print Layout) */}
       {isPreviewOpen && (
         <div
-          className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-4 animate-in fade-in"
+          className="fixed inset-0 bg-black/80 z-[150] flex items-center justify-center p-4 animate-in fade-in"
           dir="rtl"
+          onClick={() => setIsPreviewOpen(false)}
         >
           <div
-            className="bg-white border border-[var(--wms-border)] rounded-xl shadow-2xl flex flex-col"
-            style={{ width: "70vw", height: "85vh" }}
+            className="bg-white border border-gray-200 rounded-2xl shadow-2xl flex flex-col overflow-hidden w-full max-w-5xl"
+            style={{ height: "90vh" }}
+            onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between px-5 py-3 border-b border-[var(--wms-border)] shrink-0 print:hidden">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gray-50 shrink-0 print:hidden">
               <div className="flex items-center gap-3">
-                <FileText className="w-4 h-4 text-blue-600" />
-                <span
-                  className="text-[var(--wms-text)]"
-                  style={{ fontSize: "15px", fontWeight: 700 }}
-                >
-                  معاينة التقرير
+                <Printer className="w-6 h-6 text-gray-700" />
+                <span className="text-gray-800 font-black text-lg">
+                  معاينة للطباعة
                 </span>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex gap-2">
                 <button
                   onClick={() => window.print()}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-gray-100 text-gray-700 cursor-pointer hover:bg-gray-200"
-                  style={{ fontSize: "12px" }}
+                  className="px-6 py-2 rounded-xl bg-blue-600 text-white font-bold text-sm shadow-md hover:bg-blue-700 flex items-center gap-2 transition-colors"
                 >
-                  <Printer className="w-3.5 h-3.5" />
-                  <span>طباعة</span>
+                  <Printer className="w-4 h-4" /> اطبع الآن
                 </button>
                 <button
                   onClick={() => setIsPreviewOpen(false)}
-                  className="text-gray-400 hover:text-red-500 cursor-pointer ml-1 p-1.5 rounded bg-gray-50"
+                  className="p-2 rounded-xl border border-gray-300 bg-white hover:bg-gray-100 text-gray-500 transition-colors"
                 >
                   <X className="w-5 h-5" />
                 </button>
               </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-8 bg-gray-50 custom-scrollbar-slim">
-              <div
-                className="bg-white rounded-lg border border-gray-200 p-8 mx-auto print:border-none print:shadow-none print:p-0"
-                style={{
-                  maxWidth: "900px",
-                  boxShadow: "rgba(0,0,0,0.06) 0px 1px 3px",
-                }}
-              >
-                <div className="text-center mb-6 pb-4 border-b-2 border-blue-100">
-                  <div
-                    style={{
-                      fontSize: "18px",
-                      fontWeight: 700,
-                      color: "#1a2332",
-                    }}
-                  >
-                    تقرير الحسابات البنكية المجمعة
-                  </div>
-                  <div
-                    className="flex items-center justify-center gap-4 mt-2 text-gray-500"
-                    style={{ fontSize: "11px" }}
-                  >
-                    <span>الفترة: حتى تاريخه</span>
-                    <span>•</span>
-                    <span>
-                      تاريخ الإصدار: {new Date().toISOString().split("T")[0]}
-                    </span>
-                    <span>•</span>
-                    <span>أُعد بواسطة: النظام</span>
-                  </div>
-                </div>
+            <div
+              id="print-area"
+              className="flex-1 p-10 overflow-y-auto bg-white text-black"
+            >
+              <div className="text-center mb-8 border-b-2 border-gray-800 pb-6">
+                <h1 className="text-3xl font-black mb-3">
+                  تقرير الحسابات البنكية المجمعة
+                </h1>
+                <p className="text-sm font-bold text-gray-600">
+                  تاريخ إصدار التقرير: {new Date().toLocaleDateString("ar-SA")}
+                </p>
+              </div>
 
-                <div className="grid grid-cols-4 gap-3 mb-6 print:break-inside-avoid">
-                  <div className="p-3 rounded-lg text-center bg-gray-50 border border-gray-200">
-                    <div className="text-gray-500 text-[10px]">
-                      الرصيد الافتتاحي الإجمالي
-                    </div>
-                    <div className="font-mono mt-0.5 text-[16px] font-bold text-gray-600">
-                      {accounts
-                        .reduce((s, a) => s + a.initialBalance, 0)
-                        .toLocaleString()}{" "}
-                      ر.س
-                    </div>
-                  </div>
-                  <div className="p-3 rounded-lg text-center bg-green-50 border border-green-100">
-                    <div className="text-gray-500 text-[10px]">
-                      رصيد المعاملات (النظام)
-                    </div>
-                    <div className="font-mono mt-0.5 text-[16px] font-bold text-green-600">
-                      +{stats.system.toLocaleString()} ر.س
-                    </div>
-                  </div>
-                  <div className="p-3 rounded-lg text-center bg-amber-50 border border-amber-100">
-                    <div className="text-gray-500 text-[10px]">
-                      رصيد التفاصيل الخارجية
-                    </div>
-                    <div className="font-mono mt-0.5 text-[16px] font-bold text-amber-600">
-                      +{stats.external.toLocaleString()} ر.س
-                    </div>
-                  </div>
-                  <div className="p-3 rounded-lg text-center bg-blue-50 border border-blue-100">
-                    <div className="text-gray-500 text-[10px]">
-                      الرصيد النهائي الإجمالي
-                    </div>
-                    <div className="font-mono mt-0.5 text-[16px] font-bold text-blue-600">
-                      {stats.total.toLocaleString()} ر.س
-                    </div>
-                  </div>
+              <div className="grid grid-cols-4 gap-4 mb-8 border-2 border-gray-300 rounded-2xl p-6 bg-gray-50">
+                <div className="text-center">
+                  <span className="block text-sm font-bold text-gray-600 mb-2">
+                    الرصيد الافتتاحي
+                  </span>
+                  <span className="block text-2xl font-mono font-black text-gray-800">
+                    {accounts
+                      .reduce((s, a) => s + a.initialBalance, 0)
+                      .toLocaleString()}
+                  </span>
                 </div>
+                <div className="text-center border-r-2 border-gray-300">
+                  <span className="block text-sm font-bold text-gray-600 mb-2">
+                    رصيد النظام
+                  </span>
+                  <span className="block text-2xl font-mono font-black text-green-700">
+                    +{stats.system.toLocaleString()}
+                  </span>
+                </div>
+                <div className="text-center border-r-2 border-gray-300">
+                  <span className="block text-sm font-bold text-gray-600 mb-2">
+                    رصيد خارجي
+                  </span>
+                  <span className="block text-2xl font-mono font-black text-orange-600">
+                    +{stats.external.toLocaleString()}
+                  </span>
+                </div>
+                <div className="text-center border-r-2 border-gray-800">
+                  <span className="block text-sm font-bold text-gray-900 mb-2">
+                    الرصيد النهائي
+                  </span>
+                  <span className="block text-3xl font-mono font-black text-blue-800 border-b-4 border-blue-800 inline-block pb-1">
+                    {stats.total.toLocaleString()}
+                  </span>
+                </div>
+              </div>
 
-                <table
-                  className="w-full mb-6 print:text-[10px]"
-                  style={{ fontSize: "12px", borderCollapse: "collapse" }}
-                >
-                  <thead>
-                    <tr className="bg-gray-100 border-b-2 border-gray-300 text-gray-700">
-                      <th className="text-right px-3 py-2 font-bold text-[11px]">
-                        البنك
-                      </th>
-                      <th className="text-right px-3 py-2 font-bold text-[11px]">
-                        رقم الحساب
-                      </th>
-                      <th className="text-right px-3 py-2 font-bold text-[11px]">
-                        الرصيد الافتتاحي
-                      </th>
-                      <th className="text-right px-3 py-2 font-bold text-[11px]">
-                        رصيد النظام
-                      </th>
-                      <th className="text-right px-3 py-2 font-bold text-[11px]">
-                        الرصيد الخارجي
-                      </th>
-                      <th className="text-right px-3 py-2 font-bold text-[11px]">
-                        الإجمالي
-                      </th>
+              <table className="w-full text-right text-sm border-collapse border border-gray-300">
+                <thead>
+                  <tr className="bg-gray-200 border-b-2 border-gray-400">
+                    <th className="p-3 border border-gray-300 font-bold text-gray-800">
+                      البنك
+                    </th>
+                    <th className="p-3 border border-gray-300 font-bold text-gray-800">
+                      رقم الحساب
+                    </th>
+                    <th className="p-3 border border-gray-300 font-bold text-gray-800">
+                      الرصيد الافتتاحي
+                    </th>
+                    <th className="p-3 border border-gray-300 font-bold text-gray-800">
+                      رصيد النظام
+                    </th>
+                    <th className="p-3 border border-gray-300 font-bold text-gray-800">
+                      الرصيد الخارجي
+                    </th>
+                    <th className="p-3 border border-gray-300 font-bold text-gray-800 bg-gray-300">
+                      الإجمالي
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {accounts.map((row, i) => (
+                    <tr
+                      key={row.id}
+                      className="border-b border-gray-300 hover:bg-gray-50"
+                    >
+                      <td className="p-3 border border-gray-300 font-bold text-gray-900">
+                        {row.bankName}
+                      </td>
+                      <td className="p-3 border border-gray-300 font-mono text-gray-700">
+                        {row.accountNumber}
+                      </td>
+                      <td className="p-3 border border-gray-300 font-mono text-gray-800">
+                        {row.initialBalance.toLocaleString()}
+                      </td>
+                      <td className="p-3 border border-gray-300 font-mono text-green-700 font-bold">
+                        {row.systemBalance.toLocaleString()}
+                      </td>
+                      <td className="p-3 border border-gray-300 font-mono text-orange-600 font-bold">
+                        {row.externalBalance.toLocaleString()}
+                      </td>
+                      <td className="p-3 border border-gray-300 font-mono text-blue-800 font-black bg-blue-50/50">
+                        {row.totalBalance.toLocaleString()}
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {accounts.map((row, i) => (
-                      <tr
-                        key={row.id}
-                        style={{
-                          backgroundColor: i % 2 === 1 ? "#fafbfc" : "white",
-                          borderBottom: "1px solid #e5e7eb",
-                        }}
-                      >
-                        <td className="px-3 py-2 font-bold text-gray-700">
-                          {row.bankName}
-                        </td>
-                        <td className="px-3 py-2 font-mono text-gray-500">
-                          {row.accountNumber}
-                        </td>
-                        <td className="px-3 py-2 font-mono text-gray-600">
-                          {row.initialBalance.toLocaleString()}
-                        </td>
-                        <td className="px-3 py-2 font-mono text-green-600">
-                          {row.systemBalance.toLocaleString()}
-                        </td>
-                        <td className="px-3 py-2 font-mono text-amber-600">
-                          {row.externalBalance.toLocaleString()}
-                        </td>
-                        <td className="px-3 py-2 font-mono font-bold text-blue-600">
-                          {row.totalBalance.toLocaleString()}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-
-                <div className="rounded-lg p-4 bg-gray-50 border border-gray-200 mt-6 print:break-inside-avoid">
-                  <div className="text-[12px] font-bold text-gray-800 mb-2">
-                    التقدير الضريبي المبدئي
-                  </div>
-                  <div className="flex items-center justify-between px-3 py-1.5 rounded bg-blue-50 border border-blue-100">
-                    <span className="text-[11px] text-gray-600">
-                      الضريبة التقديرية بناءً على الأرصدة (15%)
-                    </span>
-                    <span className="font-mono text-[14px] font-bold text-blue-700">
-                      {taxEstimate.toLocaleString()} ر.س
-                    </span>
-                  </div>
-                </div>
+                  ))}
+                </tbody>
+              </table>
+              <div className="mt-8 p-6 border-2 border-dashed border-gray-300 rounded-2xl bg-gray-50 text-center print:break-inside-avoid">
+                <span className="font-bold text-gray-700 text-lg">
+                  التقدير الضريبي الداخلي (15%):{" "}
+                </span>
+                <span className="font-mono font-black text-2xl text-red-600 mr-2">
+                  {taxEstimate.toLocaleString()} ر.س
+                </span>
               </div>
             </div>
           </div>

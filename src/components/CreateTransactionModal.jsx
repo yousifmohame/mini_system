@@ -793,7 +793,7 @@ export const CreateTransactionModal = ({ isOpen, onClose, refetchTable }) => {
                   الجهات المرتبطة بالمعاملة
                 </label>
                 <div className="flex flex-wrap gap-4">
-                  {["الأمانة", "الهيئة", "الهيئة العليا", "القطاع"].map(
+                  {["الأمانة", "الهيئة الملكية لمدينة الرياض", "القطاع"].map(
                     (entity) => (
                       <label
                         key={entity}

@@ -30,8 +30,10 @@ import RiyadhDivisionScreen from "./pages/Riyadh/RiyadhDivisionScreen";
 import FinancialDashboardPage from "./pages/FinancialDashboardPage";
 import RemoteWorkAccountsPage from "./pages/RemoteWorkAccountsPage";
 import SettingsPage from "./pages/SettingsPage";
-import {ScreenSpecialAccount}  from "./pages/ScreenSpecialAccount"; // تأكد من مسار الاستيراد
+import { ScreenSpecialAccount } from "./pages/ScreenSpecialAccount"; // تأكد من مسار الاستيراد
 import MonthlySettlementPage from "./pages/MonthlySettlementPage";
+import OutsourceSalariesPage from "./pages/OutsourceSalariesPage";
+import ScreenPersonStatement from "./pages/ScreenPersonStatement";
 
 // --- Icons & Context ---
 import { Wrench } from "lucide-react";
@@ -77,8 +79,8 @@ const ComingSoonScreen = ({ screenId }) => (
 
 const AppContent = () => {
   const { user, loading } = useAuth();
-  const { activeScreenId, openScreens } = useAppStore(); 
-  
+  const { activeScreenId, openScreens } = useAppStore();
+
   // 💡 التعديل 2: جلب بيانات الشاشة النشطة حالياً
   const activeScreen = openScreens.find((s) => s.id === activeScreenId);
 
@@ -117,7 +119,9 @@ const AppContent = () => {
     "REMOTE_WORK",
     "SET_DELAYS",
     "SPECIAL_ACCOUNT",
-    "MONTHLY_SETTLEMENTS"
+    "MONTHLY_SETTLEMENTS",
+    "PAYMENTSـAUTO",
+    "PERSON_SETTLEMENTS",
   ];
   const isImplemented = implementedScreens.includes(activeScreenId);
 
@@ -301,16 +305,36 @@ const AppContent = () => {
               }
             >
               {activeScreenId === "SPECIAL_ACCOUNT" && (
-                <ScreenSpecialAccount accountName={activeScreen?.props?.accountName || "حساب خاص"} />
+                <ScreenSpecialAccount
+                  accountName={activeScreen?.props?.accountName || "حساب خاص"}
+                />
               )}
             </div>
 
             <div
               className={
-                activeScreenId === "MONTHLY_SETTLEMENTS" ? "block h-full" : "hidden"
+                activeScreenId === "MONTHLY_SETTLEMENTS"
+                  ? "block h-full"
+                  : "hidden"
               }
             >
               <MonthlySettlementPage />
+            </div>
+
+            <div
+              className={
+                activeScreenId === "PAYMENTSـAUTO" ? "block h-full" : "hidden"
+              }
+            >
+              <OutsourceSalariesPage />
+            </div>
+
+            <div
+              className={
+                activeScreenId === "PERSON_SETTLEMENTS" ? "block h-full" : "hidden"
+              }
+            >
+              <ScreenPersonStatement />
             </div>
 
             {/* --- شاشة Fallback لأي كود غير مبرمج --- */}
