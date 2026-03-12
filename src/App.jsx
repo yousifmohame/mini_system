@@ -31,6 +31,7 @@ import FinancialDashboardPage from "./pages/FinancialDashboardPage";
 import RemoteWorkAccountsPage from "./pages/RemoteWorkAccountsPage";
 import SettingsPage from "./pages/SettingsPage";
 import {ScreenSpecialAccount}  from "./pages/ScreenSpecialAccount"; // تأكد من مسار الاستيراد
+import MonthlySettlementPage from "./pages/MonthlySettlementPage";
 
 // --- Icons & Context ---
 import { Wrench } from "lucide-react";
@@ -115,7 +116,8 @@ const AppContent = () => {
     "FINANCE_DASH",
     "REMOTE_WORK",
     "SET_DELAYS",
-    "SPECIAL_ACCOUNT"
+    "SPECIAL_ACCOUNT",
+    "MONTHLY_SETTLEMENTS"
   ];
   const isImplemented = implementedScreens.includes(activeScreenId);
 
@@ -301,6 +303,14 @@ const AppContent = () => {
               {activeScreenId === "SPECIAL_ACCOUNT" && (
                 <ScreenSpecialAccount accountName={activeScreen?.props?.accountName || "حساب خاص"} />
               )}
+            </div>
+
+            <div
+              className={
+                activeScreenId === "MONTHLY_SETTLEMENTS" ? "block h-full" : "hidden"
+              }
+            >
+              <MonthlySettlementPage />
             </div>
 
             {/* --- شاشة Fallback لأي كود غير مبرمج --- */}

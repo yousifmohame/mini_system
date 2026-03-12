@@ -8,7 +8,6 @@ import {
   Building2,
   LayoutDashboard,
   Gauge,
-  ChevronDown,
   MapPin,
   ArrowUp,
   ArrowDown,
@@ -26,13 +25,12 @@ import {
   Briefcase,
   MapPinned,
   Clock,
-  Calculator,
-  Link2,
   CircleUser,
   BookUser,
   Workflow,
   Loader2,
   Settings,
+  ChevronRight,
 } from "lucide-react";
 
 const Sidebar = () => {
@@ -41,8 +39,6 @@ const Sidebar = () => {
 
   const { user } = useAuth();
   const { isBuildMode } = usePermissionBuilder();
-  const userPermissions = user?.permissions || [];
-  const isSuperAdmin = user?.email === "admin@wms.com";
 
   const handleNavigation = (screenId, screenTitle, screenProps = {}) => {
     openScreen(screenId, screenTitle, screenProps);
@@ -56,78 +52,127 @@ const Sidebar = () => {
 
   const specialAccounts = settings?.specialAccounts || [];
 
-  // مكون مساعد لزر القائمة
-  const NavItem = ({ screenId, title, icon: Icon, props = {} }) => {
+  // 🎨 مكون زر القائمة مع تأثيرات تفاعلية محسّنة
+  const NavItem = ({
+    screenId,
+    title,
+    icon: Icon,
+    props = {},
+    badge = null,
+  }) => {
     let isActive = activeScreenId === screenId;
-    if (isActive && props.sector) {
+    if (isActive && props?.sector) {
       isActive = activeScreen?.props?.sector === props.sector;
     }
-    if (isActive && props.accountName) {
+    if (isActive && props?.accountName) {
       isActive = activeScreen?.props?.accountName === props.accountName;
     }
 
     return (
       <button
         onClick={() => handleNavigation(screenId, title, props)}
-        className={`w-full flex items-center gap-3 px-5 py-2.5 transition-all duration-200 outline-none ${
+        className={`group w-full flex items-center justify-between px-4 py-2.5 my-0.5 rounded-xl transition-all duration-200 outline-none ${
           isActive
-            ? "bg-blue-600/20 text-blue-600 border-r-2 border-blue-600 font-semibold"
-            : "text-slate-800 hover:bg-slate-800/50 hover:text-slate-100 border-r-2 border-transparent font-medium"
+            ? "bg-gradient-to-l from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/25 font-bold"
+            : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 hover:pl-5 font-medium"
         }`}
       >
-        <Icon
-          className={`w-4 h-4 shrink-0 transition-colors ${isActive ? "text-blue-400" : "text-slate-500"}`}
-        />
-        <span className="text-[13px] tracking-wide truncate">{title}</span>
+        <div className="flex items-center gap-3">
+          <div
+            className={`p-1.5 rounded-lg transition-all duration-200 ${
+              isActive ? "bg-white/20" : "bg-slate-100 group-hover:bg-blue-100"
+            }`}
+          >
+            <Icon
+              className={`w-4 h-4 transition-colors ${
+                isActive
+                  ? "text-white"
+                  : "text-slate-500 group-hover:text-blue-600"
+              }`}
+            />
+          </div>
+          <span className="text-[13px] tracking-tight">{title}</span>
+        </div>
+        {badge && (
+          <span
+            className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+              isActive ? "bg-white/20 text-white" : "bg-blue-100 text-blue-700"
+            }`}
+          >
+            {badge}
+          </span>
+        )}
+        {isActive && <ChevronRight className="w-4 h-4 text-white/80" />}
       </button>
     );
   };
 
-  // ✅ مكون عنوان المجموعة (ثابت - غير قابل للنقر)
-  const CategoryHeader = ({ title, icon: Icon }) => (
-    <div className="flex items-center gap-2 px-5 py-2.5 mt-1 bg-red-800/40 rounded-lg mx-2">
-      {Icon && <Icon className="w-3.5 h-3.5 text-black" />}
-      <span className="text-[11px] font-bold tracking-wider text-black uppercase">
-        {title}
-      </span>
+  // 🎨 مكون عنوان المجموعة (ثابت - غير قابل للنقر)
+  const CategoryHeader = ({ title, icon: Icon, count = null }) => (
+    <div className="flex items-center justify-between px-4 py-3 mt-4 mb-1">
+      <div className="flex items-center gap-2">
+        {Icon && (
+          <div className="p-1.5 rounded-lg bg-gradient-to-br from-slate-100 to-slate-200">
+            <Icon className="w-3.5 h-3.5 text-slate-500" />
+          </div>
+        )}
+        <span className="text-[11px] font-bold tracking-wider text-slate-400 uppercase">
+          {title}
+        </span>
+      </div>
+      {count !== null && (
+        <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-[10px] font-bold">
+          {count}
+        </span>
+      )}
     </div>
   );
 
+  // 📊 حساب عدد العناصر لكل قسم لعرضه
+  const getSectionCount = (items) => items?.length || 0;
+
   return (
-    <aside className="w-[280px] bg-[#fff] text-slate-800 flex flex-col h-screen fixed right-0 top-0 z-40 shadow-2xl direction-rtl border-l border-slate-800/60 select-none">
-      {/* 1. الشعار */}
-      <div className="h-[65px] flex items-center px-6 border-b border-slate-800/80 bg-[#020617] shrink-0">
+    <aside
+      className="w-[290px] bg-white text-slate-800 flex flex-col h-screen fixed right-0 top-0 z-50 shadow-2xl direction-rtl border-l border-slate-200/60 select-none"
+      dir="rtl"
+    >
+      {/* ✨ 1. الشعار (Header) - تصميم فاخر */}
+      <div className="h-[70px] flex items-center px-6 border-b border-slate-200 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 shrink-0">
         <div className="flex items-center gap-3">
-          <div className="p-2 bg-gradient-to-br from-blue-600 to-blue-800 rounded-lg shadow-lg shadow-blue-900/20">
-            <Building2 className="w-5 h-5 text-white" />
+          <div className="relative">
+            <div className="p-2.5 bg-gradient-to-br from-blue-500 via-blue-600 to-indigo-700 rounded-xl shadow-lg shadow-blue-600/30">
+              <Building2 className="w-5 h-5 text-white" />
+            </div>
+            <div className="absolute -top-1 -right-1 w-3 h-3 bg-emerald-400 rounded-full border-2 border-slate-900 animate-pulse" />
           </div>
           <div>
-            <h1 className="font-bold text-[15px] tracking-wide text-white leading-tight">
+            <h1 className="font-black text-[16px] tracking-tight text-white leading-tight">
               النظام الهندسي
             </h1>
-            <p className="text-[10px] text-slate-400 font-mono tracking-widest uppercase">
-              Enterprise ERP
+            <p className="text-[9px] text-slate-400 font-mono tracking-wider uppercase">
+              Enterprise ERP • v2.0
             </p>
           </div>
         </div>
       </div>
 
-      {/* 2. القائمة (Navigation) - جميع العناصر ظاهرة دائماً */}
-      <nav className="flex-1 overflow-y-auto custom-scrollbar-slim py-3 scroll-smooth">
-        {/* ===================== الرئيسية ===================== */}
-        <div className="mb-3">
+      {/* 🧭 2. القائمة (Navigation) - جميع العناصر ظاهرة دائماً */}
+      <nav className="flex-1 overflow-y-auto custom-scrollbar-slim py-4 px-3 scroll-smooth">
+        {/* ===================== 🏠 الرئيسية ===================== */}
+        <div>
           <CategoryHeader title="الرئيسية" icon={LayoutDashboard} />
           <NavItem screenId="DASH" title="لوحة التحكم" icon={LayoutDashboard} />
           <NavItem
             screenId="FINANCE_DASH"
             title="مركز التحكم المالي"
             icon={Gauge}
+            badge="Pro"
           />
         </div>
 
-        {/* ===================== المعاملات ===================== */}
-        <div className="mb-3 border-t border-slate-800/50 pt-2">
-          <CategoryHeader title="إدارة المعاملات" icon={MapPin} />
+        {/* ===================== 💼 إدارة المعاملات ===================== */}
+        <div className="border-t border-slate-100 pt-2 mt-2">
+          <CategoryHeader title="إدارة المعاملات" icon={MapPin} count={6} />
           <NavItem
             screenId="TXN_LIST"
             title="قطاع الوسط"
@@ -160,15 +205,15 @@ const Sidebar = () => {
           />
           <NavItem
             screenId="TXN_LIST"
-            title="كل القطاعات"
+            title="🌐 كل القطاعات"
             icon={Layers}
             props={{ sector: "الكل" }}
           />
         </div>
 
-        {/* ===================== التسويات ===================== */}
-        <div className="mb-3 border-t border-slate-800/50 pt-2">
-          <CategoryHeader title="نظام التسويات" icon={Handshake} />
+        {/* ===================== 🤝 نظام التسويات ===================== */}
+        <div className="border-t border-slate-100 pt-2 mt-2">
+          <CategoryHeader title="نظام التسويات" icon={Handshake} count={4} />
           <NavItem
             screenId="BROKER_SETTLEMENTS"
             title="تسوية الوسطاء"
@@ -189,11 +234,16 @@ const Sidebar = () => {
             title="تسويات أصحاب المصلحة"
             icon={Star}
           />
+          <NavItem
+            screenId="MONTHLY_SETTLEMENTS"
+            title="مركز التسوية الشهرية"
+            icon={Star}
+          />
         </div>
 
-        {/* ===================== الماليات التشغيلية ===================== */}
-        <div className="mb-3 border-t border-slate-800/50 pt-2">
-          <CategoryHeader title="الماليات التشغيلية" icon={Wallet} />
+        {/* ===================== 💰 الماليات التشغيلية ===================== */}
+        <div className="border-t border-slate-100 pt-2 mt-2">
+          <CategoryHeader title="الماليات التشغيلية" icon={Wallet} count={4} />
           <NavItem screenId="EXPENSES" title="مصروفات المكتب" icon={Receipt} />
           <NavItem screenId="TREASURY" title="الخزنة" icon={Vault} />
           <NavItem
@@ -204,9 +254,13 @@ const Sidebar = () => {
           <NavItem screenId="PAYMENTS" title="إدارة الصرف" icon={Wallet} />
         </div>
 
-        {/* ===================== المكاتب المتعاونة ===================== */}
-        <div className="mb-3 border-t border-slate-800/50 pt-2">
-          <CategoryHeader title="المكاتب المتعاونة" icon={Briefcase} />
+        {/* ===================== 🏢 المكاتب المتعاونة ===================== */}
+        <div className="border-t border-slate-100 pt-2 mt-2">
+          <CategoryHeader
+            title="المكاتب المتعاونة"
+            icon={Briefcase}
+            count={3}
+          />
           <NavItem
             screenId="COOP_FEES"
             title="حسابات أتعاب المكاتب"
@@ -224,13 +278,13 @@ const Sidebar = () => {
           />
         </div>
 
-        {/* ===================== حسابات خاصة ===================== */}
-        <div className="mb-3 border-t border-slate-800/50 pt-2">
+        {/* ===================== 🔐 حسابات خاصة ===================== */}
+        <div className="border-t border-slate-100 pt-2 mt-2">
           <CategoryHeader title="حسابات خاصة" icon={CircleUser} />
           {isLoadingSettings ? (
-            <div className="px-5 py-2 text-slate-500 text-xs flex items-center gap-2">
-              <Loader2 className="w-3 h-3 animate-spin" /> جاري تحميل
-              الحسابات...
+            <div className="px-4 py-3 text-slate-400 text-xs flex items-center gap-2">
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-500" />
+              <span>جاري تحميل الحسابات...</span>
             </div>
           ) : specialAccounts.length > 0 ? (
             specialAccounts.map((acc, idx) => (
@@ -240,18 +294,19 @@ const Sidebar = () => {
                 title={acc.systemName}
                 icon={CircleUser}
                 props={{ accountName: acc.reportName }}
+                badge="خاص"
               />
             ))
           ) : (
-            <div className="px-5 py-2 text-slate-500 text-xs">
+            <div className="px-4 py-3 text-slate-400 text-xs bg-slate-50 rounded-lg mx-1">
               لا توجد حسابات مضافة
             </div>
           )}
         </div>
 
-        {/* ===================== السجلات ===================== */}
-        <div className="mb-3 border-t border-slate-800/50 pt-2">
-          <CategoryHeader title="سجلات النظام" icon={BookUser} />
+        {/* ===================== 📁 سجلات النظام ===================== */}
+        <div className="border-t border-slate-100 pt-2 mt-2">
+          <CategoryHeader title="سجلات النظام" icon={BookUser} count={1} />
           <NavItem
             screenId="PEOPLE_RECORDS"
             title="سجل الأشخاص"
@@ -259,9 +314,9 @@ const Sidebar = () => {
           />
         </div>
 
-        {/* ===================== الإعدادات ===================== */}
-        <div className="mb-4 border-t border-slate-800/50 pt-2">
-          <CategoryHeader title="الإعدادات" icon={Settings} />
+        {/* ===================== ⚙️ الإعدادات ===================== */}
+        <div className="border-t border-slate-100 pt-2 mt-2">
+          <CategoryHeader title="الإعدادات" icon={Settings} count={2} />
           <NavItem
             screenId="SET_ZONES"
             title="إعدادات الأحياء والقطاعات"
@@ -271,18 +326,26 @@ const Sidebar = () => {
         </div>
       </nav>
 
-      {/* الفوتر */}
-      <div className="p-4 border-t border-slate-800/80 bg-[#020617] shrink-0 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center border border-slate-700 text-slate-300 font-bold text-xs">
-            {user?.email ? user.email.charAt(0).toUpperCase() : "A"}
+      {/* ✨ الفوتر - تصميم احترافي */}
+      <div className="p-4 border-t border-slate-200 bg-gradient-to-r from-slate-50 to-white shrink-0">
+        <div className="flex items-center gap-3 p-2 rounded-xl bg-white border border-slate-200 shadow-sm">
+          <div className="relative">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold text-sm shadow-lg shadow-blue-500/25">
+              {user?.email ? user.email.charAt(0).toUpperCase() : "A"}
+            </div>
+            <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-400 rounded-full border-2 border-white" />
           </div>
-          <div className="flex flex-col">
-            <span className="text-xs font-medium text-slate-200 truncate w-[160px]">
+          <div className="flex-1 min-w-0">
+            <span className="block text-[13px] font-bold text-slate-800 truncate">
               {user?.name || "مدير النظام"}
             </span>
-            <span className="text-[10px] text-slate-500 font-mono truncate w-[160px]">
-              v2.0 (Stable)
+            <span className="block text-[10px] text-slate-400 font-mono">
+              {user?.email || "admin@wms.com"}
+            </span>
+          </div>
+          <div className="px-2 py-1 rounded-lg bg-emerald-50 border border-emerald-100">
+            <span className="text-[9px] font-bold text-emerald-600">
+              ONLINE
             </span>
           </div>
         </div>
