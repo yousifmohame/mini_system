@@ -27,6 +27,7 @@ import {
   Handshake,
   User,
   Loader2,
+  TrendingUp
 } from "lucide-react";
 
 const MAIN_TABS = [
@@ -37,7 +38,6 @@ const MAIN_TABS = [
   { id: "special-accounts", label: "الحسابات الخاصة" },
   { id: "delay", label: "التأخير" },
   { id: "tax", label: "التقدير الضريبي" },
-
 ];
 
 export default function SettingsPage({ initialTab = "general" }) {
@@ -340,44 +340,92 @@ function TaxTabContent() {
   );
 }
 
+// ============================================================================
+// 💡 مكون حصة المكتب (تصميم ERP احترافي للمؤسسات)
+// ============================================================================
 function OfficeShareTabContent() {
   const queryClient = useQueryClient();
   const { data: settings, isLoading } = useQuery({
     queryKey: ["system-settings"],
     queryFn: async () => (await api.get("/settings")).data.data,
   });
+
   const [form, setForm] = useState({
     officeShareType: "percentage",
     officeShareValue: 10,
-    officeShareCategories: [],
+    officeShareCategories: [], // شرائح الأرباح
     officeShareManual: false,
-    officeShareManualVal: 0,
   });
 
   useEffect(() => {
-    if (settings)
+    if (settings) {
       setForm({
         officeShareType: settings.officeShareType || "percentage",
         officeShareValue: settings.officeShareValue || 10,
-        officeShareCategories: settings.officeShareCategories || [],
+        officeShareCategories:
+          Array.isArray(settings.officeShareCategories) &&
+          settings.officeShareCategories.length > 0
+            ? settings.officeShareCategories
+            : [
+                {
+                  id: Date.now() + 1,
+                  minAmount: 0,
+                  maxAmount: 10000,
+                  value: 10,
+                  type: "percentage",
+                },
+                {
+                  id: Date.now() + 2,
+                  minAmount: 10001,
+                  maxAmount: 50000,
+                  value: 15,
+                  type: "percentage",
+                },
+              ],
         officeShareManual: settings.officeShareManual || false,
-        officeShareManualVal: settings.officeShareManualVal || 0,
       });
+    }
   }, [settings]);
 
   const updateMutation = useMutation({
     mutationFn: async (data) => await api.put("/settings", data),
     onSuccess: () => {
-      toast.success("تم حفظ إعدادات حصة المكتب");
+      toast.success("تم حفظ استراتيجية حصة المكتب بنجاح");
       queryClient.invalidateQueries(["system-settings"]);
     },
+    onError: () => toast.error("حدث خطأ أثناء الحفظ"),
   });
 
-  const updateCat = (id, val) => {
+  const addCategory = () => {
+    setForm({
+      ...form,
+      officeShareCategories: [
+        ...form.officeShareCategories,
+        {
+          id: Date.now(),
+          minAmount: 0,
+          maxAmount: 0,
+          value: 0,
+          type: "percentage",
+        },
+      ],
+    });
+  };
+
+  const removeCategory = (id) => {
+    setForm({
+      ...form,
+      officeShareCategories: form.officeShareCategories.filter(
+        (c) => c.id !== id,
+      ),
+    });
+  };
+
+  const updateCategory = (id, field, val) => {
     setForm({
       ...form,
       officeShareCategories: form.officeShareCategories.map((c) =>
-        c.id === id ? { ...c, fixedAmount: val } : c,
+        c.id === id ? { ...c, [field]: Number(val) || val } : c,
       ),
     });
   };
@@ -388,79 +436,252 @@ function OfficeShareTabContent() {
     );
 
   return (
-    <div className="space-y-6 animate-in fade-in max-w-4xl">
-      <div className="grid grid-cols-2 gap-8">
-        <div>
-          <label className="block text-gray-700 text-xs font-bold mb-3">
-            طريقة الاقتطاع المعتمدة
-          </label>
-          <div className="flex flex-col gap-3">
-            <label
-              className={`flex gap-3 p-3 border rounded-lg cursor-pointer ${form.officeShareType === "percentage" ? "border-blue-500 bg-blue-50" : ""}`}
-            >
-              <input
-                type="radio"
-                checked={form.officeShareType === "percentage"}
-                onChange={() =>
-                  setForm({ ...form, officeShareType: "percentage" })
-                }
-                className="accent-blue-600"
-              />{" "}
-              نسبة مئوية (%)
-            </label>
-            <label
-              className={`flex gap-3 p-3 border rounded-lg cursor-pointer ${form.officeShareType === "fixed" ? "border-blue-500 bg-blue-50" : ""}`}
-            >
-              <input
-                type="radio"
-                checked={form.officeShareType === "fixed"}
-                onChange={() => setForm({ ...form, officeShareType: "fixed" })}
-                className="accent-blue-600"
-              />{" "}
-              مبلغ ثابت (ر.س)
-            </label>
+    <div className="space-y-8 animate-in fade-in max-w-5xl mx-auto">
+      {/* القسم الأول: الاستراتيجية العامة */}
+      <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+        <div className="bg-slate-50 border-b border-gray-200 px-6 py-4 flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center text-blue-600">
+            <PieChart className="w-4 h-4" />
+          </div>
+          <div>
+            <h3 className="font-bold text-gray-800 text-[15px]">
+              الاستراتيجية العامة لاستقطاع حصة المكتب
+            </h3>
+            <p className="text-gray-500 text-[11px] mt-0.5">
+              تطبق هذه النسبة/المبلغ بشكل افتراضي على جميع المعاملات إذا لم يتم
+              تفعيل الشرائح.
+            </p>
           </div>
         </div>
-        <div>
-          <label className="block text-gray-700 text-xs font-bold mb-3">
-            القيمة الأساسية الافتراضية
-          </label>
-          <input
-            type="number"
-            value={form.officeShareValue}
-            onChange={(e) =>
-              setForm({ ...form, officeShareValue: e.target.value })
-            }
-            className="w-full bg-white border border-gray-300 rounded-lg px-4 h-[60px] font-mono font-black text-2xl text-blue-700"
-          />
-        </div>
-      </div>
 
-      <div className="bg-blue-50/50 border border-blue-200 p-5 rounded-xl">
-        <h4 className="font-bold text-sm text-blue-800 mb-4">
-          فئات الأرباح (تجاوز تلقائي للنسبة)
-        </h4>
-        <div className="grid grid-cols-4 gap-3">
-          {form.officeShareCategories?.map((cat) => (
-            <div key={cat.id} className="bg-white p-3 border rounded-lg">
-              <div className="text-xs font-bold mb-2">{cat.label}</div>
+        <div className="p-6 grid grid-cols-2 gap-8">
+          <div>
+            <label className="block text-gray-700 text-xs font-bold mb-3">
+              طريقة الاقتطاع الأساسية
+            </label>
+            <div className="flex gap-4">
+              <label
+                className={`flex-1 flex flex-col items-center justify-center gap-2 p-4 border-2 rounded-xl cursor-pointer transition-all ${form.officeShareType === "percentage" ? "border-blue-500 bg-blue-50" : "border-gray-200 hover:border-blue-200"}`}
+              >
+                <input
+                  type="radio"
+                  checked={form.officeShareType === "percentage"}
+                  onChange={() =>
+                    setForm({ ...form, officeShareType: "percentage" })
+                  }
+                  className="hidden"
+                />
+                <span
+                  className={`text-xl font-black ${form.officeShareType === "percentage" ? "text-blue-700" : "text-gray-400"}`}
+                >
+                  %
+                </span>
+                <span
+                  className={`text-xs font-bold ${form.officeShareType === "percentage" ? "text-blue-700" : "text-gray-600"}`}
+                >
+                  نسبة مئوية من الصافي
+                </span>
+              </label>
+              <label
+                className={`flex-1 flex flex-col items-center justify-center gap-2 p-4 border-2 rounded-xl cursor-pointer transition-all ${form.officeShareType === "fixed" ? "border-blue-500 bg-blue-50" : "border-gray-200 hover:border-blue-200"}`}
+              >
+                <input
+                  type="radio"
+                  checked={form.officeShareType === "fixed"}
+                  onChange={() =>
+                    setForm({ ...form, officeShareType: "fixed" })
+                  }
+                  className="hidden"
+                />
+                <span
+                  className={`text-xl font-black ${form.officeShareType === "fixed" ? "text-blue-700" : "text-gray-400"}`}
+                >
+                  ر.س
+                </span>
+                <span
+                  className={`text-xs font-bold ${form.officeShareType === "fixed" ? "text-blue-700" : "text-gray-600"}`}
+                >
+                  مبلغ ثابت مقطوع
+                </span>
+              </label>
+            </div>
+          </div>
+
+          <div className="flex flex-col justify-center">
+            <label className="block text-gray-700 text-xs font-bold mb-3">
+              القيمة الافتراضية
+            </label>
+            <div className="relative">
               <input
                 type="number"
-                value={cat.fixedAmount}
-                onChange={(e) => updateCat(cat.id, Number(e.target.value))}
-                className="w-full border rounded p-2 text-center font-mono font-bold"
+                value={form.officeShareValue}
+                onChange={(e) =>
+                  setForm({ ...form, officeShareValue: Number(e.target.value) })
+                }
+                className="w-full bg-gray-50 border border-gray-300 rounded-xl pl-12 pr-4 h-[64px] font-mono font-black text-2xl text-blue-700 focus:border-blue-500 outline-none transition-colors"
+                dir="ltr"
               />
+              <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-gray-400">
+                {form.officeShareType === "percentage" ? "%" : "SAR"}
+              </span>
             </div>
-          ))}
+          </div>
         </div>
       </div>
 
-      <div className="flex justify-end">
+      {/* القسم الثاني: نظام الشرائح الديناميكي (ERP Style) */}
+      <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+        <div className="bg-slate-50 border-b border-gray-200 px-6 py-4 flex justify-between items-center">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center text-purple-600">
+              <TrendingUp className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="font-bold text-gray-800 text-[15px]">
+                نظام الشرائح الديناميكي (متقدم)
+              </h3>
+              <p className="text-gray-500 text-[11px] mt-0.5">
+                تجاوز القيمة الافتراضية وتطبيق نسب مختلفة بناءً على حجم صافي
+                الربح للمعاملة.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={addCategory}
+            className="flex items-center gap-1.5 px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg text-xs font-bold hover:bg-gray-50 shadow-sm transition-colors"
+          >
+            <Plus className="w-3.5 h-3.5" /> إضافة شريحة
+          </button>
+        </div>
+
+        <div className="p-6 overflow-x-auto">
+          <table className="w-full text-right text-xs">
+            <thead className="bg-gray-50 border-b border-gray-200">
+              <tr>
+                <th className="px-4 py-3 font-bold text-gray-600">من (ر.س)</th>
+                <th className="px-4 py-3 font-bold text-gray-600">إلى (ر.س)</th>
+                <th className="px-4 py-3 font-bold text-gray-600">
+                  نوع الاقتطاع
+                </th>
+                <th className="px-4 py-3 font-bold text-gray-600">القيمة</th>
+                <th className="px-4 py-3 font-bold text-gray-600 text-center">
+                  إجراء
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {form.officeShareCategories.map((cat, i) => (
+                <tr
+                  key={cat.id}
+                  className="border-b border-gray-100 hover:bg-purple-50/30 transition-colors"
+                >
+                  <td className="px-4 py-3">
+                    <input
+                      type="number"
+                      value={cat.minAmount}
+                      onChange={(e) =>
+                        updateCategory(cat.id, "minAmount", e.target.value)
+                      }
+                      className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 font-mono font-bold outline-none focus:border-purple-500"
+                    />
+                  </td>
+                  <td className="px-4 py-3">
+                    <input
+                      type="number"
+                      value={cat.maxAmount}
+                      onChange={(e) =>
+                        updateCategory(cat.id, "maxAmount", e.target.value)
+                      }
+                      className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 font-mono font-bold outline-none focus:border-purple-500"
+                    />
+                  </td>
+                  <td className="px-4 py-3">
+                    <select
+                      value={cat.type}
+                      onChange={(e) =>
+                        updateCategory(cat.id, "type", e.target.value)
+                      }
+                      className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 font-bold outline-none focus:border-purple-500"
+                    >
+                      <option value="percentage">نسبة مئوية (%)</option>
+                      <option value="fixed">مبلغ ثابت (ر.س)</option>
+                    </select>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="relative">
+                      <input
+                        type="number"
+                        value={cat.value}
+                        onChange={(e) =>
+                          updateCategory(cat.id, "value", e.target.value)
+                        }
+                        className="w-full bg-white border border-gray-300 rounded-lg pr-8 pl-3 py-2 font-mono font-black text-purple-700 outline-none focus:border-purple-500"
+                        dir="ltr"
+                      />
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold text-gray-400 text-[10px]">
+                        {cat.type === "percentage" ? "%" : "SAR"}
+                      </span>
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    <button
+                      onClick={() => removeCategory(cat.id)}
+                      className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {form.officeShareCategories.length === 0 && (
+                <tr>
+                  <td
+                    colSpan="5"
+                    className="text-center py-10 text-gray-400 font-bold bg-gray-50/50"
+                  >
+                    لا توجد شرائح ديناميكية، سيتم الاعتماد على النسبة الافتراضية
+                    فقط.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* خيار التعديل اليدوي والتذييل */}
+      <div className="flex items-center justify-between border-t border-gray-200 pt-6">
+        <label className="flex items-center gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={form.officeShareManual}
+            onChange={(e) =>
+              setForm({ ...form, officeShareManual: e.target.checked })
+            }
+            className="w-5 h-5 accent-blue-600 rounded border-gray-300"
+          />
+          <div>
+            <span className="font-bold text-gray-800 text-sm block">
+              السماح للمحاسب بتعديل الحصة يدوياً داخل المعاملة
+            </span>
+            <span className="text-gray-500 text-[10px]">
+              إذا تم التفعيل، يمكن للمحاسب تجاوز كل القواعد أعلاه وكتابة مبلغ
+              مخصص.
+            </span>
+          </div>
+        </label>
+
         <button
           onClick={() => updateMutation.mutate(form)}
-          className="flex items-center gap-2 px-6 py-2 bg-blue-600 text-white rounded-lg font-bold"
+          disabled={updateMutation.isPending}
+          className="flex items-center gap-2 px-8 py-3 bg-blue-600 text-white rounded-xl font-bold shadow-lg hover:bg-blue-700 hover:shadow-blue-500/30 transition-all disabled:opacity-50"
         >
-          <Save className="w-4 h-4" /> حفظ الإعدادات
+          {updateMutation.isPending ? (
+            <Loader2 className="w-5 h-5 animate-spin" />
+          ) : (
+            <Save className="w-5 h-5" />
+          )}
+          حفظ استراتيجية المكتب
         </button>
       </div>
     </div>
@@ -469,9 +690,15 @@ function OfficeShareTabContent() {
 
 function SpecialAccountsTabContent() {
   const queryClient = useQueryClient();
-  const { data: settings, isLoading } = useQuery({ queryKey: ["system-settings"], queryFn: async () => (await api.get("/settings")).data.data });
-  const { data: persons = [] } = useQuery({ queryKey: ["persons-directory"], queryFn: async () => (await api.get("/persons")).data.data });
-  
+  const { data: settings, isLoading } = useQuery({
+    queryKey: ["system-settings"],
+    queryFn: async () => (await api.get("/settings")).data.data,
+  });
+  const { data: persons = [] } = useQuery({
+    queryKey: ["persons-directory"],
+    queryFn: async () => (await api.get("/persons")).data.data,
+  });
+
   const [accounts, setAccounts] = useState([]);
 
   useEffect(() => {
@@ -479,7 +706,8 @@ function SpecialAccountsTabContent() {
   }, [settings]);
 
   const updateMutation = useMutation({
-    mutationFn: async () => await api.put("/settings", { specialAccounts: accounts }),
+    mutationFn: async () =>
+      await api.put("/settings", { specialAccounts: accounts }),
     onSuccess: () => {
       toast.success("تم تحديث الحسابات الخاصة وربط الأشخاص بنجاح");
       queryClient.invalidateQueries(["system-settings"]);
@@ -487,28 +715,59 @@ function SpecialAccountsTabContent() {
     },
   });
 
-  const updateAcc = (id, field, val) => setAccounts(accounts.map((a) => (a.id === id ? { ...a, [field]: val } : a)));
-  const addNewAccount = () => setAccounts([...accounts, { id: Date.now(), systemName: "حساب جديد", reportName: "اسم التقرير", linkedPersons: [] }]);
-  const removeAccount = (id) => setAccounts(accounts.filter(a => a.id !== id));
+  const updateAcc = (id, field, val) =>
+    setAccounts(
+      accounts.map((a) => (a.id === id ? { ...a, [field]: val } : a)),
+    );
+  const addNewAccount = () =>
+    setAccounts([
+      ...accounts,
+      {
+        id: Date.now(),
+        systemName: "حساب جديد",
+        reportName: "اسم التقرير",
+        linkedPersons: [],
+      },
+    ]);
+  const removeAccount = (id) =>
+    setAccounts(accounts.filter((a) => a.id !== id));
 
   const togglePersonLink = (accId, personId) => {
-    setAccounts(accounts.map(acc => {
-      if (acc.id !== accId) return acc;
-      const linked = acc.linkedPersons || [];
-      return { ...acc, linkedPersons: linked.includes(personId) ? linked.filter(id => id !== personId) : [...linked, personId] };
-    }));
+    setAccounts(
+      accounts.map((acc) => {
+        if (acc.id !== accId) return acc;
+        const linked = acc.linkedPersons || [];
+        return {
+          ...acc,
+          linkedPersons: linked.includes(personId)
+            ? linked.filter((id) => id !== personId)
+            : [...linked, personId],
+        };
+      }),
+    );
   };
 
-  if (isLoading) return <Loader2 className="w-8 h-8 animate-spin mx-auto text-blue-500 my-10" />;
+  if (isLoading)
+    return (
+      <Loader2 className="w-8 h-8 animate-spin mx-auto text-blue-500 my-10" />
+    );
 
   return (
     <div className="space-y-6 animate-in fade-in max-w-4xl">
       <div className="flex items-center justify-between bg-blue-50/50 border border-blue-100 p-4 rounded-xl">
         <div>
-          <h3 className="text-sm font-bold text-blue-800">إدارة الحاويات (الحسابات الخاصة)</h3>
-          <p className="text-xs text-blue-600/80 mt-1">تجميع عدة أشخاص (وسطاء، معقبين، موظفين) تحت حساب واحد لعرضهم في شاشة وتقارير موحدة.</p>
+          <h3 className="text-sm font-bold text-blue-800">
+            إدارة الحاويات (الحسابات الخاصة)
+          </h3>
+          <p className="text-xs text-blue-600/80 mt-1">
+            تجميع عدة أشخاص (وسطاء، معقبين، موظفين) تحت حساب واحد لعرضهم في شاشة
+            وتقارير موحدة.
+          </p>
         </div>
-        <button onClick={addNewAccount} className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 shadow-sm transition-colors">
+        <button
+          onClick={addNewAccount}
+          className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white rounded-lg text-xs font-bold hover:bg-blue-700 shadow-sm transition-colors"
+        >
           <Plus className="w-4 h-4" /> إضافة حاوية جديدة
         </button>
       </div>
@@ -517,37 +776,87 @@ function SpecialAccountsTabContent() {
         <table className="w-full text-right text-xs">
           <thead className="bg-gray-100 border-b border-gray-200">
             <tr className="h-[40px]">
-              <th className="px-4 font-bold text-gray-600 w-[20%]">الاسم البرمجي</th>
-              <th className="px-4 font-bold text-gray-600 w-[20%]">اسم العرض</th>
-              <th className="px-4 font-bold text-gray-600 w-[50%]">الأشخاص المربوطين بالحاوية</th>
-              <th className="px-4 font-bold text-gray-600 text-center w-[10%]">حذف</th>
+              <th className="px-4 font-bold text-gray-600 w-[20%]">
+                الاسم البرمجي
+              </th>
+              <th className="px-4 font-bold text-gray-600 w-[20%]">
+                اسم العرض
+              </th>
+              <th className="px-4 font-bold text-gray-600 w-[50%]">
+                الأشخاص المربوطين بالحاوية
+              </th>
+              <th className="px-4 font-bold text-gray-600 text-center w-[10%]">
+                حذف
+              </th>
             </tr>
           </thead>
           <tbody>
             {accounts.map((acc, i) => (
-              <tr key={acc.id} className={`border-b border-gray-100 ${i % 2 === 1 ? 'bg-gray-50/30' : 'bg-white'}`}>
-                <td className="px-4 py-3"><input value={acc.systemName} onChange={(e) => updateAcc(acc.id, "systemName", e.target.value)} className="w-full bg-white border border-gray-300 rounded-lg px-2 h-[34px] outline-none focus:border-blue-500" /></td>
-                <td className="px-4 py-3"><input value={acc.reportName} onChange={(e) => updateAcc(acc.id, "reportName", e.target.value)} className="w-full bg-blue-50/50 border border-blue-200 rounded-lg px-2 h-[34px] font-bold text-blue-700 outline-none focus:border-blue-500" /></td>
+              <tr
+                key={acc.id}
+                className={`border-b border-gray-100 ${i % 2 === 1 ? "bg-gray-50/30" : "bg-white"}`}
+              >
+                <td className="px-4 py-3">
+                  <input
+                    value={acc.systemName}
+                    onChange={(e) =>
+                      updateAcc(acc.id, "systemName", e.target.value)
+                    }
+                    className="w-full bg-white border border-gray-300 rounded-lg px-2 h-[34px] outline-none focus:border-blue-500"
+                  />
+                </td>
+                <td className="px-4 py-3">
+                  <input
+                    value={acc.reportName}
+                    onChange={(e) =>
+                      updateAcc(acc.id, "reportName", e.target.value)
+                    }
+                    className="w-full bg-blue-50/50 border border-blue-200 rounded-lg px-2 h-[34px] font-bold text-blue-700 outline-none focus:border-blue-500"
+                  />
+                </td>
                 <td className="px-4 py-3">
                   {/* حاوية لاختيار الأشخاص */}
                   <div className="h-24 overflow-y-auto bg-gray-50 border border-gray-200 rounded-lg p-2 custom-scrollbar-slim grid grid-cols-2 gap-2">
-                    {persons.map(p => (
-                      <label key={p.id} className="flex items-center gap-2 cursor-pointer hover:bg-gray-200 p-1 rounded">
-                        <input type="checkbox" className="accent-blue-600" checked={(acc.linkedPersons || []).includes(p.id)} onChange={() => togglePersonLink(acc.id, p.id)} />
-                        <span className="text-[11px] font-bold text-gray-700 truncate">{p.name} <span className="text-[9px] text-gray-400">({p.role})</span></span>
+                    {persons.map((p) => (
+                      <label
+                        key={p.id}
+                        className="flex items-center gap-2 cursor-pointer hover:bg-gray-200 p-1 rounded"
+                      >
+                        <input
+                          type="checkbox"
+                          className="accent-blue-600"
+                          checked={(acc.linkedPersons || []).includes(p.id)}
+                          onChange={() => togglePersonLink(acc.id, p.id)}
+                        />
+                        <span className="text-[11px] font-bold text-gray-700 truncate">
+                          {p.name}{" "}
+                          <span className="text-[9px] text-gray-400">
+                            ({p.role})
+                          </span>
+                        </span>
                       </label>
                     ))}
                   </div>
                 </td>
-                <td className="px-4 text-center"><button onClick={() => removeAccount(acc.id)} className="p-1.5 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50"><Trash2 className="w-4 h-4" /></button></td>
+                <td className="px-4 text-center">
+                  <button
+                    onClick={() => removeAccount(acc.id)}
+                    className="p-1.5 rounded-md text-gray-400 hover:text-red-600 hover:bg-red-50"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-      
+
       <div className="flex justify-end pt-2">
-        <button onClick={() => updateMutation.mutate()} className="flex items-center gap-2 px-6 py-2.5 bg-gray-800 hover:bg-black text-white rounded-lg font-bold shadow-sm transition-colors">
+        <button
+          onClick={() => updateMutation.mutate()}
+          className="flex items-center gap-2 px-6 py-2.5 bg-gray-800 hover:bg-black text-white rounded-lg font-bold shadow-sm transition-colors"
+        >
           <Save className="w-4 h-4" /> حفظ الحاويات
         </button>
       </div>
