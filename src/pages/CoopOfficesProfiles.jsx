@@ -515,6 +515,8 @@ const CoopOfficesProfiles = () => {
                     حسب عدد المعاملات (نسبة/مقطوع)
                   </option>
                   <option value="شهري ثابت">مبلغ شهري ثابت</option>
+                  {/* 💡 تمت إضافة الخيار الجديد هنا */}
+                  <option value="لكل معاملة على حدى">لكل معاملة على حدى</option>
                 </select>
               </div>
               <div>

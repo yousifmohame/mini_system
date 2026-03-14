@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
-import { useMutation, useQueryClient,useQuery } from "@tanstack/react-query";
+import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import api from "../api/axios";
 import {
@@ -16,7 +16,7 @@ import {
   EyeOff,
   Search,
   ChevronDown,
-  Loader2
+  Loader2,
 } from "lucide-react";
 
 // ============================================================================
@@ -219,7 +219,15 @@ export const CreateTransactionModal = ({ isOpen, onClose, refetchTable }) => {
     isNewClient: false,
     clientId: "",
     ownerName: "",
-    newClient: { first: "", second: "", third: "", last: "", idNumber: "" },
+
+    // 👈 تحديث بيانات العميل الجديد لتدعم الأنواع
+    newClient: {
+      type: "فرد سعودي",
+      first: "",
+      last: "",
+      companyName: "",
+      idNumber: "",
+    },
 
     districtId: "",
     sector: "غير محدد",
@@ -238,7 +246,9 @@ export const CreateTransactionModal = ({ isOpen, onClose, refetchTable }) => {
     externalSource: "مكتب ديتيلز",
 
     feeType: "نهائي",
+    isFeeDelayed: false, // 👈 خيار تحديد الأتعاب لاحقاً
     totalFees: "",
+    taxType: "بدون احتساب ضريبة", // 👈 نوع الضريبة
     firstPayment: "",
 
     brokerId: "",
@@ -253,11 +263,33 @@ export const CreateTransactionModal = ({ isOpen, onClose, refetchTable }) => {
     sourceName: "",
     sourcePercent: "",
 
-    receivedAttachments: [], // الخيارات الثابتة
-    customAttachments: [], // المرفقات الأخرى الحرة
+    receivedAttachments: [],
+    customAttachments: [],
   };
 
   const [formData, setFormData] = useState(initialForm);
+
+  // 👈 دالة حساب الضريبة بناءً على نوع الاختيار
+  const calculateTax = () => {
+    const total = parseNumber(formData.totalFees) || 0;
+    if (total === 0) return { net: 0, tax: 0 };
+
+    if (formData.taxType === "شامل الضريبة") {
+      // المبلغ الإجمالي يحتوي على الضريبة، نستخرج الصافي والضريبة
+      const net = total / 1.15;
+      const tax = total - net;
+      return { net, tax };
+    } else if (formData.taxType === "غير شامل الضريبة") {
+      // المبلغ هو الصافي، والضريبة تضاف عليه
+      const tax = total * 0.15;
+      return { net: total, tax };
+    } else {
+      // بدون ضريبة (الصافي هو نفس المبلغ ولا يوجد ضريبة)
+      return { net: total, tax: 0 };
+    }
+  };
+
+  const { net: netAmount, tax: taxAmount } = calculateTax();
 
   const handleClose = () => {
     setFormData(initialForm);
@@ -283,7 +315,6 @@ export const CreateTransactionModal = ({ isOpen, onClose, refetchTable }) => {
     }));
   };
 
-  // دوال إضافة المرفقات الحرة (الأخرى)
   const addCustomAttachment = () =>
     setFormData((p) => ({
       ...p,
@@ -316,40 +347,74 @@ export const CreateTransactionModal = ({ isOpen, onClose, refetchTable }) => {
 
   const handleSubmit = () => {
     let finalOwnerName = formData.ownerName;
+    let finalOwnerIdNumber = "";
+
+    // التحقق من العميل الجديد
     if (formData.isNewClient) {
-      finalOwnerName =
-        `${formData.newClient.first} ${formData.newClient.second} ${formData.newClient.third} ${formData.newClient.last}`.trim();
-      if (!formData.newClient.first)
-        return toast.error("الاسم الأول للمالك مطلوب");
+      const { type, first, last, companyName, idNumber } = formData.newClient;
+      if (
+        type.includes("شركة") ||
+        type.includes("مؤسسة") ||
+        type.includes("جهة")
+      ) {
+        finalOwnerName = companyName.trim();
+        if (!finalOwnerName) return toast.error("يرجى إدخال اسم الشركة/الجهة");
+      } else {
+        finalOwnerName = `${first} ${last}`.trim();
+        if (!first) return toast.error("يرجى إدخال الاسم الأول للمالك");
+      }
+      finalOwnerIdNumber = idNumber;
     } else {
       if (!formData.clientId)
         return toast.error("الرجاء اختيار العميل أو إنشاء عميل جديد");
     }
 
     if (!formData.districtId) return toast.error("الرجاء تحديد الحي (الموقع)");
-    if (!formData.totalFees)
-      return toast.error("الرجاء تحديد الأتعاب الإجمالية");
+
+    // التحقق من الأتعاب فقط إذا لم تكن مؤجلة
+    if (!formData.isFeeDelayed && !formData.totalFees) {
+      return toast.error(
+        "الرجاء تحديد الأتعاب الإجمالية أو اختيار تحديدها لاحقاً",
+      );
+    }
 
     const validPlots = formData.plots.filter((p) => p.trim() !== "");
-
-    // 💡 تجميع المرفقات (الثابتة + الحرة)
     const validAttachments = [
       ...formData.receivedAttachments,
       ...formData.customAttachments.filter((a) => a.trim() !== ""),
     ];
 
+    // تحديد المبالغ النهائية التي سترسل للباك إند
+    const finalTotalFees = formData.isFeeDelayed
+      ? 0
+      : parseNumber(formData.totalFees);
+    const finalFirstPayment = formData.isFeeDelayed
+      ? 0
+      : parseNumber(formData.firstPayment);
+
+    // 💡 تضمين نوع الضريبة والمبلغ الصافي والضريبة داخل الملاحظات كمرجع مالي
+    const enhancedNotes = {
+      taxData: {
+        taxType: formData.taxType,
+        netAmount: netAmount,
+        taxAmount: taxAmount,
+      },
+    };
+
     const payload = {
       ...formData,
       ownerName: finalOwnerName,
-      ownerIdNumber: formData.isNewClient ? formData.newClient.idNumber : "",
+      ownerIdNumber: finalOwnerIdNumber, // إرسال الهوية
+      clientType: formData.isNewClient ? formData.newClient.type : undefined, // إرسال نوع العميل للباك إند
       plots: validPlots,
-      receivedAttachmentsList: validAttachments, // المرفقات المجمعة
+      receivedAttachmentsList: validAttachments,
       source: formData.externalSource,
-      totalFees: parseNumber(formData.totalFees),
-      firstPayment: parseNumber(formData.firstPayment),
+      totalFees: finalTotalFees,
+      firstPayment: finalFirstPayment,
       mediatorFees: parseNumber(formData.mediatorFees),
       agentFees: parseNumber(formData.agentFees),
       sourcePercent: parseNumber(formData.sourcePercent),
+      extraNotes: enhancedNotes, // دمج الملاحظات الإضافية
     };
 
     createMutation.mutate(payload);
@@ -465,7 +530,7 @@ export const CreateTransactionModal = ({ isOpen, onClose, refetchTable }) => {
                   }
                 />
                 <span className="text-xs font-bold text-gray-800">
-                  إنشاء مالك جديد (سريع)
+                  إنشاء عميل جديد (سريع)
                 </span>
               </label>
             </div>
@@ -489,106 +554,150 @@ export const CreateTransactionModal = ({ isOpen, onClose, refetchTable }) => {
                 />
               </div>
             ) : (
-              <div className="grid grid-cols-5 gap-3 bg-green-50/50 p-4 rounded-xl border border-green-100">
+              <div className="bg-green-50/50 p-4 rounded-xl border border-green-100 space-y-4">
+                {/* 👈 نوع العميل الجديد */}
                 <div>
-                  <label className="text-[10px] font-bold text-gray-500 mb-1 block">
-                    الاسم الأول *
+                  <label className="block text-xs font-bold text-gray-700 mb-2">
+                    نوع العميل *
                   </label>
-                  <input
-                    type="text"
-                    value={formData.newClient.first}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        newClient: {
-                          ...formData.newClient,
-                          first: e.target.value,
-                        },
-                      })
-                    }
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs font-bold focus:border-green-500 outline-none"
-                    placeholder="الأول"
-                  />
+                  <div className="flex gap-2 flex-wrap">
+                    {[
+                      "فرد سعودي",
+                      "فرد غير سعودي",
+                      "شركة / مؤسسة",
+                      "جهة حكومية",
+                      "ورثة",
+                    ].map((type) => (
+                      <button
+                        key={type}
+                        onClick={() =>
+                          setFormData({
+                            ...formData,
+                            newClient: { ...formData.newClient, type: type },
+                          })
+                        }
+                        className={`px-3 py-1.5 rounded-lg text-[11px] font-bold border transition-colors ${formData.newClient.type === type ? "bg-green-600 text-white border-green-600" : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"}`}
+                      >
+                        {type}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                <div>
-                  <label className="text-[10px] font-bold text-gray-500 mb-1 block">
-                    الاسم الثاني
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.newClient.second}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        newClient: {
-                          ...formData.newClient,
-                          second: e.target.value,
-                        },
-                      })
-                    }
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs font-semibold focus:border-green-500 outline-none"
-                    placeholder="الثاني"
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold text-gray-500 mb-1 block">
-                    الاسم الثالث
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.newClient.third}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        newClient: {
-                          ...formData.newClient,
-                          third: e.target.value,
-                        },
-                      })
-                    }
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs font-semibold focus:border-green-500 outline-none"
-                    placeholder="الثالث"
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold text-gray-500 mb-1 block">
-                    الاسم الرابع (العائلة)
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.newClient.last}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        newClient: {
-                          ...formData.newClient,
-                          last: e.target.value,
-                        },
-                      })
-                    }
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs font-bold focus:border-green-500 outline-none"
-                    placeholder="العائلة"
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold text-gray-500 mb-1 block">
-                    رقم الهوية
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.newClient.idNumber}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        newClient: {
-                          ...formData.newClient,
-                          idNumber: e.target.value,
-                        },
-                      })
-                    }
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs font-mono focus:border-green-500 outline-none"
-                    placeholder="الهوية الوطنية"
-                  />
+
+                {/* 👈 حقول متغيرة بناءً على نوع العميل */}
+                <div className="grid grid-cols-4 gap-3">
+                  {formData.newClient.type.includes("شركة") ||
+                  formData.newClient.type.includes("جهة") ? (
+                    <>
+                      <div className="col-span-2">
+                        <label className="text-[10px] font-bold text-gray-500 mb-1 block">
+                          اسم الشركة / الجهة بالكامل *
+                        </label>
+                        <input
+                          type="text"
+                          value={formData.newClient.companyName}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              newClient: {
+                                ...formData.newClient,
+                                companyName: e.target.value,
+                              },
+                            })
+                          }
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs font-bold focus:border-green-500 outline-none"
+                          placeholder="مثال: شركة التطوير العمراني المحدودة"
+                        />
+                      </div>
+                      <div className="col-span-2">
+                        <label className="text-[10px] font-bold text-gray-500 mb-1 block">
+                          رقم السجل التجاري / الرقم الموحد
+                        </label>
+                        <input
+                          type="text"
+                          value={formData.newClient.idNumber}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              newClient: {
+                                ...formData.newClient,
+                                idNumber: e.target.value,
+                              },
+                            })
+                          }
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs font-mono focus:border-green-500 outline-none"
+                          placeholder="1010XXXXXX"
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div>
+                        <label className="text-[10px] font-bold text-gray-500 mb-1 block">
+                          الاسم الأول *
+                        </label>
+                        <input
+                          type="text"
+                          value={formData.newClient.first}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              newClient: {
+                                ...formData.newClient,
+                                first: e.target.value,
+                              },
+                            })
+                          }
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs font-bold focus:border-green-500 outline-none"
+                          placeholder="الأول"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-bold text-gray-500 mb-1 block">
+                          الاسم الأخير (العائلة)
+                        </label>
+                        <input
+                          type="text"
+                          value={formData.newClient.last}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              newClient: {
+                                ...formData.newClient,
+                                last: e.target.value,
+                              },
+                            })
+                          }
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs font-bold focus:border-green-500 outline-none"
+                          placeholder="العائلة"
+                        />
+                      </div>
+                      <div className="col-span-2">
+                        <label className="text-[10px] font-bold text-gray-500 mb-1 block">
+                          رقم الهوية / الإقامة
+                        </label>
+                        <input
+                          type="text"
+                          value={formData.newClient.idNumber}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              newClient: {
+                                ...formData.newClient,
+                                idNumber: e.target.value,
+                              },
+                            })
+                          }
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-xs font-mono focus:border-green-500 outline-none"
+                          placeholder={
+                            formData.newClient.type === "فرد سعودي"
+                              ? "10XXXXXXXX"
+                              : "20XXXXXXXX"
+                          }
+                        />
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             )}
@@ -619,7 +728,6 @@ export const CreateTransactionModal = ({ isOpen, onClose, refetchTable }) => {
                   <option>تجديد</option>
                   <option>تعديل</option>
                   <option>تصحيح وضع مبني قائم</option>
-                  
                 </select>
               </div>
 
@@ -837,12 +945,36 @@ export const CreateTransactionModal = ({ isOpen, onClose, refetchTable }) => {
 
           {/* 4. الماليات والأطراف */}
           <section className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
-            <h3 className="text-sm font-black text-green-700 mb-4 flex items-center gap-2 border-b border-gray-100 pb-3">
-              <Calculator className="w-4 h-4" /> الماليات والأطراف
-            </h3>
+            <div className="flex items-center justify-between mb-4 border-b border-gray-100 pb-3">
+              <h3 className="text-sm font-black text-green-700 flex items-center gap-2">
+                <Calculator className="w-4 h-4" /> الماليات والأطراف
+              </h3>
+              {/* 👈 زر تحديد الأتعاب لاحقاً */}
+              <label className="flex items-center gap-2 cursor-pointer px-3 py-1.5 bg-amber-50 hover:bg-amber-100 rounded-lg border border-amber-200 transition-colors">
+                <input
+                  type="checkbox"
+                  className="accent-amber-600 w-4 h-4"
+                  checked={formData.isFeeDelayed}
+                  onChange={(e) =>
+                    setFormData({
+                      ...formData,
+                      isFeeDelayed: e.target.checked,
+                      totalFees: "",
+                      firstPayment: "",
+                    })
+                  }
+                />
+                <span className="text-xs font-bold text-amber-800">
+                  تحديد الأتعاب الإجمالية لاحقاً
+                </span>
+              </label>
+            </div>
 
             <div className="grid grid-cols-3 gap-6">
-              <div className="space-y-4 bg-green-50/50 p-4 rounded-xl border border-green-100">
+              {/* 👈 المربع الخاص بالأتعاب والضريبة (يختفي إذا تم تحديد الدفع لاحقاً) */}
+              <div
+                className={`space-y-4 rounded-xl border p-4 transition-all ${formData.isFeeDelayed ? "bg-gray-50 border-gray-200 opacity-60 pointer-events-none" : "bg-green-50/50 border-green-200"}`}
+              >
                 <div>
                   <div className="flex items-center justify-between mb-2">
                     <label className="text-xs font-black text-gray-800">
@@ -867,32 +999,84 @@ export const CreateTransactionModal = ({ isOpen, onClose, refetchTable }) => {
                       </button>
                     </div>
                   </div>
-                  <div className="relative">
+
+                  <div className="relative mb-2">
                     <input
                       type="text"
+                      disabled={formData.isFeeDelayed}
                       value={formatNumberWithCommas(formData.totalFees)}
                       onChange={(e) =>
                         setFormData({ ...formData, totalFees: e.target.value })
                       }
-                      className="w-full border border-green-400 rounded-lg px-3 py-2.5 text-lg font-black font-mono text-green-700 focus:border-green-600 focus:ring-2 focus:ring-green-100 outline-none transition-all"
+                      className="w-full border border-green-400 rounded-lg px-3 py-2.5 text-lg font-black font-mono text-green-700 focus:border-green-600 focus:ring-2 focus:ring-green-100 outline-none transition-all disabled:bg-gray-100"
                       placeholder="0"
                     />
                     <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-green-600 font-bold">
                       ر.س
                     </span>
                   </div>
+
+                  {/* 👈 نظام الضريبة الجديد */}
+                  <select
+                    value={formData.taxType}
+                    onChange={(e) =>
+                      setFormData({ ...formData, taxType: e.target.value })
+                    }
+                    disabled={formData.isFeeDelayed}
+                    className="w-full border border-green-200 bg-white rounded-md px-2 py-1.5 text-[11px] font-bold text-gray-700 outline-none mb-2"
+                  >
+                    <option value="بدون احتساب ضريبة">
+                      بدون احتساب ضريبة (صافي)
+                    </option>
+                    <option value="شامل الضريبة">
+                      شامل الضريبة (15% مدمجة)
+                    </option>
+                    <option value="غير شامل الضريبة">
+                      غير شامل الضريبة (تضاف 15%)
+                    </option>
+                  </select>
+
+                  {/* 👈 عرض الحسبة الضريبية مباشرة */}
+                  {!formData.isFeeDelayed &&
+                    parseNumber(formData.totalFees) > 0 &&
+                    formData.taxType !== "بدون احتساب ضريبة" && (
+                      <div className="bg-white border border-green-100 p-2 rounded-md text-[10px] font-mono leading-relaxed shadow-sm">
+                        <div className="flex justify-between text-gray-600">
+                          <span>المبلغ الصافي:</span>
+                          <span className="font-bold text-gray-800">
+                            {netAmount.toLocaleString(undefined, {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })}{" "}
+                            ر.س
+                          </span>
+                        </div>
+                        <div className="flex justify-between text-red-600 mt-1">
+                          <span>قيمة الضريبة (15%):</span>
+                          <span className="font-bold">
+                            {taxAmount.toLocaleString(undefined, {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })}{" "}
+                            ر.س
+                          </span>
+                        </div>
+                      </div>
+                    )}
                 </div>
+
                 <div>
                   <label className="block text-xs font-bold text-gray-700 mb-1.5">
                     الدفعة الأولى (مُحصّل الآن)
                   </label>
                   <input
                     type="text"
+                    disabled={formData.isFeeDelayed}
                     value={formatNumberWithCommas(formData.firstPayment)}
                     onChange={(e) =>
                       setFormData({ ...formData, firstPayment: e.target.value })
                     }
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono font-bold focus:border-green-500 outline-none"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono font-bold focus:border-green-500 outline-none disabled:bg-gray-100"
                     placeholder="0"
                   />
                 </div>
@@ -1091,7 +1275,7 @@ export const CreateTransactionModal = ({ isOpen, onClose, refetchTable }) => {
             </div>
           </section>
 
-          {/* 💡 5. المرفقات المستلمة (بتصميم التابات البسيط كما طلبت مع خيار الاخرى) */}
+          {/* 5. المرفقات المستلمة */}
           <section className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
             <h3 className="text-sm font-black text-gray-800 mb-4 flex items-center gap-2 border-b border-gray-100 pb-3">
               <Paperclip className="w-4 h-4 text-blue-500" /> المرفقات
@@ -1133,7 +1317,6 @@ export const CreateTransactionModal = ({ isOpen, onClose, refetchTable }) => {
                 ))}
               </div>
 
-              {/* المرفقات الأخرى الحرة */}
               <div className="mt-5 border-t border-blue-200/60 pt-4">
                 <div className="flex items-center justify-between mb-3">
                   <label className="text-slate-600 text-xs font-bold">

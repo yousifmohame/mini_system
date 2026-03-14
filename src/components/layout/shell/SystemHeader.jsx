@@ -97,7 +97,7 @@ const SystemHeader = () => {
 
   return (
     <header 
-      className="h-14 bg-gradient-to-r from-white via-slate-50 to-white border-b border-slate-200/80 flex items-center justify-between px-3 md:px-5 shrink-0 z-40 shadow-lg shadow-slate-900/5 backdrop-blur-sm relative"
+      className="h-14 bg-gradient-to-r from-white via-slate-50 to-white border-b border-slate-200/80 flex items-center justify-between px-3 md:px-5 shrink-0 z-30 shadow-lg shadow-slate-900/5 backdrop-blur-sm relative"
       dir="rtl"
     >
       {/* ✨ 1. بيانات النظام الحية - تصميم محسّن */}

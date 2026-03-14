@@ -64,7 +64,7 @@ const SystemFooter = () => {
 
   return (
     <footer 
-      className="fixed bottom-0 z-40 w-full h-9 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 border-t border-slate-700/50 backdrop-blur-md text-[11px] text-slate-300 flex items-center justify-between px-4 font-mono shadow-2xl shadow-black/20"
+      className="fixed bottom-0 z-30 w-full h-9 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 border-t border-slate-700/50 backdrop-blur-md text-[11px] text-slate-300 flex items-center justify-between px-4 font-mono shadow-2xl shadow-black/20"
       dir="rtl"
     >
       {/* ✨ Right Section - Brand & Security */}

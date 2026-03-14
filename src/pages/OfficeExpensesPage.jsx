@@ -10,19 +10,22 @@ import {
   Paperclip,
   X,
   Printer,
-  CodeXml,
-  Info,
   Loader2,
   Save,
   FileText,
   Edit3,
   Trash2,
   ChevronDown,
+  CheckCircle,
+  AlertCircle,
 } from "lucide-react";
 
 const OfficeExpensesPage = () => {
   const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState("");
+
+  // 💡 1. State فلتر التسوية الجديد
+  const [settlementFilter, setSettlementFilter] = useState("all"); // "all", "unsettled", "settled"
 
   const [modalMode, setModalMode] = useState("add");
   const [editingId, setEditingId] = useState(null);
@@ -116,7 +119,7 @@ const OfficeExpensesPage = () => {
     setExpenseForm({
       item: expense.item,
       amount: expense.amount,
-      payerId: expense.payerId || "", // 💡 استخدام الـ ID
+      payerId: expense.payerId || "",
       method: expense.method,
       source: expense.source,
       date: expense.date,
@@ -210,16 +213,30 @@ const OfficeExpensesPage = () => {
   // 3. الحسابات والفلترة
   // ==========================================
   const filteredData = useMemo(() => {
-    if (!searchQuery) return expensesData;
-    const q = searchQuery.toLowerCase();
-    return expensesData.filter(
-      (exp) =>
-        exp.item.toLowerCase().includes(q) ||
-        exp.payer.toLowerCase().includes(q) ||
-        exp.payee?.toLowerCase().includes(q) ||
-        exp.notes?.toLowerCase().includes(q),
-    );
-  }, [searchQuery, expensesData]);
+    let result = expensesData;
+
+    // 💡 2. تطبيق فلتر حالة التسوية أولاً
+    if (settlementFilter === "settled") {
+      // افتراض أن الباك إند يرسل حقل isSettled = true للمصروفات المسواة
+      result = result.filter((exp) => exp.isSettled === true);
+    } else if (settlementFilter === "unsettled") {
+      result = result.filter((exp) => exp.isSettled !== true);
+    }
+
+    // 3. تطبيق فلتر البحث النصي
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      result = result.filter(
+        (exp) =>
+          exp.item.toLowerCase().includes(q) ||
+          exp.payer?.toLowerCase().includes(q) ||
+          exp.payee?.toLowerCase().includes(q) ||
+          exp.notes?.toLowerCase().includes(q),
+      );
+    }
+
+    return result;
+  }, [searchQuery, expensesData, settlementFilter]);
 
   const stats = useMemo(() => {
     return filteredData.reduce(
@@ -232,6 +249,11 @@ const OfficeExpensesPage = () => {
       { total: 0, cash: 0, bank: 0 },
     );
   }, [filteredData]);
+
+  const handleOpenPreview = () => {
+    setIsPreviewReportOpen(true);
+    setIsExportReportOpen(false);
+  };
 
   return (
     <div
@@ -328,6 +350,21 @@ const OfficeExpensesPage = () => {
 
         {/* 2. شريط الأدوات والبحث */}
         <div className="flex items-center gap-2 shrink-0">
+          {/* 💡 فلتر حالة التسوية الجديد */}
+          <div className="relative" style={{ width: "200px" }}>
+            <select
+              value={settlementFilter}
+              onChange={(e) => setSettlementFilter(e.target.value)}
+              className="w-full bg-[var(--wms-surface-1)] border border-[var(--wms-border)] rounded-md px-3 text-[var(--wms-text)] focus:outline-none focus:border-[var(--wms-accent-blue)] appearance-none cursor-pointer font-bold"
+              style={{ height: "32px", fontSize: "11px" }}
+            >
+              <option value="all">الكل (حالات التسوية الافتراضية)</option>
+              <option value="unsettled">إظهار الغير مسوّى فقط</option>
+              <option value="settled">إظهار المسوّى فقط</option>
+            </select>
+            <ChevronDown className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--wms-text-muted)] pointer-events-none" />
+          </div>
+
           <div className="relative" style={{ width: "260px" }}>
             <Search className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-[var(--wms-text-muted)]" />
             <input
@@ -339,6 +376,7 @@ const OfficeExpensesPage = () => {
               style={{ height: "32px", fontSize: "12px" }}
             />
           </div>
+
           <div className="flex-1"></div>
           <button
             onClick={handleOpenAddModal}
@@ -428,8 +466,17 @@ const OfficeExpensesPage = () => {
                   >
                     الملاحظات
                   </th>
+
+                  {/* 💡 العمود الجديد: حالة التسوية */}
                   <th
-                    className="px-3 text-[var(--wms-text-sec)]"
+                    className="px-3 text-center text-[var(--wms-text-sec)]"
+                    style={{ fontWeight: 600, fontSize: "11px" }}
+                  >
+                    حالة التسوية
+                  </th>
+
+                  <th
+                    className="px-3 text-[var(--wms-text-sec)] text-center"
                     style={{ fontWeight: 600, fontSize: "11px" }}
                   >
                     المرفق
@@ -445,7 +492,7 @@ const OfficeExpensesPage = () => {
               <tbody>
                 {isLoading ? (
                   <tr>
-                    <td colSpan="10" className="text-center py-10">
+                    <td colSpan="11" className="text-center py-10">
                       <Loader2 className="w-6 h-6 animate-spin text-blue-500 mx-auto mb-2" />
                       <span className="text-slate-500">
                         جاري جلب البيانات...
@@ -455,10 +502,10 @@ const OfficeExpensesPage = () => {
                 ) : filteredData.length === 0 ? (
                   <tr>
                     <td
-                      colSpan="10"
+                      colSpan="11"
                       className="text-center py-10 text-slate-500"
                     >
-                      لا توجد مصروفات مسجلة تطابق بحثك
+                      لا توجد مصروفات مسجلة تطابق فلتر البحث
                     </td>
                   </tr>
                 ) : (
@@ -525,20 +572,42 @@ const OfficeExpensesPage = () => {
                       </td>
                       <td
                         className="px-3 text-[var(--wms-text-muted)]"
-                        style={{ fontSize: "11px", maxWidth: "180px" }}
+                        style={{ fontSize: "11px", maxWidth: "150px" }}
                       >
                         <span className="truncate block" title={row.notes}>
                           {row.notes}
                         </span>
                       </td>
-                      <td className="px-3">
+
+                      {/* 💡 الخلية الجديدة: حالة التسوية */}
+                      <td className="px-3 text-center">
+                        <span
+                          className={`px-2.5 py-1 rounded-md text-[10px] font-bold flex items-center justify-center gap-1 mx-auto w-max ${
+                            row.isSettled
+                              ? "bg-emerald-50 text-emerald-600 border border-emerald-200"
+                              : "bg-amber-50 text-amber-600 border border-amber-200"
+                          }`}
+                        >
+                          {row.isSettled ? (
+                            <>
+                              <CheckCircle className="w-3 h-3" /> مسوّى
+                            </>
+                          ) : (
+                            <>
+                              <AlertCircle className="w-3 h-3" /> غير مسوّى
+                            </>
+                          )}
+                        </span>
+                      </td>
+
+                      <td className="px-3 text-center">
                         {row.hasAttachment ? (
                           <button
                             onClick={(e) =>
                               handleViewAttachment(e, row.attachmentUrl)
                             }
                             disabled={isPreviewLoading}
-                            className="flex items-center gap-1 text-[var(--wms-accent-blue)] cursor-pointer hover:underline bg-transparent border-none disabled:opacity-50"
+                            className="flex items-center justify-center gap-1 text-[var(--wms-accent-blue)] cursor-pointer hover:underline bg-transparent border-none mx-auto disabled:opacity-50"
                             style={{ fontSize: "10px" }}
                           >
                             {isPreviewLoading ? (
@@ -546,7 +615,7 @@ const OfficeExpensesPage = () => {
                             ) : (
                               <Paperclip className="w-3 h-3" />
                             )}
-                            <span>عرض المرفق</span>
+                            <span>مرفق</span>
                           </button>
                         ) : (
                           <span
@@ -662,7 +731,6 @@ const OfficeExpensesPage = () => {
                   />
                 </div>
 
-                {/* 💡 التعديل هنا: تحويل "من دفع" إلى Select يقرأ من Persons */}
                 <div className="relative">
                   <label className="block mb-1 text-[var(--wms-text-sec)] text-[11px] font-bold">
                     من دفع؟ (الصلاحية)

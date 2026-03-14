@@ -3,7 +3,7 @@ import { useAppStore } from "../../../stores/useAppStore";
 import { useAuth } from "../../../context/AuthContext";
 import { useQuery } from "@tanstack/react-query";
 import { usePermissionBuilder } from "../../../context/PermissionBuilderContext";
-import AccessControl from "../../AccessControl"; // 👈 1. استيراد أداة التحكم بالصلاحيات
+import AccessControl from "../../AccessControl";
 import api from "../../../api/axios";
 import {
   Building2,
@@ -38,19 +38,16 @@ const Sidebar = () => {
   const { activeScreenId, openScreens, openScreen } = useAppStore();
   const activeScreen = openScreens.find((s) => s.id === activeScreenId);
 
-  // 👈 2. جلب بيانات المستخدم والصلاحيات
   const { user } = useAuth();
   const { isBuildMode } = usePermissionBuilder();
   const userPermissions = user?.permissions || [];
 
-  // التحقق مما إذا كان المستخدم هو المدير العام (يُفضل استخدام الإيميل أو الرول)
   const isSuperAdmin = user?.email === "admin@wms.com";
 
   const handleNavigation = (screenId, screenTitle, screenProps = {}) => {
     openScreen(screenId, screenTitle, screenProps);
   };
 
-  // 💡 جلب أسماء الحسابات الخاصة من إعدادات النظام
   const { data: settings, isLoading: isLoadingSettings } = useQuery({
     queryKey: ["system-settings-sidebar"],
     queryFn: async () => (await api.get("/settings")).data.data,
@@ -58,21 +55,20 @@ const Sidebar = () => {
 
   const specialAccounts = settings?.specialAccounts || [];
 
-  // 👈 3. دالة مساعدة للتحقق من صلاحية قسم كامل (لإخفاء العناوين الفارغة)
   const hasSectionAccess = (codes = []) => {
     if (isBuildMode || isSuperAdmin) return true;
     return codes.some((code) => userPermissions.includes(code));
   };
 
-  // 🎨 مكون زر القائمة مع دمج AccessControl
+  // 🎨 مكون زر القائمة المدمج والمضغوط لتقليل السكرول
   const NavItem = ({
     screenId,
     title,
     icon: Icon,
     props = {},
     badge = null,
-    code, // 👈 كود الصلاحية (مثال: SCR_01_VIEW)
-    moduleName, // 👈 اسم الوحدة التنظيمية
+    code,
+    moduleName,
   }) => {
     let isActive = activeScreenId === screenId;
     if (isActive && props?.sector) {
@@ -83,7 +79,6 @@ const Sidebar = () => {
     }
 
     return (
-      // 👈 4. تغليف الزر بأداة AccessControl
       <AccessControl
         code={code}
         name={`رؤية شاشة: ${title}`}
@@ -92,33 +87,33 @@ const Sidebar = () => {
       >
         <button
           onClick={() => handleNavigation(screenId, title, props)}
-          className={`group w-full flex items-center justify-between px-4 py-2.5 my-0.5 rounded-xl transition-all duration-200 outline-none ${
+          className={`group w-full flex items-center justify-between px-3 py-1.5 my-[2px] rounded-lg transition-all duration-200 outline-none ${
             isActive
-              ? "bg-gradient-to-l from-blue-600 to-blue-500 text-white shadow-lg shadow-blue-500/25 font-bold"
-              : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 hover:pl-5 font-medium"
+              ? "bg-gradient-to-l from-blue-600 to-blue-500 text-white shadow-md shadow-blue-500/25 font-bold"
+              : "text-slate-600 hover:bg-slate-100 hover:text-slate-900 font-medium"
           }`}
         >
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2.5">
             <div
-              className={`p-1.5 rounded-lg transition-all duration-200 ${
+              className={`p-1 rounded-md transition-all duration-200 ${
                 isActive
                   ? "bg-white/20"
                   : "bg-slate-100 group-hover:bg-blue-100"
               }`}
             >
               <Icon
-                className={`w-4 h-4 transition-colors ${
+                className={`w-3.5 h-3.5 transition-colors ${
                   isActive
                     ? "text-white"
                     : "text-slate-500 group-hover:text-blue-600"
                 }`}
               />
             </div>
-            <span className="text-[13px] tracking-tight">{title}</span>
+            <span className="text-[12px] tracking-tight">{title}</span>
           </div>
           {badge && (
             <span
-              className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+              className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold ${
                 isActive
                   ? "bg-white/20 text-white"
                   : "bg-blue-100 text-blue-700"
@@ -127,27 +122,27 @@ const Sidebar = () => {
               {badge}
             </span>
           )}
-          {isActive && <ChevronRight className="w-4 h-4 text-white/80" />}
+          {isActive && <ChevronRight className="w-3.5 h-3.5 text-white/80" />}
         </button>
       </AccessControl>
     );
   };
 
-  // 🎨 مكون عنوان المجموعة (ثابت - غير قابل للنقر)
+  // 🎨 مكون عنوان المجموعة المضغوط
   const CategoryHeader = ({ title, icon: Icon, count = null }) => (
-    <div className="flex items-center justify-between px-4 py-3 mt-4 mb-1">
-      <div className="flex items-center gap-2">
+    <div className="flex items-center justify-between px-3 py-1.5 mt-2 mb-1">
+      <div className="flex items-center gap-1.5">
         {Icon && (
-          <div className="p-1.5 rounded-lg bg-gradient-to-br from-slate-100 to-slate-200">
-            <Icon className="w-3.5 h-3.5 text-slate-500" />
+          <div className="p-1 rounded-md bg-gradient-to-br from-slate-100 to-slate-200">
+            <Icon className="w-3 h-3 text-slate-500" />
           </div>
         )}
-        <span className="text-[11px] font-bold tracking-wider text-slate-400 uppercase">
+        <span className="text-[10px] font-bold tracking-wider text-slate-400 uppercase">
           {title}
         </span>
       </div>
       {count !== null && (
-        <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 text-[10px] font-bold">
+        <span className="px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 text-[9px] font-bold">
           {count}
         </span>
       )}
@@ -156,23 +151,23 @@ const Sidebar = () => {
 
   return (
     <aside
-      className="w-[290px] bg-white text-slate-800 flex flex-col h-screen fixed right-0 top-0 z-50 shadow-2xl direction-rtl border-l border-slate-200/60 select-none"
+      className="w-[260px] bg-white text-slate-800 flex flex-col h-screen fixed right-0 top-0 z-40 shadow-2xl direction-rtl border-l border-slate-200/60 select-none"
       dir="rtl"
     >
       {/* ✨ 1. الشعار (Header) */}
-      <div className="h-[70px] flex items-center px-6 border-b border-slate-200 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 shrink-0">
+      <div className="h-[60px] flex items-center px-4 border-b border-slate-200 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 shrink-0">
         <div className="flex items-center gap-3">
           <div className="relative">
-            <div className="p-2.5 bg-gradient-to-br from-blue-500 via-blue-600 to-indigo-700 rounded-xl shadow-lg shadow-blue-600/30">
-              <Building2 className="w-5 h-5 text-white" />
+            <div className="p-2 bg-gradient-to-br from-blue-500 via-blue-600 to-indigo-700 rounded-lg shadow-md shadow-blue-600/30">
+              <Building2 className="w-4 h-4 text-white" />
             </div>
-            <div className="absolute -top-1 -right-1 w-3 h-3 bg-emerald-400 rounded-full border-2 border-slate-900 animate-pulse" />
+            <div className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-emerald-400 rounded-full border-2 border-slate-900 animate-pulse" />
           </div>
           <div>
-            <h1 className="font-black text-[16px] tracking-tight text-white leading-tight">
-              نظام الحسابات و المتابعة
+            <h1 className="font-black text-[14px] tracking-tight text-white leading-tight">
+              نظام الحسابات والمتابعة
             </h1>
-            <p className="text-[9px] text-slate-400 font-mono tracking-wider uppercase">
+            <p className="text-[8px] text-slate-400 font-mono tracking-wider uppercase mt-0.5">
               Enterprise ERP • v2.0
             </p>
           </div>
@@ -180,10 +175,13 @@ const Sidebar = () => {
       </div>
 
       {/* 🧭 2. القائمة (Navigation) */}
-      <nav className="flex-1 overflow-y-auto custom-scrollbar-slim py-4 px-3 scroll-smooth">
+      <nav className="flex-1 overflow-y-auto custom-scrollbar-slim py-2 px-2 scroll-smooth">
         {/* ===================== 🏠 الرئيسية ===================== */}
-        {/* 👈 5. إخفاء القسم بالكامل إذا لم يكن لديه أي صلاحية بداخله */}
-        {hasSectionAccess(["SCR_DASH_VIEW", "SCR_FINANCE_DASH_VIEW"]) && (
+        {hasSectionAccess([
+          "SCR_DASH_VIEW",
+          "SCR_FINANCE_DASH_VIEW",
+          "SCR_TXN_ALL",
+        ]) && (
           <div>
             <CategoryHeader title="الرئيسية" icon={LayoutDashboard} />
             <NavItem
@@ -201,27 +199,35 @@ const Sidebar = () => {
               code="SCR_FINANCE_DASH_VIEW"
               moduleName="الرئيسية"
             />
+            {/* 💡 تم نقل "كل القطاعات" هنا */}
+            <NavItem
+              screenId="TXN_LIST"
+              title="🌐 كل القطاعات (المعاملات)"
+              icon={Layers}
+              props={{ sector: "الكل" }}
+              code="SCR_TXN_ALL"
+              moduleName="الرئيسية"
+            />
           </div>
         )}
 
-        {/* ===================== 💼 إدارة المعاملات ===================== */}
+        {/* ===================== 💼 إدارة القطاعات ===================== */}
         {hasSectionAccess([
           "SCR_TXN_MID",
           "SCR_TXN_NORTH",
           "SCR_TXN_SOUTH",
           "SCR_TXN_EAST",
           "SCR_TXN_WEST",
-          "SCR_TXN_ALL",
         ]) && (
-          <div className="border-t border-slate-100 pt-2 mt-2">
-            <CategoryHeader title="إدارة المعاملات" icon={MapPin} count={6} />
+          <div className="border-t border-slate-100 pt-1 mt-1">
+            <CategoryHeader title="إدارة القطاعات" icon={MapPin} count={5} />
             <NavItem
               screenId="TXN_LIST"
               title="قطاع الوسط"
               icon={MapPin}
               props={{ sector: "وسط" }}
               code="SCR_TXN_MID"
-              moduleName="إدارة المعاملات"
+              moduleName="إدارة القطاعات"
             />
             <NavItem
               screenId="TXN_LIST"
@@ -229,7 +235,7 @@ const Sidebar = () => {
               icon={ArrowUp}
               props={{ sector: "شمال" }}
               code="SCR_TXN_NORTH"
-              moduleName="إدارة المعاملات"
+              moduleName="إدارة القطاعات"
             />
             <NavItem
               screenId="TXN_LIST"
@@ -237,7 +243,7 @@ const Sidebar = () => {
               icon={ArrowDown}
               props={{ sector: "جنوب" }}
               code="SCR_TXN_SOUTH"
-              moduleName="إدارة المعاملات"
+              moduleName="إدارة القطاعات"
             />
             <NavItem
               screenId="TXN_LIST"
@@ -245,7 +251,7 @@ const Sidebar = () => {
               icon={ArrowRight}
               props={{ sector: "شرق" }}
               code="SCR_TXN_EAST"
-              moduleName="إدارة المعاملات"
+              moduleName="إدارة القطاعات"
             />
             <NavItem
               screenId="TXN_LIST"
@@ -253,15 +259,7 @@ const Sidebar = () => {
               icon={ArrowLeft}
               props={{ sector: "غرب" }}
               code="SCR_TXN_WEST"
-              moduleName="إدارة المعاملات"
-            />
-            <NavItem
-              screenId="TXN_LIST"
-              title="🌐 كل القطاعات"
-              icon={Layers}
-              props={{ sector: "الكل" }}
-              code="SCR_TXN_ALL"
-              moduleName="إدارة المعاملات"
+              moduleName="إدارة القطاعات"
             />
           </div>
         )}
@@ -274,7 +272,7 @@ const Sidebar = () => {
           "SCR_MONTHLY_SETTLEMENTS",
           "SCR_PERSON_SETTLEMENTS",
         ]) && (
-          <div className="border-t border-slate-100 pt-2 mt-2">
+          <div className="border-t border-slate-100 pt-1 mt-1">
             <CategoryHeader title="نظام التسويات" icon={Handshake} count={5} />
             <NavItem
               screenId="BROKER_SETTLEMENTS"
@@ -322,7 +320,7 @@ const Sidebar = () => {
           "SCR_PAYMENTS",
           "SCR_PAYMENTS_AUTO",
         ]) && (
-          <div className="border-t border-slate-100 pt-2 mt-2">
+          <div className="border-t border-slate-100 pt-1 mt-1">
             <CategoryHeader
               title="الماليات التشغيلية"
               icon={Wallet}
@@ -372,7 +370,7 @@ const Sidebar = () => {
           "SCR_COOP_PROFILES",
           "SCR_REMOTE_WORK",
         ]) && (
-          <div className="border-t border-slate-100 pt-2 mt-2">
+          <div className="border-t border-slate-100 pt-1 mt-1">
             <CategoryHeader
               title="المكاتب المتعاونة"
               icon={Briefcase}
@@ -404,11 +402,11 @@ const Sidebar = () => {
 
         {/* ===================== 🔐 حسابات خاصة ===================== */}
         {hasSectionAccess(["SCR_SPECIAL_ACCOUNTS"]) && (
-          <div className="border-t border-slate-100 pt-2 mt-2">
+          <div className="border-t border-slate-100 pt-1 mt-1">
             <CategoryHeader title="حسابات خاصة" icon={CircleUser} />
             {isLoadingSettings ? (
-              <div className="px-4 py-3 text-slate-400 text-xs flex items-center gap-2">
-                <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-500" />
+              <div className="px-3 py-2 text-slate-400 text-[10px] flex items-center gap-2">
+                <Loader2 className="w-3 h-3 animate-spin text-blue-500" />
                 <span>جاري تحميل الحسابات...</span>
               </div>
             ) : specialAccounts.length > 0 ? (
@@ -420,12 +418,12 @@ const Sidebar = () => {
                   icon={CircleUser}
                   props={{ accountName: acc.reportName }}
                   badge="خاص"
-                  code="SCR_SPECIAL_ACCOUNTS" // إعطاء صلاحية موحدة للحسابات الخاصة
+                  code="SCR_SPECIAL_ACCOUNTS"
                   moduleName="حسابات خاصة"
                 />
               ))
             ) : (
-              <div className="px-4 py-3 text-slate-400 text-xs bg-slate-50 rounded-lg mx-1">
+              <div className="px-3 py-2 text-slate-400 text-[10px] bg-slate-50 rounded-md mx-1">
                 لا توجد حسابات مضافة
               </div>
             )}
@@ -434,7 +432,7 @@ const Sidebar = () => {
 
         {/* ===================== 📁 سجلات النظام ===================== */}
         {hasSectionAccess(["SCR_PEOPLE_RECORDS"]) && (
-          <div className="border-t border-slate-100 pt-2 mt-2">
+          <div className="border-t border-slate-100 pt-1 mt-1">
             <CategoryHeader title="سجلات النظام" icon={BookUser} count={1} />
             <NavItem
               screenId="PEOPLE_RECORDS"
@@ -448,7 +446,7 @@ const Sidebar = () => {
 
         {/* ===================== ⚙️ الإعدادات ===================== */}
         {hasSectionAccess(["SCR_SET_ZONES", "SCR_SET_DELAYS"]) && (
-          <div className="border-t border-slate-100 pt-2 mt-2">
+          <div className="border-t border-slate-100 pt-1 mt-1">
             <CategoryHeader title="الإعدادات" icon={Settings} count={2} />
             <NavItem
               screenId="SET_ZONES"
@@ -468,26 +466,21 @@ const Sidebar = () => {
         )}
       </nav>
 
-      {/* ✨ الفوتر - تصميم احترافي */}
-      <div className="p-4 border-t border-slate-200 bg-gradient-to-r from-slate-50 to-white shrink-0">
-        <div className="flex items-center gap-3 p-2 rounded-xl bg-white border border-slate-200 shadow-sm">
+      {/* ✨ الفوتر */}
+      <div className="p-3 border-t border-slate-200 bg-gradient-to-r from-slate-50 to-white shrink-0">
+        <div className="flex items-center gap-2 p-1.5 rounded-lg bg-white border border-slate-200 shadow-sm">
           <div className="relative">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold text-sm shadow-lg shadow-blue-500/25">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold text-xs shadow-sm">
               {user?.name ? user.name.charAt(0).toUpperCase() : "A"}
             </div>
-            <div className="absolute -bottom-0.5 -right-0.5 w-3.5 h-3.5 bg-emerald-400 rounded-full border-2 border-white" />
+            <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-400 rounded-full border-2 border-white" />
           </div>
           <div className="flex-1 min-w-0">
-            <span className="block text-[13px] font-bold text-slate-800 truncate">
+            <span className="block text-[11px] font-bold text-slate-800 truncate leading-tight">
               {user?.name || "مدير النظام"}
             </span>
-            <span className="block text-[10px] text-slate-400 font-mono">
+            <span className="block text-[9px] text-slate-400 font-mono leading-tight">
               {user?.email || "admin@wms.com"}
-            </span>
-          </div>
-          <div className="px-2 py-1 rounded-lg bg-emerald-50 border border-emerald-100">
-            <span className="text-[9px] font-bold text-emerald-600">
-              ONLINE
             </span>
           </div>
         </div>
