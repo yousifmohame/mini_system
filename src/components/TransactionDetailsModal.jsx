@@ -48,6 +48,8 @@ import {
   Clock,
   EyeOff,
   Building2,
+  Activity,
+  MapPinned,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 
@@ -68,6 +70,23 @@ const safeText = (val) => {
 const parseNumber = (val) => {
   if (!val) return 0;
   return Number(val.toString().replace(/,/g, ""));
+};
+
+const formatDateTime = (dateStr) => {
+  if (!dateStr) return "—";
+  const d = new Date(dateStr);
+  return `${d.toLocaleDateString("ar-SA")} - ${d.toLocaleTimeString("ar-SA", { hour: "2-digit", minute: "2-digit" })}`;
+};
+
+// 💡 Helper for Day Name
+const getDayNameAndDate = (dateStr) => {
+  if (!dateStr) return "—";
+  const d = new Date(dateStr);
+  const dayName = new Intl.DateTimeFormat("ar-SA", { weekday: "long" }).format(
+    d,
+  );
+  const dateFormatted = d.toLocaleDateString("en-GB");
+  return `${dayName}، ${dateFormatted}`;
 };
 
 const getCollectionStatus = (paid, total) => {
@@ -228,13 +247,16 @@ export const TransactionDetailsModal = ({
   const backendUrl = api.defaults.baseURL.replace("/api", "");
 
   const { user } = useAuth();
-  const currentUser = user?.name || "موظف النظام";
+  const empId = user?.jobNumber || user?.employeeId || "";
+  const currentUser = user?.name
+    ? empId
+      ? `${user.name} (${empId})`
+      : user.name
+    : "موظف النظام";
 
-  // جلب بيانات المعاملة بشكل حي (Live) من الـ Cache
   const { data: transactionsData = [] } = useQuery({
     queryKey: ["private-transactions-full"],
   });
-
   const tx = useMemo(() => {
     if (!initialTx) return null;
     return transactionsData.find((t) => t.id === initialTx.id) || initialTx;
@@ -284,6 +306,11 @@ export const TransactionDetailsModal = ({
     enabled: isOpen,
   });
 
+  const { data: bankAccounts = [] } = useQuery({
+    queryKey: ["bank-accounts-modal"],
+    queryFn: async () => (await api.get("/bank-accounts")).data?.data || [],
+    enabled: isOpen,
+  });
   // تجهيز قوائم البحث الذكية
   const clientsOptions = useMemo(
     () => clients.map((c) => ({ label: c.name?.ar || c.name, value: c.id })),
@@ -353,6 +380,9 @@ export const TransactionDetailsModal = ({
     method: "تحويل بنكي",
     ref: "",
     notes: "",
+    bankAccountId: "",
+    isDepositedToSafe: false,
+    receiptFile: null,
   });
 
   const [isAddAgentOpen, setIsAddAgentOpen] = useState(false);
@@ -442,7 +472,12 @@ export const TransactionDetailsModal = ({
   // 💡 Mutations
   // ==========================================================
   const updateTxMutation = useMutation({
-    mutationFn: async (data) => api.put(`/private-transactions/${tx.id}`, data),
+    // 💡 تم إضافة updatedBy: currentUser لتوثيق من قام بالتعديل في سجل الأحداث
+    mutationFn: async (data) =>
+      api.put(`/private-transactions/${tx.id}`, {
+        ...data,
+        updatedBy: currentUser,
+      }),
     onSuccess: () => {
       toast.success("تم تحديث البيانات بنجاح");
       queryClient.invalidateQueries(["private-transactions-full"]);
@@ -506,7 +541,10 @@ export const TransactionDetailsModal = ({
 
   const addBrokerMutation = useMutation({
     mutationFn: async (data) =>
-      api.post(`/private-transactions/${tx?.id}/brokers`, data),
+      api.post(`/private-transactions/${tx?.id}/brokers`, {
+        ...data,
+        addedBy: currentUser,
+      }),
     onSuccess: () => {
       toast.success("تم تعيين الوسيط بنجاح");
       queryClient.invalidateQueries(["private-transactions-full"]);
@@ -517,7 +555,9 @@ export const TransactionDetailsModal = ({
 
   const deleteBrokerMutation = useMutation({
     mutationFn: async (brokerRecordId) =>
-      api.delete(`/private-transactions/brokers/${brokerRecordId}`),
+      api.delete(`/private-transactions/brokers/${brokerRecordId}`, {
+        data: { addedBy: currentUser },
+      }),
     onSuccess: () => {
       toast.success("تم حذف الوسيط");
       queryClient.invalidateQueries(["private-transactions-full"]);
@@ -526,7 +566,9 @@ export const TransactionDetailsModal = ({
 
   const freezeMutation = useMutation({
     mutationFn: async (id) =>
-      await api.patch(`/private-transactions/${id}/toggle-freeze`),
+      await api.patch(`/private-transactions/${id}/toggle-freeze`, {
+        updatedBy: currentUser,
+      }),
     onSuccess: () => {
       toast.success("تم تغيير حالة المعاملة");
       queryClient.invalidateQueries(["private-transactions-full"]);
@@ -545,13 +587,20 @@ export const TransactionDetailsModal = ({
   });
 
   const addPaymentMutation = useMutation({
-    mutationFn: async (data) =>
-      api.post(`/private-transactions/payments`, {
-        transactionId: tx?.id,
-        collectedFromType: "عميل",
-        collectedBy: currentUser, // 👈 توثيق المحصل
-        ...data,
-      }),
+    mutationFn: async (data) => {
+      const fd = new FormData();
+      fd.append("transactionId", tx?.id);
+      fd.append("collectedFromType", "عميل");
+      fd.append("collectedBy", currentUser);
+      Object.keys(data).forEach((k) => {
+        if (k === "receiptFile" && data[k]) fd.append("file", data[k]);
+        else if (data[k] !== null && data[k] !== undefined)
+          fd.append(k, data[k]);
+      });
+      return api.post(`/private-transactions/payments`, fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+    },
     onSuccess: () => {
       toast.success("تمت إضافة الدفعة بنجاح");
       queryClient.invalidateQueries(["private-transactions-full"]);
@@ -562,6 +611,9 @@ export const TransactionDetailsModal = ({
         method: "تحويل بنكي",
         ref: "",
         notes: "",
+        bankAccountId: "",
+        isDepositedToSafe: false,
+        receiptFile: null,
       });
     },
   });
@@ -577,11 +629,37 @@ export const TransactionDetailsModal = ({
 
   const addAgentMutation = useMutation({
     mutationFn: async (data) =>
-      api.post(`/private-transactions/${tx?.id}/agents`, data),
+      api.post(`/private-transactions/${tx?.id}/agents`, {
+        ...data,
+        addedBy: currentUser,
+      }),
     onSuccess: () => {
       toast.success("تم ربط المعقب بالمعاملة");
       queryClient.invalidateQueries(["private-transactions-full"]);
       setIsAddAgentOpen(false);
+    },
+  });
+
+  // 💡 Mutation حذف معقب من المعاملة
+  const deleteAgentMutation = useMutation({
+    mutationFn: async (agentIdToRemove) => {
+      const currentAgents = tx.notes?.agents || [];
+      const updatedAgents = currentAgents.filter(
+        (a) => a.id !== agentIdToRemove,
+      );
+
+      // نستخدم مسار التعديل العام لتحديث الـ notes
+      return api.put(`/private-transactions/${tx.id}`, {
+        notes: {
+          ...tx.notes,
+          agents: updatedAgents,
+          agentFees: updatedAgents.reduce((sum, a) => sum + a.fees, 0),
+        },
+      });
+    },
+    onSuccess: () => {
+      toast.success("تم إزالة المعقب من المعاملة");
+      queryClient.invalidateQueries(["private-transactions-full"]);
     },
   });
 
@@ -819,11 +897,6 @@ export const TransactionDetailsModal = ({
       const currentClient = clients.find(
         (c) => (c.name?.ar || c.name) === safeText(tx.client),
       );
-      const totalRealMediatorFees =
-        tx.brokers?.reduce((sum, b) => sum + safeNum(b.fees), 0) || 0;
-      const totalRealAgentFees =
-        tx.agents?.reduce((sum, a) => sum + safeNum(a.fees), 0) || 0;
-
       setEditFormData({
         year: new Date(tx.createdAt || tx.date).getFullYear().toString(),
         month: (new Date(tx.createdAt || tx.date).getMonth() + 1)
@@ -838,17 +911,30 @@ export const TransactionDetailsModal = ({
         office: tx.office || "مكتب ديتيلز",
         sourceName: tx.sourceName || "مباشر",
         totalFees: tx.totalFees || 0,
-        taxType: tx.notes?.taxData?.taxType || "بدون احتساب ضريبة", // 👈 جلب نوع الضريبة المسجل
-        mediatorFees: tx.mediatorFees || totalRealMediatorFees,
-        agentCost: tx.agentCost || totalRealAgentFees,
+        taxType: tx.notes?.taxData?.taxType || "بدون احتساب ضريبة",
+        mediatorFees:
+          tx.mediatorFees ||
+          tx.brokers?.reduce((sum, b) => sum + safeNum(b.fees), 0) ||
+          0,
+        agentCost:
+          tx.agentCost ||
+          tx.agents?.reduce((sum, a) => sum + safeNum(a.fees), 0) ||
+          0,
         internalName: tx.internalName || tx.notes?.internalName || "",
         isInternalNameHidden: tx.notes?.isInternalNameHidden || false,
+        // 💡 الحقول الجديدة للبيانات الأساسية
+        plots: Array.isArray(tx.notes?.refs?.plots)
+          ? tx.notes.refs.plots.join(", ")
+          : tx.notes?.refs?.plots || "",
+        plan: tx.notes?.refs?.plan || "",
+        area: tx.notes?.refs?.area || "",
+        mapsLink: tx.notes?.refs?.mapsLink || "",
       });
 
       if (tx.notes?.transactionStatusData) {
         setStatusForm({
           ...tx.notes.transactionStatusData,
-          newAuthorityNote: "", // تصفير الحقل الجديد
+          newAuthorityNote: "",
         });
       }
     }
@@ -1068,6 +1154,46 @@ export const TransactionDetailsModal = ({
     tx.collectionDates || tx.notes?.collectionDates || [];
   const safeAuthorityHistory = tx.notes?.authorityNotesHistory || []; // 👈 سجل ملاحظات الجهات
 
+  // 💡 ترتيب سجل الأحداث ليكون الأحدث في الأعلى دائماً
+  const systemLogs = useMemo(() => {
+    const logs = tx.logs || tx.notes?.logs || [];
+    return [...logs].sort((a, b) => new Date(b.date) - new Date(a.date));
+  }, [tx.logs, tx.notes?.logs]);
+  // 💡 إصلاح معاينة المرفق لفتح الروابط الصعبة
+  const handlePreviewAttachmentSafe = (url, name) => {
+    try {
+      if (!url) return;
+      // إذا كان مسار كامل يفتح مباشرة
+      if (url.startsWith("http")) return window.open(url, "_blank");
+
+      const fullUrl = `${backendUrl}${url}`;
+      setPreviewFile({ url: fullUrl, name });
+    } catch (error) {
+      toast.error("حدث خطأ أثناء فتح الملف");
+    }
+  };
+
+  // 💡 دالة حفظ التعديلات الأساسية المعدلة
+  const saveBasicEdits = () => {
+    // تجميع الحقول من editFormData مع الـ notes القديمة
+    const updatedNotes = {
+      ...(tx.notes || {}),
+      refs: {
+        ...((tx.notes || {}).refs || {}),
+        plots: editFormData.plots
+          ? editFormData.plots.split(",").map((s) => s.trim())
+          : [],
+        plan: editFormData.plan,
+        area: editFormData.area,
+        mapsLink: editFormData.mapsLink,
+      },
+    };
+
+    updateTxMutation.mutate({
+      ...editFormData,
+      notes: updatedNotes,
+    });
+  };
   return (
     <div
       className="fixed inset-0 bg-slate-900/70 z-50 flex items-center justify-center p-4 animate-in fade-in duration-200"
@@ -1087,12 +1213,20 @@ export const TransactionDetailsModal = ({
             <span className="text-white font-bold text-lg">
               {previewFile.name}
             </span>
-            <button
-              onClick={() => setPreviewFile(null)}
-              className="text-white hover:text-red-500 bg-white/20 p-2 rounded-full transition-colors"
-            >
-              <X />
-            </button>
+            <div className="flex gap-2">
+              <button
+                onClick={() => window.open(previewFile.url, "_blank")}
+                className="text-white hover:text-blue-400 bg-white/20 px-3 py-1.5 rounded-lg text-sm font-bold transition-colors"
+              >
+                فتح في نافذة جديدة
+              </button>
+              <button
+                onClick={() => setPreviewFile(null)}
+                className="text-white hover:text-red-500 bg-white/20 p-2 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
           </div>
           <div
             className="w-full max-w-5xl h-[85vh] bg-white rounded-xl overflow-hidden shadow-2xl flex items-center justify-center"
@@ -1115,13 +1249,15 @@ export const TransactionDetailsModal = ({
                 }}
               />
             )}
-            {/* رسالة بديلة تظهر في حال فشل تحميل الملف */}
             <div className="hidden flex-col items-center justify-center text-gray-500">
               <TriangleAlert className="w-12 h-12 text-red-400 mb-2" />
-              <span className="font-bold">تعذر تحميل الملف</span>
-              <span className="text-xs mt-1">
-                المستند غير متوفر أو مساره غير صحيح
-              </span>
+              <span className="font-bold mb-3">تعذر عرض الملف داخل النظام</span>
+              <button
+                onClick={() => window.open(previewFile.url, "_blank")}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold"
+              >
+                حاول فتحه في المتصفح
+              </button>
             </div>
           </div>
         </div>
@@ -1242,6 +1378,7 @@ export const TransactionDetailsModal = ({
             CalendarDays,
             "rgb(168, 85, 247)",
           )}
+          {renderTabButton("logs", "سجل الأحداث", Activity, "rgb(71, 85, 105)")}
         </div>
 
         {/* Content Area */}
@@ -1267,7 +1404,6 @@ export const TransactionDetailsModal = ({
                 </button>
               </div>
 
-              {/* 💡 بطاقة منشئ المعاملة */}
               <div className="bg-blue-50/50 border border-blue-100 p-3 rounded-xl flex items-center gap-3">
                 <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600">
                   <User className="w-5 h-5" />
@@ -1285,7 +1421,7 @@ export const TransactionDetailsModal = ({
                 </div>
               </div>
 
-              {/* 💡 الاسم المتداول (جديد) */}
+              {/* الاسم المتداول */}
               <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm relative overflow-hidden">
                 <div className="absolute top-0 right-0 w-1 h-full bg-blue-500"></div>
                 <div className="flex items-center justify-between mb-3">
@@ -1338,6 +1474,128 @@ export const TransactionDetailsModal = ({
                 )}
               </div>
 
+              {/* 💡 بيانات الأرض / المخطط / القطعة */}
+              <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
+                <div className="text-sm font-black text-gray-800 mb-4 border-b border-gray-100 pb-2 flex items-center gap-2">
+                  <MapPinned className="w-4 h-4 text-emerald-600" /> تفاصيل
+                  الموقع والمساحة
+                </div>
+                <div className="grid grid-cols-3 gap-4">
+                  <div>
+                    <label className="text-gray-500 text-[10px] font-bold mb-1.5 block">
+                      رقم المخطط
+                    </label>
+                    {isEditingBasic ? (
+                      <input
+                        type="text"
+                        value={editFormData.plan}
+                        onChange={(e) =>
+                          setEditFormData({
+                            ...editFormData,
+                            plan: e.target.value,
+                          })
+                        }
+                        className="w-full border border-gray-300 rounded p-2 text-sm font-mono outline-none focus:border-blue-500"
+                        placeholder="مثال: 3020/أ"
+                      />
+                    ) : (
+                      <div className="font-bold text-gray-800 font-mono">
+                        {tx.notes?.refs?.plan || "—"}
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <label className="text-gray-500 text-[10px] font-bold mb-1.5 block">
+                      أرقام القطع
+                    </label>
+                    {isEditingBasic ? (
+                      <input
+                        type="text"
+                        value={editFormData.plots}
+                        onChange={(e) =>
+                          setEditFormData({
+                            ...editFormData,
+                            plots: e.target.value,
+                          })
+                        }
+                        className="w-full border border-gray-300 rounded p-2 text-sm font-mono outline-none focus:border-blue-500"
+                        placeholder="مثال: 12, 13, 14"
+                      />
+                    ) : (
+                      <div className="font-bold text-gray-800 font-mono">
+                        {Array.isArray(tx.notes?.refs?.plots)
+                          ? tx.notes.refs.plots.join(" ، ")
+                          : tx.notes?.refs?.plots || "—"}
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <label className="text-gray-500 text-[10px] font-bold mb-1.5 block">
+                      المساحة الإجمالية
+                    </label>
+                    {isEditingBasic ? (
+                      <div className="flex gap-2">
+                        <input
+                          type="number"
+                          value={editFormData.area}
+                          onChange={(e) =>
+                            setEditFormData({
+                              ...editFormData,
+                              area: e.target.value,
+                            })
+                          }
+                          className="w-full border border-gray-300 rounded p-2 text-sm font-mono outline-none focus:border-blue-500"
+                          placeholder="0"
+                        />
+                        <span className="bg-gray-100 px-3 py-2 rounded text-xs font-bold text-gray-500">
+                          م²
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="font-bold text-gray-800 font-mono">
+                        {tx.notes?.refs?.area
+                          ? `${tx.notes.refs.area} م²`
+                          : "—"}
+                      </div>
+                    )}
+                  </div>
+                  <div className="col-span-3 mt-2">
+                    <label className="text-gray-500 text-[10px] font-bold mb-1.5 block">
+                      رابط الخرائط الرسمية (Google Maps)
+                    </label>
+                    {isEditingBasic ? (
+                      <input
+                        type="text"
+                        dir="ltr"
+                        value={editFormData.mapsLink}
+                        onChange={(e) =>
+                          setEditFormData({
+                            ...editFormData,
+                            mapsLink: e.target.value,
+                          })
+                        }
+                        className="w-full border border-gray-300 rounded p-2 text-sm font-mono outline-none focus:border-blue-500"
+                        placeholder="https://maps.google.com/..."
+                      />
+                    ) : tx.notes?.refs?.mapsLink ? (
+                      <button
+                        onClick={() =>
+                          window.open(tx.notes.refs.mapsLink, "_blank")
+                        }
+                        className="flex items-center gap-2 px-4 py-2 bg-emerald-50 text-emerald-700 hover:bg-emerald-600 hover:text-white rounded-lg text-xs font-bold transition-colors w-max border border-emerald-200"
+                      >
+                        <MapPinned className="w-4 h-4" /> عرض موقع الأرض على
+                        الخريطة
+                      </button>
+                    ) : (
+                      <div className="text-xs text-gray-400 font-bold">
+                        لم يتم إدراج رابط للموقع
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
               {/* باقي الحقول (رقم المعاملة، المالك، النوع) */}
               <div className="grid grid-cols-4 gap-4">
                 <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
@@ -1385,7 +1643,6 @@ export const TransactionDetailsModal = ({
                     </div>
                   )}
                 </div>
-
                 <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm col-span-2">
                   <div className="text-gray-500 text-[11px] font-bold mb-2">
                     اسم المالك
@@ -1410,7 +1667,6 @@ export const TransactionDetailsModal = ({
                     </div>
                   )}
                 </div>
-
                 <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
                   <div className="text-gray-500 text-[11px] font-bold mb-2">
                     نوع المعاملة
@@ -1464,7 +1720,6 @@ export const TransactionDetailsModal = ({
                     </div>
                   )}
                 </div>
-
                 <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
                   <div className="text-gray-500 text-[11px] font-bold mb-2">
                     المكتب المنفذ (الخارجي)
@@ -1493,7 +1748,6 @@ export const TransactionDetailsModal = ({
                     </div>
                   )}
                 </div>
-
                 <div className="bg-white p-5 rounded-xl border border-gray-200 shadow-sm">
                   <div className="text-gray-500 text-[11px] font-bold mb-2">
                     مصدر المعاملة (الداخلي)
@@ -1527,7 +1781,7 @@ export const TransactionDetailsModal = ({
               {isEditingBasic && (
                 <div className="flex justify-end mt-4">
                   <button
-                    onClick={() => updateTxMutation.mutate(editFormData)}
+                    onClick={saveBasicEdits}
                     disabled={updateTxMutation.isPending}
                     className="px-6 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-bold shadow-md hover:bg-blue-700 disabled:opacity-50 transition-all"
                   >
@@ -1542,11 +1796,9 @@ export const TransactionDetailsModal = ({
               )}
             </div>
           )}
-
-          {/* === 2. TRANSACTION STATUS (حالة المعاملة المتقدمة) === */}
+          {/* === 2. TRANSACTION STATUS === */}
           {activeTab === "status" && (
             <div className="max-w-5xl mx-auto space-y-6 animate-in fade-in pb-10">
-              {/* شريط التقدم التفاعلي (Progress Stepper) */}
               <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm flex justify-between items-center relative overflow-hidden">
                 <div className="absolute top-1/2 left-10 right-10 h-1 bg-gray-100 -z-10 -translate-y-1/2"></div>
                 {[
@@ -1602,9 +1854,7 @@ export const TransactionDetailsModal = ({
                 })}
               </div>
 
-              {/* محتوى الحالة النشطة */}
               <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
-                {/* حالة 1: قيد الدراسة */}
                 {statusForm.currentStatus === "عند المهندس للدراسة" && (
                   <div className="p-16 flex flex-col items-center justify-center text-center bg-slate-50/50">
                     <div className="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center mb-4 border border-blue-100">
@@ -1619,8 +1869,6 @@ export const TransactionDetailsModal = ({
                     </p>
                   </div>
                 )}
-
-                {/* حالة 2: تم الرفع */}
                 {statusForm.currentStatus === "تم الرفع" && (
                   <div className="p-6">
                     <div className="flex items-center gap-2 mb-6 border-b border-gray-100 pb-4">
@@ -1719,8 +1967,6 @@ export const TransactionDetailsModal = ({
                     </div>
                   </div>
                 )}
-
-                {/* حالة 3: ملاحظات الجهات (Timeline الاحترافي) */}
                 {statusForm.currentStatus === "ملاحظات من الجهات" && (
                   <div className="p-6">
                     <div className="flex items-center gap-2 mb-6 border-b border-gray-100 pb-4">
@@ -1729,9 +1975,7 @@ export const TransactionDetailsModal = ({
                         السجل الزمني للتوجيهات والملاحظات
                       </h3>
                     </div>
-
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                      {/* السجل الزمني (اليمين) */}
                       <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 h-[400px] overflow-y-auto custom-scrollbar-slim">
                         {safeAuthorityHistory.length > 0 ? (
                           <div className="relative border-r-2 border-orange-200 pr-5 ml-2 space-y-6">
@@ -1763,16 +2007,15 @@ export const TransactionDetailsModal = ({
                                     <p className="text-[13px] text-gray-700 font-bold leading-relaxed mb-3 whitespace-pre-wrap">
                                       {note.text}
                                     </p>
-
                                     <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-50">
                                       {safeUrl ? (
                                         <button
                                           onClick={(e) => {
                                             e.preventDefault();
-                                            setPreviewFile({
-                                              url: safeUrl,
-                                              name: "مرفق الملاحظة",
-                                            });
+                                            handlePreviewAttachmentSafe(
+                                              safeUrl,
+                                              "مرفق الملاحظة",
+                                            );
                                           }}
                                           className="inline-flex items-center gap-1.5 text-[11px] text-blue-600 font-black bg-blue-50 px-3 py-1.5 rounded-lg hover:bg-blue-600 hover:text-white transition-colors"
                                         >
@@ -1784,8 +2027,6 @@ export const TransactionDetailsModal = ({
                                           بدون مرفقات
                                         </span>
                                       )}
-
-                                      {/* زر حذف الملاحظة */}
                                       <button
                                         onClick={(e) => {
                                           e.preventDefault();
@@ -1830,8 +2071,6 @@ export const TransactionDetailsModal = ({
                           </div>
                         )}
                       </div>
-
-                      {/* إضافة ملاحظة جديدة (اليسار) */}
                       <div className="bg-orange-50/50 border border-orange-200 rounded-2xl p-5">
                         <h4 className="text-xs font-black text-orange-800 mb-4 flex items-center gap-2">
                           <PenLine className="w-4 h-4" /> تدوين توجيه أو ملاحظة
@@ -1876,8 +2115,6 @@ export const TransactionDetailsModal = ({
                     </div>
                   </div>
                 )}
-
-                {/* حالة 4: تم الاعتماد */}
                 {statusForm.currentStatus === "تم الاعتماد" && (
                   <div className="p-8 animate-in fade-in">
                     <div className="flex flex-col items-center justify-center text-center bg-green-50/50 p-8 rounded-2xl border border-green-100 mb-6">
@@ -1892,8 +2129,6 @@ export const TransactionDetailsModal = ({
                         العميل بناءً على خطة الدفع المبرمجة.
                       </p>
                     </div>
-
-                    {/* 💡 قسم عرض المستندات والمرفقات الخاصة بالاعتماد */}
                     <div className="bg-white border border-gray-200 p-6 rounded-2xl shadow-sm">
                       <div className="flex items-center justify-between mb-4 border-b border-gray-100 pb-3">
                         <h4 className="text-sm font-black text-gray-800 flex items-center gap-2">
@@ -1915,8 +2150,6 @@ export const TransactionDetailsModal = ({
                           <Plus className="w-3.5 h-3.5" /> رفع مرفق جديد
                         </button>
                       </div>
-
-                      {/* 1️⃣ عرض المرفقات المحفوظة مسبقاً (تم جلبها من الداتابيز) */}
                       {safeAttachments.length > 0 && (
                         <div className="mb-6">
                           <span className="text-xs font-bold text-gray-500 mb-3 block">
@@ -1934,7 +2167,6 @@ export const TransactionDetailsModal = ({
                               const safeUrl = file.url?.startsWith("http")
                                 ? file.url
                                 : `${backendUrl}${file.url}`;
-
                               return (
                                 <div
                                   key={`saved-${idx}`}
@@ -1955,10 +2187,10 @@ export const TransactionDetailsModal = ({
                                     <button
                                       onClick={(e) => {
                                         e.preventDefault();
-                                        setPreviewFile({
-                                          url: safeUrl,
-                                          name: safeName,
-                                        });
+                                        handlePreviewAttachmentSafe(
+                                          safeUrl,
+                                          safeName,
+                                        );
                                       }}
                                       className="text-[10px] bg-blue-100 text-blue-700 px-2 py-1 rounded font-bold hover:bg-blue-200 transition-colors"
                                     >
@@ -1986,8 +2218,6 @@ export const TransactionDetailsModal = ({
                           </div>
                         </div>
                       )}
-
-                      {/* 2️⃣ فورم رفع المرفقات الجديدة (المؤقتة قبل الحفظ) */}
                       {statusForm.approvalAttachments?.length > 0 && (
                         <div className="space-y-3 pt-4 border-t border-dashed border-gray-200">
                           <span className="text-xs font-bold text-blue-600 mb-2 block">
@@ -2060,8 +2290,6 @@ export const TransactionDetailsModal = ({
                           ))}
                         </div>
                       )}
-
-                      {/* رسالة توجيهية إذا كان المكان فارغاً تماماً */}
                       {safeAttachments.length === 0 &&
                         (!statusForm.approvalAttachments ||
                           statusForm.approvalAttachments.length === 0) && (
@@ -2073,8 +2301,6 @@ export const TransactionDetailsModal = ({
                     </div>
                   </div>
                 )}
-
-                {/* زر الحفظ العائم في الأسفل */}
                 <div className="p-5 border-t border-gray-200 bg-gray-50 flex justify-end">
                   <button
                     onClick={() => updateStatusMutation.mutate(statusForm)}
@@ -2089,7 +2315,7 @@ export const TransactionDetailsModal = ({
                       <Loader2 className="w-5 h-5 animate-spin" />
                     ) : (
                       <Save className="w-5 h-5" />
-                    )}
+                    )}{" "}
                     حفظ الحالة وتحديث النظام
                   </button>
                 </div>
@@ -2113,12 +2339,12 @@ export const TransactionDetailsModal = ({
                     <X className="w-3.5 h-3.5" />
                   ) : (
                     <Edit3 className="w-3.5 h-3.5" />
-                  )}
+                  )}{" "}
                   {isEditingFinancial ? "إغلاق التعديل" : "إمكانية التعديل"}
                 </button>
               </div>
 
-              {/* 1. الإيرادات والضرائب */}
+              {/* الإيرادات */}
               <div
                 className="rounded-xl border overflow-hidden shadow-sm"
                 style={{ borderColor: "rgba(34, 197, 94, 0.3)" }}
@@ -2176,7 +2402,6 @@ export const TransactionDetailsModal = ({
                     </div>
                   )}
                 </div>
-                {/* 💡 عرض حساب الضرائب أثناء التعديل */}
                 {isEditingFinancial &&
                   editFormData.taxType !== "بدون احتساب ضريبة" && (
                     <div className="bg-white p-3 flex justify-between items-center text-xs font-mono font-bold border-t border-green-100">
@@ -2202,7 +2427,7 @@ export const TransactionDetailsModal = ({
                   )}
               </div>
 
-              {/* 2. أتعاب الوسطاء */}
+              {/* أتعاب الوسطاء */}
               <div
                 className="rounded-xl border overflow-hidden shadow-sm transition-all"
                 style={{ borderColor: "rgba(239, 68, 68, 0.2)" }}
@@ -2258,7 +2483,7 @@ export const TransactionDetailsModal = ({
                               )
                               .reduce((sum, s) => sum + s.amount, 0) || 0;
                           const remaining = Math.max(0, cost - paid);
-                          const isFullyPaid = paid >= cost;
+                          const isFullyPaid = paid >= cost && cost > 0;
 
                           return (
                             <div
@@ -2361,7 +2586,7 @@ export const TransactionDetailsModal = ({
                 )}
               </div>
 
-              {/* 3. أتعاب المعقبين */}
+              {/* أتعاب المعقبين */}
               <div
                 className="rounded-xl border overflow-hidden shadow-sm transition-all"
                 style={{ borderColor: "rgba(239, 68, 68, 0.2)" }}
@@ -2417,7 +2642,7 @@ export const TransactionDetailsModal = ({
                               )
                               .reduce((sum, s) => sum + s.amount, 0) || 0;
                           const remaining = Math.max(0, cost - paid);
-                          const isFullyPaid = paid >= cost;
+                          const isFullyPaid = paid >= cost && cost > 0;
 
                           return (
                             <div
@@ -2482,6 +2707,16 @@ export const TransactionDetailsModal = ({
                                     </button>
                                   </>
                                 )}
+                                {isEditingFinancial && (
+                                  <button
+                                    onClick={() =>
+                                      deleteAgentMutation.mutate(ag.id)
+                                    }
+                                    className="text-gray-400 hover:text-red-500 p-1"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
                               </div>
                             </div>
                           );
@@ -2512,7 +2747,7 @@ export const TransactionDetailsModal = ({
                 )}
               </div>
 
-              {/* 4. العمل عن بعد */}
+              {/* العمل عن بعد */}
               <div
                 className="rounded-xl border overflow-hidden shadow-sm transition-all"
                 style={{ borderColor: "rgba(239, 68, 68, 0.2)" }}
@@ -2563,6 +2798,14 @@ export const TransactionDetailsModal = ({
                             0,
                             taskCost - taskPaid,
                           );
+                          const isFullyPaid =
+                            taskPaid >= taskCost && taskCost > 0;
+                          const usdRate =
+                            exchangeRates.find((r) => r.currency === "USD")
+                              ?.rate || 0.266;
+                          const egpRate =
+                            exchangeRates.find((r) => r.currency === "EGP")
+                              ?.rate || 13.2;
 
                           return (
                             <div
@@ -2570,12 +2813,13 @@ export const TransactionDetailsModal = ({
                               className="flex items-center justify-between p-3 rounded-lg border border-gray-100 bg-gray-50/50 hover:bg-emerald-50/30 transition-colors"
                             >
                               <div className="flex flex-col w-1/4">
-                                <span className="font-bold text-gray-800 text-[12px]">
-                                  {rt.workerName}
-                                </span>
-                                <span className="text-[10px] text-gray-500">
+                                <span className="font-bold text-gray-900">
                                   {rt.taskName}
                                 </span>
+                                <div className="text-[10px] text-emerald-600 font-bold mt-1">
+                                  <User className="w-3 h-3 inline mr-1" />
+                                  {rt.workerName}
+                                </div>
                               </div>
                               <div className="flex w-2/4 justify-between items-center text-center px-4">
                                 <div className="flex flex-col">
@@ -2616,8 +2860,7 @@ export const TransactionDetailsModal = ({
                                     <button
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        setPayPersonData({
-                                          targetType: "موظف عن بعد",
+                                        setPayTaskData({
                                           taskId: rt.id,
                                           workerName: rt.workerName,
                                           taskName: rt.taskName,
@@ -2629,9 +2872,9 @@ export const TransactionDetailsModal = ({
                                             .split("T")[0],
                                         });
                                       }}
-                                      className="flex items-center gap-1 bg-emerald-100 text-emerald-700 hover:bg-emerald-600 hover:text-white px-2.5 py-1 rounded text-[10px] font-bold transition-colors"
+                                      className="bg-emerald-100 text-emerald-700 hover:bg-emerald-600 hover:text-white px-3 py-1.5 rounded-lg text-xs font-bold transition-colors"
                                     >
-                                      <Banknote className="w-3 h-3" /> سداد
+                                      تسوية
                                     </button>
                                   </>
                                 )}
@@ -2659,7 +2902,7 @@ export const TransactionDetailsModal = ({
                 )}
               </div>
 
-              {/* 4. مصاريف أخرى (تم تفعيلها وإضافة جدول لها) */}
+              {/* مصاريف أخرى */}
               <div
                 className="rounded-xl border overflow-hidden shadow-sm transition-all"
                 style={{ borderColor: "rgba(239, 68, 68, 0.2)" }}
@@ -2701,7 +2944,6 @@ export const TransactionDetailsModal = ({
                 </div>
                 {openSections.expenses && (
                   <div className="p-4 bg-white">
-                    {/* فورم إضافة مصروف */}
                     <div
                       id="add-expense-form"
                       className="hidden mb-4 p-4 bg-gray-50 border border-gray-200 rounded-xl"
@@ -2993,20 +3235,6 @@ export const TransactionDetailsModal = ({
                         const remaining = Math.max(0, cost - paid);
                         const isFullyPaid = paid >= cost && cost > 0;
 
-                        let statusLabel = "غير مدفوع";
-                        let statusClass =
-                          "bg-amber-100 text-amber-700 border border-amber-200";
-
-                        if (isFullyPaid) {
-                          statusLabel = "تم الدفع";
-                          statusClass =
-                            "bg-green-100 text-green-700 border border-green-200";
-                        } else if (paid > 0) {
-                          statusLabel = "دفع جزئي";
-                          statusClass =
-                            "bg-blue-100 text-blue-700 border border-blue-200";
-                        }
-
                         return (
                           <tr
                             key={i}
@@ -3026,17 +3254,21 @@ export const TransactionDetailsModal = ({
                             </td>
                             <td className="px-4 py-4">
                               <span
-                                className={`px-2.5 py-1 rounded-md text-[10px] font-bold flex items-center gap-1 w-max ${statusClass}`}
+                                className={`px-2.5 py-1 rounded-md text-[10px] font-bold flex items-center gap-1 w-max ${isFullyPaid ? "bg-green-100 text-green-700 border border-green-200" : "bg-amber-100 text-amber-700 border border-amber-200"}`}
                               >
                                 {isFullyPaid ? (
                                   <Check className="w-3 h-3" />
                                 ) : (
                                   <Circle className="w-3 h-3" />
-                                )}
-                                {statusLabel}
+                                )}{" "}
+                                {isFullyPaid
+                                  ? "تم الدفع"
+                                  : paid > 0
+                                    ? "دفع جزئي"
+                                    : "غير مدفوع"}
                               </span>
                             </td>
-                            <td className="px-4 py-4">
+                            <td className="px-4 py-4 text-center">
                               <div className="flex items-center justify-center gap-2">
                                 {remaining > 0 && (
                                   <button
@@ -3226,8 +3458,25 @@ export const TransactionDetailsModal = ({
                                     <Banknote className="w-3.5 h-3.5" /> سداد
                                   </button>
                                 )}
-                                <button className="text-red-500 hover:bg-red-50 p-1.5 rounded-lg transition-colors">
-                                  <Trash2 className="w-4 h-4" />
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (
+                                      window.confirm(
+                                        "هل تريد إزالة هذا المعقب من المعاملة؟",
+                                      )
+                                    ) {
+                                      deleteAgentMutation.mutate(ag.id);
+                                    }
+                                  }}
+                                  disabled={deleteAgentMutation.isPending}
+                                  className="text-red-500 hover:bg-red-50 p-1.5 rounded-lg transition-colors disabled:opacity-50"
+                                >
+                                  {deleteAgentMutation.isPending ? (
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                  ) : (
+                                    <Trash2 className="w-4 h-4" />
+                                  )}
                                 </button>
                               </div>
                             </td>
@@ -3320,17 +3569,33 @@ export const TransactionDetailsModal = ({
                               </div>
                             </td>
                             <td className="px-4 py-4">
-                              <div className="font-mono font-black text-gray-800">
-                                {taskCost.toLocaleString()}{" "}
-                                <span className="text-[9px] text-gray-400">
-                                  SAR
-                                </span>
-                              </div>
-                              <div className="font-mono text-[10px] text-gray-500 mt-0.5">
-                                ~ {(taskCost * usdRate).toFixed(2)} USD |{" "}
-                                {(taskCost * egpRate).toFixed(2)} EGP
+                              <div className="flex flex-col gap-1">
+                                {/* SAR - العملة الأساسية */}
+                                <div className="font-mono font-bold text-lg text-gray-900">
+                                  {taskCost.toLocaleString()}
+                                  <span className="text-xs ml-1 text-gray-500">
+                                    SAR
+                                  </span>
+                                </div>
+
+                                {/* USD */}
+                                <div className="font-mono text-sm text-blue-600">
+                                  {(taskCost * usdRate).toFixed(2)}
+                                  <span className="text-[11px] ml-1 text-blue-500">
+                                    USD
+                                  </span>
+                                </div>
+
+                                {/* EGP */}
+                                <div className="font-mono text-sm text-green-600">
+                                  {(taskCost * egpRate).toFixed(2)}
+                                  <span className="text-[11px] ml-1 text-green-500">
+                                    EGP
+                                  </span>
+                                </div>
                               </div>
                             </td>
+
                             <td className="px-4 py-4">
                               <div className="text-[11px] font-bold text-gray-700">
                                 {rt.assignedBy || "موظف النظام"}
@@ -4487,7 +4752,6 @@ export const TransactionDetailsModal = ({
           {/* === 10. COLLECTION DATES (خطة التحصيل المتقدمة) === */}
           {activeTab === "dates" && (
             <div className="space-y-6 animate-in fade-in pb-10">
-              {/* 💡 1. لوحة ملخص خطة التحصيل (Context Dashboard) */}
               <div className="grid grid-cols-3 gap-4">
                 <div className="bg-white p-4 rounded-xl border border-gray-200 shadow-sm flex flex-col justify-center">
                   <span className="text-gray-500 text-[11px] font-bold mb-1">
@@ -4533,7 +4797,7 @@ export const TransactionDetailsModal = ({
                 </div>
               </div>
 
-              {/* 💡 2. نموذج إضافة موعد جديد (Enterprise Form) */}
+              {/* نموذج إضافة موعد جديد */}
               <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm">
                 <div className="flex items-center gap-2 mb-5 border-b border-gray-100 pb-3">
                   <CalendarDays className="w-5 h-5 text-purple-600" />
@@ -4541,9 +4805,7 @@ export const TransactionDetailsModal = ({
                     إدراج موعد تحصيل جديد في الخطة
                   </h3>
                 </div>
-
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-5">
-                  {/* نوع الاستحقاق */}
                   <div className="bg-slate-50 p-4 rounded-xl border border-slate-200">
                     <label className="block text-xs font-bold text-slate-700 mb-3">
                       طريقة تحديد تاريخ الاستحقاق{" "}
@@ -4567,7 +4829,6 @@ export const TransactionDetailsModal = ({
                         يُستحق فور الاعتماد
                       </button>
                     </div>
-                    {/* تلميحات احترافية */}
                     <p className="text-[10px] text-slate-400 mt-2 font-semibold flex items-start gap-1">
                       <Info className="w-3 h-3 shrink-0 mt-0.5" />
                       {dateForm.type === "specific_date"
@@ -4575,8 +4836,6 @@ export const TransactionDetailsModal = ({
                         : "سيظل الموعد معلقاً، ويبدأ عداد التأخير تلقائياً بمجرد تحويل حالة المعاملة إلى (تم الاعتماد)."}
                     </p>
                   </div>
-
-                  {/* التاريخ أو التلميح */}
                   <div className="p-4 flex flex-col justify-center">
                     {dateForm.type === "specific_date" ? (
                       <div>
@@ -4609,9 +4868,7 @@ export const TransactionDetailsModal = ({
                     )}
                   </div>
                 </div>
-
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-5">
-                  {/* المبلغ المستهدف */}
                   <div className="col-span-1">
                     <label className="block text-xs font-bold text-gray-700 mb-2">
                       المبلغ المستهدف <span className="text-red-500">*</span>
@@ -4670,8 +4927,6 @@ export const TransactionDetailsModal = ({
                       </div>
                     </div>
                   </div>
-
-                  {/* الملاحظات */}
                   <div className="col-span-2">
                     <label className="block text-xs font-bold text-gray-700 mb-2">
                       البيان / توجيهات المتابعة (اختياري)
@@ -4687,7 +4942,6 @@ export const TransactionDetailsModal = ({
                     />
                   </div>
                 </div>
-
                 <div className="flex justify-end pt-4 border-t border-gray-100">
                   <button
                     onClick={() => {
@@ -4707,13 +4961,13 @@ export const TransactionDetailsModal = ({
                       <Loader2 className="w-4 h-4 animate-spin" />
                     ) : (
                       <Save className="w-4 h-4" />
-                    )}
+                    )}{" "}
                     اعتماد الموعد في الخطة
                   </button>
                 </div>
               </div>
 
-              {/* 💡 3. عرض خطة التحصيل (بطاقات احترافية للمواعيد) */}
+              {/* 💡 3. عرض خطة التحصيل (مُحدثة للخطوط والأيام) */}
               <div className="mt-8">
                 <h4 className="text-sm font-black text-gray-800 mb-4 flex items-center gap-2">
                   <History className="w-4 h-4 text-gray-500" /> السجل الزمني
@@ -4726,8 +4980,6 @@ export const TransactionDetailsModal = ({
                         d.date,
                         d.type === "upon_approval",
                       );
-
-                      // تحديد الحالة والألوان للموعد
                       let statusConfig = {
                         bg: "bg-white",
                         border: "border-gray-200",
@@ -4736,7 +4988,6 @@ export const TransactionDetailsModal = ({
                         icon: Clock,
                         label: "بانتظار الإجراء",
                       };
-
                       if (d.type === "specific_date") {
                         if (days < 0)
                           statusConfig = {
@@ -4791,11 +5042,9 @@ export const TransactionDetailsModal = ({
                           key={i}
                           className={`p-0 rounded-2xl border flex flex-col md:flex-row overflow-hidden shadow-sm transition-all hover:shadow-md ${statusConfig.bg} ${statusConfig.border}`}
                         >
-                          {/* الشريط الجانبي الملون */}
                           <div
                             className={`w-1.5 hidden md:block ${statusConfig.badgeBg.replace("bg-", "bg-").replace("100", "500").replace("50", "400")}`}
                           ></div>
-
                           <div className="flex-1 p-4 flex flex-col justify-center">
                             <div className="flex items-center gap-2 mb-2">
                               <span
@@ -4804,13 +5053,13 @@ export const TransactionDetailsModal = ({
                                 <statusConfig.icon className="w-3 h-3" />{" "}
                                 {statusConfig.label}
                               </span>
-                              <span className="text-[10px] text-gray-400 font-mono font-bold bg-white px-2 py-1 rounded border border-gray-100 shadow-sm">
+                              <span className="text-[12px] text-gray-500 font-mono font-bold bg-white px-2 py-1 rounded border border-gray-100 shadow-sm">
                                 {d.type === "upon_approval"
-                                  ? "نوع الجدولة: شرطية (عند الاعتماد)"
-                                  : `تاريخ الاستحقاق: ${new Date(d.date).toLocaleDateString("en-GB")}`}
+                                  ? "الاستحقاق: شرطي (عند الاعتماد)"
+                                  : getDayNameAndDate(d.date)}
                               </span>
                             </div>
-                            <div className="font-bold text-gray-800 text-[13px]">
+                            <div className="font-bold text-gray-800 text-[14px]">
                               {d.notes || "متابعة تحصيل دفعة من العميل"}
                             </div>
                             <div className="text-[10px] text-gray-400 font-semibold mt-2 flex items-center gap-1">
@@ -4820,30 +5069,25 @@ export const TransactionDetailsModal = ({
                               </span>
                             </div>
                           </div>
-
                           <div className="p-4 border-t md:border-t-0 md:border-r border-gray-200/60 bg-white/50 flex flex-col items-end justify-center min-w-[180px]">
-                            <span className="text-[10px] text-gray-500 font-bold mb-1">
-                              قيمة الموعد
+                            <span className="text-[11px] text-gray-500 font-bold mb-1">
+                              المبلغ المطلوب
                             </span>
-                            <div className="font-mono font-black text-2xl text-purple-700 tracking-tight">
+                            <div className="font-mono font-black text-3xl text-purple-700 tracking-tight">
                               {safeNum(d.amount).toLocaleString()}{" "}
-                              <span className="text-[11px] font-normal text-purple-500">
+                              <span className="text-[12px] font-normal text-purple-500">
                                 ر.س
                               </span>
                             </div>
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                if (
-                                  window.confirm(
-                                    "هل أنت متأكد من رغبتك في حذف هذا الموعد نهائياً؟",
-                                  )
-                                ) {
+                                if (window.confirm("حذف الموعد نهائياً؟")) {
                                   deleteDateMutation.mutate(d.id);
                                 }
                               }}
                               disabled={deleteDateMutation.isPending}
-                              className="mt-3 text-[10px] text-red-500 font-bold hover:bg-red-50 px-2 py-1 rounded transition-colors disabled:opacity-50"
+                              className="mt-3 text-[11px] text-red-500 font-bold hover:bg-red-50 px-3 py-1.5 rounded transition-colors disabled:opacity-50"
                             >
                               حذف الموعد
                             </button>
@@ -4863,6 +5107,98 @@ export const TransactionDetailsModal = ({
                     </div>
                   )}
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* === 11. EVENT LOGS (سجل الأحداث الجديد) === */}
+          {activeTab === "logs" && (
+            <div className="space-y-6 animate-in fade-in pb-10 max-w-4xl mx-auto">
+              <div className="flex items-center gap-3 mb-6 border-b border-gray-200 pb-4">
+                <div className="w-12 h-12 bg-slate-100 rounded-xl flex items-center justify-center text-slate-600 shadow-inner">
+                  <Activity className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-slate-800">
+                    سجل أحداث النظام
+                  </h3>
+                  <p className="text-xs font-bold text-slate-500">
+                    تتبع زمني دقيق لكل حركة تمت على هذه المعاملة منذ إنشائها.
+                  </p>
+                </div>
+              </div>
+
+              <div className="relative border-r-2 border-slate-200 pr-6 ml-3 space-y-8">
+                {systemLogs.length > 0 ? (
+                  systemLogs.map((log, idx) => (
+                    <div key={idx} className="relative">
+                      <div className="absolute -right-[31px] top-1.5 w-4 h-4 bg-white border-4 border-slate-400 rounded-full shadow-sm"></div>
+                      <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm hover:shadow-md transition-shadow">
+                        <div className="flex justify-between items-start mb-2">
+                          <div className="flex items-center gap-2">
+                            <span className="px-2 py-1 rounded bg-slate-100 text-slate-600 text-[10px] font-bold">
+                              {log.type || "حركة نظام"}
+                            </span>
+                            <span className="text-sm font-black text-slate-800">
+                              {log.action || "تحديث بيانات"}
+                            </span>
+                          </div>
+                          <div className="text-[11px] font-mono font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded border border-gray-100">
+                            {formatDateTime(log.date)}
+                          </div>
+                        </div>
+                        <p className="text-xs text-slate-600 font-semibold mb-3 leading-relaxed">
+                          {log.details}
+                        </p>
+                        <div className="flex items-center gap-2 pt-3 border-t border-slate-100">
+                          <div className="w-6 h-6 bg-blue-50 rounded-full flex items-center justify-center text-blue-600">
+                            <User className="w-3 h-3" />
+                          </div>
+                          <span className="text-[11px] font-bold text-slate-500">
+                            {log.user || "مدير النظام"}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                ) : // 💡 Fallback if no logs exist yet (using authority history as dummy data just to show something)
+                safeAuthorityHistory.length > 0 ? (
+                  safeAuthorityHistory.map((note, idx) => (
+                    <div key={`dummy-${idx}`} className="relative">
+                      <div className="absolute -right-[31px] top-1.5 w-4 h-4 bg-white border-4 border-blue-400 rounded-full shadow-sm"></div>
+                      <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
+                        <div className="flex justify-between items-start mb-2">
+                          <div className="flex items-center gap-2">
+                            <span className="px-2 py-1 rounded bg-blue-50 text-blue-600 text-[10px] font-bold">
+                              ملاحظة جهة
+                            </span>
+                            <span className="text-sm font-black text-slate-800">
+                              إضافة توجيه من منصة
+                            </span>
+                          </div>
+                          <div className="text-[11px] font-mono font-bold text-slate-400 bg-slate-50 px-2 py-1 rounded border border-gray-100">
+                            {formatDateTime(note.date)}
+                          </div>
+                        </div>
+                        <p className="text-xs text-slate-600 font-semibold mb-3 leading-relaxed">
+                          {note.text}
+                        </p>
+                        <div className="flex items-center gap-2 pt-3 border-t border-slate-100">
+                          <div className="w-6 h-6 bg-slate-100 rounded-full flex items-center justify-center text-slate-500">
+                            <User className="w-3 h-3" />
+                          </div>
+                          <span className="text-[11px] font-bold text-slate-500">
+                            {note.addedBy || "موظف النظام"}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <div className="py-10 text-center text-slate-400 font-bold text-sm bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                    لا توجد حركات مسجلة في السجل حتى الآن.
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -5006,8 +5342,6 @@ export const TransactionDetailsModal = ({
                   ووثائق المعاملة
                 </span>
               </div>
-
-              {/* صندوق الرفع الجديد */}
               <div className="bg-blue-50/50 border border-blue-200 rounded-xl p-5 shadow-sm flex flex-col md:flex-row items-end gap-4">
                 <div className="flex-1 w-full space-y-3">
                   <label className="block text-xs font-bold text-blue-800">
@@ -5026,13 +5360,25 @@ export const TransactionDetailsModal = ({
                     placeholder="مثال: صورة الصك الجديد، عقد المكتب..."
                   />
                 </div>
-                <div className="w-full md:w-auto">
-                  <label className="flex items-center justify-center gap-2 px-8 py-3 bg-white border-2 border-dashed border-blue-400 text-blue-600 rounded-xl cursor-pointer hover:bg-blue-600 hover:text-white transition-all font-bold text-sm h-[42px]">
+                <div className="w-full md:w-auto flex-1 relative">
+                  {/* 💡 Drag and Drop Zone */}
+                  <label
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      if (e.dataTransfer.files && e.dataTransfer.files[0])
+                        setUploadData({
+                          ...uploadData,
+                          file: e.dataTransfer.files[0],
+                        });
+                    }}
+                    className="flex items-center justify-center gap-2 px-8 py-3 bg-white border-2 border-dashed border-blue-400 text-blue-600 rounded-xl cursor-pointer hover:bg-blue-50 transition-all font-bold text-sm h-[42px] w-full"
+                  >
                     <Upload className="w-4 h-4" />{" "}
                     <span>
                       {uploadData.file
                         ? uploadData.file.name
-                        : "اختر ملف لرفعه..."}
+                        : "اختر ملف أو اسحبه هنا..."}
                     </span>
                     <input
                       type="file"
@@ -5063,11 +5409,10 @@ export const TransactionDetailsModal = ({
                 </button>
               </div>
 
-              {/* شبكة المرفقات */}
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5 mt-6">
                 {safeAttachments.length === 0 ? (
                   <div className="col-span-full text-center py-16 text-gray-400 font-bold border-2 border-dashed border-gray-200 rounded-2xl bg-gray-50">
-                    <FileBox className="w-12 h-12 text-gray-300 mx-auto mb-3" />
+                    <FileBox className="w-12 h-12 text-gray-300 mx-auto mb-3" />{" "}
                     لا توجد مرفقات مسجلة. قم برفع المستندات أعلاه.
                   </div>
                 ) : (
@@ -5108,11 +5453,10 @@ export const TransactionDetailsModal = ({
                           <User className="w-3 h-3 inline mr-1" />{" "}
                           {file.uploadedBy || "النظام"}
                         </span>
-
                         <div className="flex items-center gap-2 w-full mt-auto">
                           <button
                             onClick={() =>
-                              setPreviewFile({ url: safeUrl, name: safeName })
+                              handlePreviewAttachmentSafe(safeUrl, safeName)
                             }
                             className="flex-1 bg-blue-50 text-blue-600 py-2 rounded-lg text-xs font-bold hover:bg-blue-600 hover:text-white transition-colors"
                           >
@@ -5157,9 +5501,9 @@ export const TransactionDetailsModal = ({
                 <X className="w-4 h-4 hover:text-red-400" />
               </button>
             </div>
-            <div className="p-5 space-y-4">
+            <div className="p-5 space-y-4 max-h-[75vh] overflow-y-auto custom-scrollbar-slim">
               <div>
-                <label className="text-xs font-bold text-gray-600">
+                <label className="text-xs font-bold text-gray-600 mb-1 block">
                   المبلغ المحصل *
                 </label>
                 <input
@@ -5168,13 +5512,13 @@ export const TransactionDetailsModal = ({
                   onChange={(e) =>
                     setPaymentForm({ ...paymentForm, amount: e.target.value })
                   }
-                  className="w-full border p-2 mt-1 rounded text-lg font-mono font-bold text-green-700 focus:border-green-500 outline-none"
+                  className="w-full border p-2.5 rounded-lg text-lg font-mono font-bold text-green-700 focus:border-green-500 outline-none"
                   placeholder="0"
                 />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-bold text-gray-600">
+                  <label className="text-xs font-bold text-gray-600 mb-1 block">
                     التاريخ
                   </label>
                   <input
@@ -5183,11 +5527,11 @@ export const TransactionDetailsModal = ({
                     onChange={(e) =>
                       setPaymentForm({ ...paymentForm, date: e.target.value })
                     }
-                    className="w-full border p-2 mt-1 rounded text-sm"
+                    className="w-full border p-2 rounded-lg text-sm outline-none focus:border-green-500"
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-bold text-gray-600">
+                  <label className="text-xs font-bold text-gray-600 mb-1 block">
                     طريقة الدفع
                   </label>
                   <select
@@ -5195,7 +5539,7 @@ export const TransactionDetailsModal = ({
                     onChange={(e) =>
                       setPaymentForm({ ...paymentForm, method: e.target.value })
                     }
-                    className="w-full border p-2 mt-1 rounded text-sm"
+                    className="w-full border p-2 rounded-lg text-sm font-bold outline-none focus:border-green-500"
                   >
                     <option>تحويل بنكي</option>
                     <option>نقدي</option>
@@ -5203,8 +5547,96 @@ export const TransactionDetailsModal = ({
                   </select>
                 </div>
               </div>
+
+              {/* 💡 خيارات ذكية بناءً على طريقة الدفع */}
+              {paymentForm.method === "تحويل بنكي" && (
+                <div className="p-3 bg-blue-50 border border-blue-100 rounded-xl space-y-3 animate-in fade-in">
+                  <div>
+                    <label className="text-[10px] font-bold text-blue-800 mb-1 block">
+                      الحساب المحول إليه (سيتم تغذية الرصيد تلقائياً)
+                    </label>
+                    <select
+                      value={paymentForm.bankAccountId}
+                      onChange={(e) =>
+                        setPaymentForm({
+                          ...paymentForm,
+                          bankAccountId: e.target.value,
+                        })
+                      }
+                      className="w-full border p-2 rounded-lg text-sm outline-none focus:border-blue-500 bg-white"
+                    >
+                      <option value="">-- اختر الحساب البنكي --</option>
+                      {bankAccounts.map((b) => (
+                        <option key={b.id} value={b.id}>
+                          {b.bankName} - {b.accountName}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-blue-800 mb-1 block">
+                      إيصال التحويل (اختياري)
+                    </label>
+                    <label
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        if (e.dataTransfer.files[0])
+                          setPaymentForm({
+                            ...paymentForm,
+                            receiptFile: e.dataTransfer.files[0],
+                          });
+                      }}
+                      className="flex items-center justify-center gap-2 px-4 py-2 border border-dashed border-blue-300 bg-white text-blue-600 rounded-lg cursor-pointer hover:bg-blue-100 transition-colors text-xs font-bold"
+                    >
+                      <Upload className="w-3.5 h-3.5" />{" "}
+                      <span className="truncate">
+                        {paymentForm.receiptFile
+                          ? paymentForm.receiptFile.name
+                          : "اختر أو اسحب الإيصال هنا..."}
+                      </span>
+                      <input
+                        type="file"
+                        className="hidden"
+                        onChange={(e) =>
+                          setPaymentForm({
+                            ...paymentForm,
+                            receiptFile: e.target.files[0],
+                          })
+                        }
+                      />
+                    </label>
+                  </div>
+                </div>
+              )}
+              {paymentForm.method === "نقدي" && (
+                <div className="p-3 bg-amber-50 border border-amber-100 rounded-xl space-y-3 animate-in fade-in">
+                  <label className="flex items-center gap-2 cursor-pointer text-sm font-bold text-amber-900">
+                    <input
+                      type="checkbox"
+                      checked={paymentForm.isDepositedToSafe}
+                      onChange={(e) =>
+                        setPaymentForm({
+                          ...paymentForm,
+                          isDepositedToSafe: e.target.checked,
+                        })
+                      }
+                      className="accent-amber-600 w-4 h-4"
+                    />
+                    تم إيداع المبلغ بالخزنة الرئيسية
+                  </label>
+                  {!paymentForm.isDepositedToSafe && (
+                    <div className="text-[10px] text-amber-700 bg-amber-100/50 p-2 rounded flex items-start gap-1">
+                      <Info className="w-3 h-3 shrink-0 mt-0.5" /> سيُسجل هذا
+                      المبلغ كـ "تحصيل غير مورد للخزينة" وسيبقى عهدة مع المحصل
+                      لحين توريده.
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div>
-                <label className="text-xs font-bold text-gray-600">
+                <label className="text-xs font-bold text-gray-600 mb-1 block">
                   المرجع / رقم الحوالة
                 </label>
                 <input
@@ -5212,11 +5644,11 @@ export const TransactionDetailsModal = ({
                   onChange={(e) =>
                     setPaymentForm({ ...paymentForm, ref: e.target.value })
                   }
-                  className="w-full border p-2 mt-1 rounded text-sm"
+                  className="w-full border p-2 rounded-lg text-sm outline-none focus:border-green-500"
                 />
               </div>
               <div>
-                <label className="text-xs font-bold text-gray-600">
+                <label className="text-xs font-bold text-gray-600 mb-1 block">
                   ملاحظات
                 </label>
                 <input
@@ -5224,22 +5656,27 @@ export const TransactionDetailsModal = ({
                   onChange={(e) =>
                     setPaymentForm({ ...paymentForm, notes: e.target.value })
                   }
-                  className="w-full border p-2 mt-1 rounded text-sm"
+                  className="w-full border p-2 rounded-lg text-sm outline-none focus:border-green-500"
                 />
               </div>
             </div>
             <div className="p-4 border-t bg-gray-50 flex justify-end gap-2">
               <button
                 onClick={() => setIsAddPaymentOpen(false)}
-                className="px-4 py-1.5 border rounded bg-white text-sm font-bold"
+                className="px-4 py-1.5 border border-gray-300 rounded-lg bg-white text-sm font-bold hover:bg-gray-100"
               >
                 إلغاء
               </button>
               <button
                 onClick={() => addPaymentMutation.mutate(paymentForm)}
                 disabled={addPaymentMutation.isPending || !paymentForm.amount}
-                className="px-4 py-1.5 bg-green-600 text-white rounded text-sm font-bold disabled:opacity-50"
+                className="px-6 py-1.5 bg-green-600 text-white rounded-lg text-sm font-bold disabled:opacity-50 hover:bg-green-700 shadow-sm flex items-center gap-2"
               >
+                {addPaymentMutation.isPending ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Save className="w-4 h-4" />
+                )}{" "}
                 حفظ الدفعة
               </button>
             </div>
@@ -5264,7 +5701,7 @@ export const TransactionDetailsModal = ({
             </div>
             <div className="p-5 space-y-4">
               <div>
-                <label className="text-xs font-bold text-gray-600">
+                <label className="text-xs font-bold text-gray-600 mb-1 block">
                   اسم المعقب *
                 </label>
                 <select
@@ -5272,7 +5709,7 @@ export const TransactionDetailsModal = ({
                   onChange={(e) =>
                     setAgentForm({ ...agentForm, agentId: e.target.value })
                   }
-                  className="w-full border p-2 mt-1 rounded text-sm font-bold"
+                  className="w-full border p-2.5 rounded-lg text-sm font-bold outline-none focus:border-purple-500"
                 >
                   <option value="">-- اختر معقب --</option>
                   {agentsList.map((a) => (
@@ -5284,7 +5721,7 @@ export const TransactionDetailsModal = ({
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-bold text-gray-600">
+                  <label className="text-xs font-bold text-gray-600 mb-1 block">
                     الدور/المهمة
                   </label>
                   <input
@@ -5292,11 +5729,11 @@ export const TransactionDetailsModal = ({
                     onChange={(e) =>
                       setAgentForm({ ...agentForm, role: e.target.value })
                     }
-                    className="w-full border p-2 mt-1 rounded text-sm"
+                    className="w-full border p-2.5 rounded-lg text-sm outline-none focus:border-purple-500"
                   />
                 </div>
                 <div>
-                  <label className="text-xs font-bold text-gray-600">
+                  <label className="text-xs font-bold text-gray-600 mb-1 block">
                     الأتعاب (ر.س) *
                   </label>
                   <input
@@ -5305,7 +5742,7 @@ export const TransactionDetailsModal = ({
                     onChange={(e) =>
                       setAgentForm({ ...agentForm, fees: e.target.value })
                     }
-                    className="w-full border p-2 mt-1 rounded font-mono text-sm"
+                    className="w-full border p-2.5 rounded-lg font-mono text-lg font-bold outline-none focus:border-purple-500 text-purple-700"
                     placeholder="0"
                   />
                 </div>
@@ -5314,19 +5751,20 @@ export const TransactionDetailsModal = ({
             <div className="p-4 border-t bg-gray-50 flex justify-end gap-2">
               <button
                 onClick={() => setIsAddAgentOpen(false)}
-                className="px-4 py-1.5 border rounded bg-white text-sm font-bold"
+                className="px-4 py-2 border border-gray-300 rounded-lg bg-white text-sm font-bold hover:bg-gray-100"
               >
                 إلغاء
               </button>
               <button
                 onClick={() => addAgentMutation.mutate(agentForm)}
-                disabled={
-                  addAgentMutation.isPending ||
-                  !agentForm.agentId ||
-                  !agentForm.fees
-                }
-                className="px-4 py-1.5 bg-purple-600 text-white rounded text-sm font-bold disabled:opacity-50"
+                disabled={addAgentMutation.isPending || !agentForm.agentId}
+                className="px-6 py-2 bg-purple-600 text-white rounded-lg text-sm font-bold disabled:opacity-50 hover:bg-purple-700 shadow-sm flex items-center gap-2"
               >
+                {addAgentMutation.isPending ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Save className="w-4 h-4" />
+                )}{" "}
                 حفظ
               </button>
             </div>
@@ -5393,13 +5831,14 @@ export const TransactionDetailsModal = ({
               </button>
               <button
                 onClick={() => addBrokerMutation.mutate(brokerForm)}
-                disabled={
-                  addBrokerMutation.isPending ||
-                  !brokerForm.brokerId ||
-                  !brokerForm.fees
-                }
-                className="px-6 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold disabled:opacity-50"
+                disabled={addBrokerMutation.isPending || !brokerForm.brokerId}
+                className="px-6 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold disabled:opacity-50 hover:bg-blue-700 flex items-center gap-2 shadow-sm"
               >
+                {addBrokerMutation.isPending ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Save className="w-4 h-4" />
+                )}{" "}
                 حفظ الوسيط
               </button>
             </div>
@@ -5423,7 +5862,7 @@ export const TransactionDetailsModal = ({
                 <X className="w-5 h-5 hover:text-red-400" />
               </button>
             </div>
-            <div className="p-6 space-y-6">
+            <div className="p-6 space-y-6 max-h-[75vh] overflow-y-auto custom-scrollbar-slim">
               <div>
                 <label className="text-xs font-bold text-gray-700 block mb-2">
                   الموظف المستهدف *
@@ -5463,7 +5902,6 @@ export const TransactionDetailsModal = ({
                   placeholder="مثال: رسم معماري"
                 />
               </div>
-
               <div className="bg-emerald-50 p-4 rounded-xl border border-emerald-100">
                 <label className="text-xs font-black text-emerald-800 block mb-3">
                   تكلفة المهمة (إدخال متعدد العملات)
@@ -5476,7 +5914,6 @@ export const TransactionDetailsModal = ({
                   rates={exchangeRates}
                 />
               </div>
-
               <div className="border border-gray-200 rounded-xl p-4">
                 <label className="flex items-center gap-2 cursor-pointer mb-4">
                   <input
@@ -5494,7 +5931,6 @@ export const TransactionDetailsModal = ({
                     تم دفع جزء أو كل المبلغ للموظف الآن
                   </span>
                 </label>
-
                 {remoteTaskForm.isPaid && (
                   <div className="grid grid-cols-2 gap-4 animate-in fade-in">
                     <div>
@@ -5549,23 +5985,20 @@ export const TransactionDetailsModal = ({
                 )}
               </div>
             </div>
-            <div className="p-5 border-t border-gray-200 bg-gray-50 flex justify-end gap-3">
+            <div className="p-5 border-t border-gray-200 bg-gray-50 flex justify-end gap-3 shrink-0">
               <button
                 onClick={() => setIsAddRemoteTaskOpen(false)}
-                className="px-6 py-2.5 border border-gray-300 rounded-xl bg-white text-sm font-bold text-gray-700"
+                className="px-6 py-2.5 border border-gray-300 rounded-xl bg-white text-sm font-bold text-gray-700 hover:bg-gray-100"
               >
                 إلغاء
               </button>
               <button
                 onClick={() => {
-                  // 1. التحقق من الحقول الإجبارية
                   if (!remoteTaskForm.workerId || !remoteTaskForm.costSar) {
                     return toast.error(
                       "يرجى تحديد الموظف وإدخال تكلفة المهمة (SAR)",
                     );
                   }
-
-                  // 2. 💡 تجميع البيانات بالشكل الذي يطلبه الباك إند تماماً (مصفوفة Tasks)
                   const payload = {
                     transactionId: tx?.id,
                     workerId: remoteTaskForm.workerId,
@@ -5580,25 +6013,184 @@ export const TransactionDetailsModal = ({
                       },
                     ],
                   };
-
-                  // 3. إرسال الطلب
                   addRemoteTaskMutation.mutate(payload);
                 }}
                 disabled={
                   addRemoteTaskMutation.isPending || !remoteTaskForm.workerId
                 }
-                className="px-8 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold shadow-md hover:bg-emerald-700 disabled:opacity-50"
+                className="px-8 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold shadow-md hover:bg-emerald-700 disabled:opacity-50 flex items-center gap-2"
               >
                 {addRemoteTaskMutation.isPending ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
                 ) : (
-                  "حفظ المهمة"
-                )}
+                  <Save className="w-4 h-4" />
+                )}{" "}
+                حفظ المهمة
               </button>
             </div>
           </div>
         </div>
       )}
+
+      {/* 💡 Sub-Modal: تسديد أتعاب (موظف عن بعد، وسيط، معقب) - دفع مالي مباشر */}
+      {payPersonData && (
+        <div
+          className="fixed inset-0 bg-black/70 z-[200] flex items-center justify-center p-4 animate-in fade-in"
+          dir="rtl"
+          onClick={(e) => {
+            e.stopPropagation();
+            setPayPersonData(null);
+          }}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="bg-emerald-700 p-5 flex justify-between items-center text-white shrink-0">
+              <div>
+                <span className="font-bold flex items-center gap-2 text-[15px]">
+                  <Banknote className="w-5 h-5 text-emerald-200" /> تسديد
+                  مستحقات ({payPersonData.targetType})
+                </span>
+                <span className="text-[11px] text-emerald-200 mt-1 block">
+                  الاسم: {payPersonData.workerName} | التفاصيل:{" "}
+                  {payPersonData.taskName}
+                </span>
+              </div>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setPayPersonData(null);
+                }}
+                className="p-1 rounded-md hover:bg-white/20 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 space-y-6">
+              <div>
+                <label className="text-xs font-bold text-gray-700 block mb-3">
+                  مقدار الدفعة
+                </label>
+                <div className="flex gap-2 p-1 bg-gray-50 border border-gray-200 rounded-lg">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setPayPersonData({
+                        ...payPersonData,
+                        paymentType: "full",
+                        amountSar: payPersonData.totalCost,
+                      });
+                    }}
+                    className={`flex-1 py-2 text-xs font-bold rounded-md transition-colors ${payPersonData.paymentType === "full" ? "bg-emerald-600 text-white shadow-sm" : "text-gray-500 hover:bg-gray-200"}`}
+                  >
+                    كامل المتبقي ({payPersonData.totalCost} ر.س)
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setPayPersonData({
+                        ...payPersonData,
+                        paymentType: "partial",
+                        amountSar: "",
+                      });
+                    }}
+                    className={`flex-1 py-2 text-xs font-bold rounded-md transition-colors ${payPersonData.paymentType === "partial" ? "bg-emerald-600 text-white shadow-sm" : "text-gray-500 hover:bg-gray-200"}`}
+                  >
+                    جزء من المبلغ
+                  </button>
+                </div>
+              </div>
+              <div className="bg-emerald-50 p-4 rounded-xl border border-emerald-100">
+                <label className="text-xs font-black text-emerald-800 block mb-3">
+                  المبلغ الفعلي المدفوع (اكتب بأي عملة)
+                </label>
+                <TripleCurrencyInput
+                  valueSar={payPersonData.amountSar}
+                  onChangeSar={(v) =>
+                    setPayPersonData({ ...payPersonData, amountSar: v })
+                  }
+                  rates={exchangeRates}
+                />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-gray-700 block mb-2">
+                  تاريخ الدفع
+                </label>
+                <input
+                  type="date"
+                  value={payPersonData.paymentDate}
+                  onChange={(e) =>
+                    setPayPersonData({
+                      ...payPersonData,
+                      paymentDate: e.target.value,
+                    })
+                  }
+                  className="w-full border border-gray-300 p-2.5 rounded-lg text-sm font-bold outline-none focus:border-emerald-500 bg-white"
+                />
+              </div>
+            </div>
+            <div className="p-5 border-t border-gray-200 bg-gray-50 flex justify-end gap-3 shrink-0">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setPayPersonData(null);
+                }}
+                className="px-6 py-2.5 border border-gray-300 rounded-xl bg-white text-sm font-bold text-gray-700 hover:bg-gray-100"
+              >
+                إلغاء
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (!payPersonData.amountSar)
+                    return toast.error("الرجاء إدخال المبلغ");
+                  const payload = {
+                    targetType: payPersonData.targetType,
+                    targetId:
+                      payPersonData.targetId ||
+                      remoteWorkersList.find(
+                        (w) => w.name === payPersonData.workerName,
+                      )?.id,
+                    transactionId: tx.id,
+                    amount: parseFloat(payPersonData.amountSar),
+                    status: "DELIVERED",
+                    source: "سداد مباشر من المعاملة",
+                    notes: `تاريخ الدفع: ${payPersonData.paymentDate} | نوع السداد: ${payPersonData.paymentType === "full" ? "سداد كلي للمتبقي" : "سداد جزئي"}`,
+                  };
+                  payPersonMutation.mutate(payload);
+                  if (
+                    payPersonData.targetType === "موظف عن بعد" &&
+                    payPersonData.taskId
+                  ) {
+                    payRemoteTaskMutation.mutate({
+                      taskId: payPersonData.taskId,
+                      workerId: payload.targetId,
+                      transactionId: tx.id,
+                      amountSar: payload.amount,
+                      paymentDate: payPersonData.paymentDate,
+                      isFullPayment: payPersonData.paymentType === "full",
+                    });
+                  }
+                }}
+                disabled={
+                  payPersonMutation.isPending || payRemoteTaskMutation.isPending
+                }
+                className="px-8 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-bold shadow-md hover:bg-emerald-700 disabled:opacity-50 flex items-center gap-2"
+              >
+                {payPersonMutation.isPending ||
+                payRemoteTaskMutation.isPending ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Banknote className="w-4 h-4" />
+                )}{" "}
+                تأكيد الدفع
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 💡 Sub-Modal: تسديد أتعاب (موظف عن بعد، وسيط، معقب) - دفع مالي مباشر */}
       {payPersonData && (
         <div
@@ -5769,114 +6361,274 @@ export const TransactionDetailsModal = ({
       {/* 💡 Sub-Modal: إضافة/تعديل أتعاب مكتب متعاون */}
       {/* ========================================================== */}
       {isCoopFeeModalOpen && (
-        <div className="fixed inset-0 bg-black/60 z-[200] flex items-center justify-center p-4 animate-in fade-in" dir="rtl" onClick={() => setIsCoopFeeModalOpen(false)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="fixed inset-0 bg-black/60 z-[200] flex items-center justify-center p-4 animate-in fade-in"
+          dir="rtl"
+          onClick={() => setIsCoopFeeModalOpen(false)}
+        >
+          <div
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[90vh]"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="bg-cyan-800 p-4 flex justify-between items-center text-white shrink-0">
               <span className="font-bold flex items-center gap-2 text-[15px]">
-                <Building2 className="w-5 h-5 text-cyan-200" /> 
-                {coopFeeMode === "add" ? "إضافة تكلفة مكتب متعاون" : "تعديل تكلفة المكتب"}
+                <Building2 className="w-5 h-5 text-cyan-200" />{" "}
+                {coopFeeMode === "add"
+                  ? "إضافة تكلفة مكتب متعاون"
+                  : "تعديل تكلفة المكتب"}
               </span>
-              <button onClick={() => setIsCoopFeeModalOpen(false)} className="p-1 rounded-md hover:bg-white/20 transition-colors">
+              <button
+                onClick={() => setIsCoopFeeModalOpen(false)}
+                className="p-1 rounded-md hover:bg-white/20 transition-colors"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
-
             <div className="p-6 overflow-y-auto custom-scrollbar-slim space-y-5">
               <div className="bg-cyan-50/50 p-4 rounded-xl border border-cyan-100 flex items-center gap-3 mb-2">
                 <Info className="w-5 h-5 text-cyan-600 shrink-0" />
                 <span className="text-xs font-bold text-cyan-800">
-                  سيتم ربط هذه التكلفة تلقائياً بالمعاملة الحالية ({tx.internalName || tx.client}).
+                  سيتم ربط هذه التكلفة تلقائياً بالمعاملة الحالية (
+                  {tx.internalName || tx.client}).
                 </span>
               </div>
-
               <div className="grid grid-cols-2 md:grid-cols-3 gap-5">
                 <div className="col-span-2">
-                  <label className="block text-xs font-bold text-gray-700 mb-2">اسم المكتب المتعاون *</label>
-                  <select value={coopFeeForm.officeId} onChange={e => setCoopFeeForm({...coopFeeForm, officeId: e.target.value})} className="w-full border border-gray-300 p-2.5 rounded-lg text-sm font-bold focus:border-cyan-500 outline-none bg-white">
+                  <label className="block text-xs font-bold text-gray-700 mb-2">
+                    اسم المكتب المتعاون *
+                  </label>
+                  <select
+                    value={coopFeeForm.officeId}
+                    onChange={(e) =>
+                      setCoopFeeForm({
+                        ...coopFeeForm,
+                        officeId: e.target.value,
+                      })
+                    }
+                    className="w-full border border-gray-300 p-2.5 rounded-lg text-sm font-bold focus:border-cyan-500 outline-none bg-white"
+                  >
                     <option value="">-- اختر المكتب --</option>
-                    {offices.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
+                    {offices.map((o) => (
+                      <option key={o.id} value={o.id}>
+                        {o.name}
+                      </option>
+                    ))}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-2">نوع الطلب</label>
-                  <select value={coopFeeForm.requestType} onChange={e => setCoopFeeForm({...coopFeeForm, requestType: e.target.value})} className="w-full border border-gray-300 p-2.5 rounded-lg text-sm font-bold focus:border-cyan-500 outline-none bg-white">
+                  <label className="block text-xs font-bold text-gray-700 mb-2">
+                    نوع الطلب
+                  </label>
+                  <select
+                    value={coopFeeForm.requestType}
+                    onChange={(e) =>
+                      setCoopFeeForm({
+                        ...coopFeeForm,
+                        requestType: e.target.value,
+                      })
+                    }
+                    className="w-full border border-gray-300 p-2.5 rounded-lg text-sm font-bold focus:border-cyan-500 outline-none bg-white"
+                  >
                     <option value="اصدار">إصدار</option>
                     <option value="تجديد وتعديل">تجديد وتعديل</option>
-                    <option value="تصحيح وضع مبني قائم">تصحيح وضع مبنى قائم</option>
+                    <option value="تصحيح وضع مبني قائم">
+                      تصحيح وضع مبنى قائم
+                    </option>
                     <option value="اخرى">أخرى</option>
                   </select>
                 </div>
-
                 <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-2">الأتعاب المستحقة للمكتب *</label>
-                  <input type="number" value={coopFeeForm.officeFees} onChange={e => setCoopFeeForm({...coopFeeForm, officeFees: e.target.value})} className="w-full border border-gray-300 p-2.5 rounded-lg text-lg font-mono font-bold text-blue-700 focus:border-cyan-500 outline-none" placeholder="0" />
+                  <label className="block text-xs font-bold text-gray-700 mb-2">
+                    الأتعاب المستحقة للمكتب *
+                  </label>
+                  <input
+                    type="number"
+                    value={coopFeeForm.officeFees}
+                    onChange={(e) =>
+                      setCoopFeeForm({
+                        ...coopFeeForm,
+                        officeFees: e.target.value,
+                      })
+                    }
+                    className="w-full border border-gray-300 p-2.5 rounded-lg text-lg font-mono font-bold text-blue-700 focus:border-cyan-500 outline-none"
+                    placeholder="0"
+                  />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-2">المدفوع مقدماً</label>
-                  <input type="number" value={coopFeeForm.paidAmount} onChange={e => setCoopFeeForm({...coopFeeForm, paidAmount: e.target.value})} className="w-full border border-gray-300 p-2.5 rounded-lg text-lg font-mono font-bold text-green-600 focus:border-cyan-500 outline-none" placeholder="0" />
+                  <label className="block text-xs font-bold text-gray-700 mb-2">
+                    المدفوع مقدماً
+                  </label>
+                  <input
+                    type="number"
+                    value={coopFeeForm.paidAmount}
+                    onChange={(e) =>
+                      setCoopFeeForm({
+                        ...coopFeeForm,
+                        paidAmount: e.target.value,
+                      })
+                    }
+                    className="w-full border border-gray-300 p-2.5 rounded-lg text-lg font-mono font-bold text-green-600 focus:border-cyan-500 outline-none"
+                    placeholder="0"
+                  />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-2">تاريخ الاستحقاق</label>
-                  <input type="date" value={coopFeeForm.dueDate} onChange={e => setCoopFeeForm({...coopFeeForm, dueDate: e.target.value})} className="w-full border border-gray-300 p-2.5 rounded-lg text-sm focus:border-cyan-500 outline-none" />
+                  <label className="block text-xs font-bold text-gray-700 mb-2">
+                    تاريخ الاستحقاق
+                  </label>
+                  <input
+                    type="date"
+                    value={coopFeeForm.dueDate}
+                    onChange={(e) =>
+                      setCoopFeeForm({
+                        ...coopFeeForm,
+                        dueDate: e.target.value,
+                      })
+                    }
+                    className="w-full border border-gray-300 p-2.5 rounded-lg text-sm focus:border-cyan-500 outline-none"
+                  />
                 </div>
               </div>
-
               <div className="grid grid-cols-2 gap-5 p-4 bg-gray-50 rounded-xl border border-gray-200">
                 <div className="col-span-2">
-                  <label className="block text-xs font-bold text-gray-700 mb-2">الخدمات المقدمة (فري تكست)</label>
-                  <input type="text" value={coopFeeForm.providedServices} onChange={e => setCoopFeeForm({...coopFeeForm, providedServices: e.target.value})} className="w-full border border-gray-300 p-2.5 rounded-lg text-sm focus:border-cyan-500 outline-none bg-white" placeholder="مثال: تصميم معماري، انشائي، تنسيق حدائق..." />
+                  <label className="block text-xs font-bold text-gray-700 mb-2">
+                    الخدمات المقدمة (فري تكست)
+                  </label>
+                  <input
+                    type="text"
+                    value={coopFeeForm.providedServices}
+                    onChange={(e) =>
+                      setCoopFeeForm({
+                        ...coopFeeForm,
+                        providedServices: e.target.value,
+                      })
+                    }
+                    className="w-full border border-gray-300 p-2.5 rounded-lg text-sm focus:border-cyan-500 outline-none bg-white"
+                    placeholder="مثال: تصميم معماري، انشائي، تنسيق حدائق..."
+                  />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-2">حالة الرفع على النظام</label>
-                  <select value={coopFeeForm.uploadStatus} onChange={e => setCoopFeeForm({...coopFeeForm, uploadStatus: e.target.value})} className="w-full border border-gray-300 p-2.5 rounded-lg text-sm font-bold focus:border-cyan-500 outline-none bg-white">
-                    <option value="مع الرفع على النظام">مع الرفع على النظام</option>
-                    <option value="بدون رفع على النظام">بدون رفع على النظام</option>
+                  <label className="block text-xs font-bold text-gray-700 mb-2">
+                    حالة الرفع على النظام
+                  </label>
+                  <select
+                    value={coopFeeForm.uploadStatus}
+                    onChange={(e) =>
+                      setCoopFeeForm({
+                        ...coopFeeForm,
+                        uploadStatus: e.target.value,
+                      })
+                    }
+                    className="w-full border border-gray-300 p-2.5 rounded-lg text-sm font-bold focus:border-cyan-500 outline-none bg-white"
+                  >
+                    <option value="مع الرفع على النظام">
+                      مع الرفع على النظام
+                    </option>
+                    <option value="بدون رفع على النظام">
+                      بدون رفع على النظام
+                    </option>
                   </select>
                 </div>
               </div>
-
-              {/* بيانات الرخصة */}
               <div className="grid grid-cols-3 gap-4 p-4 border border-orange-100 bg-orange-50/30 rounded-xl">
-                 <div className="col-span-3 pb-2 border-b border-orange-100 mb-2">
-                    <span className="text-xs font-bold text-orange-800">بيانات الرخصة والمنصات التابعة للمكتب</span>
-                 </div>
-                 <div>
-                    <label className="block text-[10px] font-bold text-gray-600 mb-1">رقم الرخصة</label>
-                    <input type="text" value={coopFeeForm.licenseNumber} onChange={e => setCoopFeeForm({...coopFeeForm, licenseNumber: e.target.value})} className="w-full border p-2 rounded text-sm outline-none focus:border-orange-400 bg-white" />
-                 </div>
-                 <div>
-                    <label className="block text-[10px] font-bold text-gray-600 mb-1">سنة الرخصة (هجرية)</label>
-                    <input type="text" value={coopFeeForm.licenseYear} onChange={e => setCoopFeeForm({...coopFeeForm, licenseYear: e.target.value})} className="w-full border p-2 rounded text-sm outline-none focus:border-orange-400 bg-white" />
-                 </div>
-                 <div>
-                    <label className="block text-[10px] font-bold text-gray-600 mb-1">رقم الخدمة</label>
-                    <input type="text" value={coopFeeForm.serviceNumber} onChange={e => setCoopFeeForm({...coopFeeForm, serviceNumber: e.target.value})} className="w-full border p-2 rounded text-sm outline-none focus:border-orange-400 bg-white" />
-                 </div>
-                 <div className="col-span-3">
-                    <label className="block text-[10px] font-bold text-gray-600 mb-1">اسم الجهة (الأمانة / القطاع)</label>
-                    <input type="text" value={coopFeeForm.entityName} onChange={e => setCoopFeeForm({...coopFeeForm, entityName: e.target.value})} placeholder="مثال: أمانة منطقة الرياض" className="w-full border p-2 rounded text-sm outline-none focus:border-orange-400 bg-white" />
-                 </div>
+                <div className="col-span-3 pb-2 border-b border-orange-100 mb-2">
+                  <span className="text-xs font-bold text-orange-800">
+                    بيانات الرخصة والمنصات التابعة للمكتب
+                  </span>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-600 mb-1">
+                    رقم الرخصة
+                  </label>
+                  <input
+                    type="text"
+                    value={coopFeeForm.licenseNumber}
+                    onChange={(e) =>
+                      setCoopFeeForm({
+                        ...coopFeeForm,
+                        licenseNumber: e.target.value,
+                      })
+                    }
+                    className="w-full border p-2 rounded text-sm outline-none focus:border-orange-400 bg-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-600 mb-1">
+                    سنة الرخصة (هجرية)
+                  </label>
+                  <input
+                    type="text"
+                    value={coopFeeForm.licenseYear}
+                    onChange={(e) =>
+                      setCoopFeeForm({
+                        ...coopFeeForm,
+                        licenseYear: e.target.value,
+                      })
+                    }
+                    className="w-full border p-2 rounded text-sm outline-none focus:border-orange-400 bg-white"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-bold text-gray-600 mb-1">
+                    رقم الخدمة
+                  </label>
+                  <input
+                    type="text"
+                    value={coopFeeForm.serviceNumber}
+                    onChange={(e) =>
+                      setCoopFeeForm({
+                        ...coopFeeForm,
+                        serviceNumber: e.target.value,
+                      })
+                    }
+                    className="w-full border p-2 rounded text-sm outline-none focus:border-orange-400 bg-white"
+                  />
+                </div>
+                <div className="col-span-3">
+                  <label className="block text-[10px] font-bold text-gray-600 mb-1">
+                    اسم الجهة (الأمانة / القطاع)
+                  </label>
+                  <input
+                    type="text"
+                    value={coopFeeForm.entityName}
+                    onChange={(e) =>
+                      setCoopFeeForm({
+                        ...coopFeeForm,
+                        entityName: e.target.value,
+                      })
+                    }
+                    placeholder="مثال: أمانة منطقة الرياض"
+                    className="w-full border p-2 rounded text-sm outline-none focus:border-orange-400 bg-white"
+                  />
+                </div>
               </div>
             </div>
-
             <div className="p-5 border-t border-gray-200 bg-gray-50 flex justify-end gap-3 shrink-0">
-              <button onClick={() => setIsCoopFeeModalOpen(false)} className="px-6 py-2.5 border border-gray-300 rounded-xl bg-white text-sm font-bold text-gray-700 hover:bg-gray-100 transition-colors">إلغاء</button>
+              <button
+                onClick={() => setIsCoopFeeModalOpen(false)}
+                className="px-6 py-2.5 border border-gray-300 rounded-xl bg-white text-sm font-bold text-gray-700 hover:bg-gray-100 transition-colors"
+              >
+                إلغاء
+              </button>
               <button
                 onClick={() => {
-                  if(!coopFeeForm.officeId || !coopFeeForm.officeFees) return toast.error("يرجى اختيار المكتب وكتابة الأتعاب");
+                  if (coopFeeForm.officeId === "")
+                    return toast.error("يرجى اختيار المكتب");
                   saveCoopFeeMutation.mutate(coopFeeForm);
                 }}
                 disabled={saveCoopFeeMutation.isPending}
                 className="px-8 py-2.5 bg-cyan-700 text-white rounded-xl text-sm font-bold shadow-md hover:bg-cyan-800 disabled:opacity-50 flex items-center gap-2 transition-colors"
               >
-                {saveCoopFeeMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                {saveCoopFeeMutation.isPending ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Save className="w-4 h-4" />
+                )}{" "}
                 {coopFeeMode === "add" ? "حفظ التكلفة" : "تعديل التكلفة"}
               </button>
             </div>
           </div>
         </div>
       )}
-      
       {/* ========================================================== */}
       {/* 💡 Sub-Modal: تسديد أتعاب مهمة العمل عن بعد (الدفع المباشر) */}
       {/* ========================================================== */}
