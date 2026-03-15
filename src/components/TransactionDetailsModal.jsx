@@ -1684,8 +1684,8 @@ export const TransactionDetailsModal = ({
                     >
                       <option>اصدار</option>
                       <option>تجديد وتعديل</option>
-                      <option>فرز</option>
-                      <option>دمج</option>
+                      <option>تصحيح وضع مبني قائم</option>
+                      
                     </select>
                   ) : (
                     <div className="text-lg font-black text-gray-800">
