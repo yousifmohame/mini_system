@@ -34,6 +34,7 @@ import { ScreenSpecialAccount } from "./pages/ScreenSpecialAccount"; // تأكد
 import MonthlySettlementPage from "./pages/MonthlySettlementPage";
 import OutsourceSalariesPage from "./pages/OutsourceSalariesPage";
 import ScreenPersonStatement from "./pages/ScreenPersonStatement";
+import {ScreenQuickEntry} from "./pages/ScreenQuickEntry";
 
 // --- Icons & Context ---
 import { Wrench } from "lucide-react";
@@ -122,6 +123,7 @@ const AppContent = () => {
     "MONTHLY_SETTLEMENTS",
     "PAYMENTSـAUTO",
     "PERSON_SETTLEMENTS",
+    "EXPERESS"
   ];
   const isImplemented = implementedScreens.includes(activeScreenId);
 
@@ -335,6 +337,14 @@ const AppContent = () => {
               }
             >
               <ScreenPersonStatement />
+            </div>
+
+            <div
+              className={
+                activeScreenId === "EXPERESS" ? "block h-full" : "hidden"
+              }
+            >
+              <ScreenQuickEntry />
             </div>
 
             {/* --- شاشة Fallback لأي كود غير مبرمج --- */}

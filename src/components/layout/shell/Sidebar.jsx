@@ -327,6 +327,13 @@ const Sidebar = () => {
               count={5}
             />
             <NavItem
+              screenId="EXPERESS"
+              title="التسجيل السريع"
+              icon={Receipt}
+              code="SCR_EXPERESS"
+              moduleName="الماليات التشغيلية"
+            />
+            <NavItem
               screenId="EXPENSES"
               title="مصروفات المكتب"
               icon={Receipt}
