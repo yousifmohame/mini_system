@@ -25,6 +25,7 @@ import {
   AlertCircle,
   ToggleLeft, // 👈 أيقونة التجميد
   ToggleRight, // 👈 أيقونة التنشيط
+  AlertTriangle
 } from "lucide-react";
 import { toast } from "sonner";
 import AccessControl from "../../components/AccessControl";
