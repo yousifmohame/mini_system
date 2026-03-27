@@ -927,7 +927,8 @@ export const TransactionDetailsModal = ({
           ? tx.notes.refs.plots.join(", ")
           : tx.notes?.refs?.plots || "",
         plan: tx.notes?.refs?.plan || "",
-        area: tx.notes?.refs?.area || "",
+        area:
+          tx.landArea || tx.notes?.refs?.landArea || tx.notes?.refs?.area || "", // 👈 التعديل هنا
         mapsLink: tx.notes?.refs?.mapsLink || "",
       });
 
@@ -1553,8 +1554,11 @@ export const TransactionDetailsModal = ({
                       </div>
                     ) : (
                       <div className="font-bold text-gray-800 font-mono">
-                        {tx.notes?.refs?.area
-                          ? `${tx.notes.refs.area} م²`
+                        {/* 💡 التعديل هنا: قراءة المساحة من المكان الصحيح (الحديث ثم القديم) */}
+                        {tx.landArea ||
+                        tx.notes?.refs?.landArea ||
+                        tx.notes?.refs?.area
+                          ? `${tx.landArea || tx.notes?.refs?.landArea || tx.notes?.refs?.area} م²`
                           : "—"}
                       </div>
                     )}
@@ -1685,7 +1689,6 @@ export const TransactionDetailsModal = ({
                       <option>اصدار</option>
                       <option>تجديد وتعديل</option>
                       <option>تصحيح وضع مبني قائم</option>
-                      
                     </select>
                   ) : (
                     <div className="text-lg font-black text-gray-800">

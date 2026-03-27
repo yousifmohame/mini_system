@@ -208,6 +208,14 @@ const Sidebar = () => {
               code="SCR_TXN_ALL"
               moduleName="الرئيسية"
             />
+
+            <NavItem
+              screenId="CLIENTS"
+              title="العملاء"
+              icon={Users}
+              code="SCR_CLIENTS_ALL"
+              moduleName="الرئيسية"
+            />
           </div>
         )}
 
