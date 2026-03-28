@@ -132,6 +132,11 @@ const getRemainingTime = (expiryDateString) => {
   return { expired: false, text: textParts.join(" و "), color };
 };
 
+const toEnglishNumbers = (str) => {
+  if (str === null || str === undefined) return "";
+  return String(str).replace(/[٠-٩]/g, (d) => "٠١٢٣٤٥٦٧٨٩".indexOf(d));
+};
+
 const getFullUrl = (url) => {
   if (!url) return null;
   if (url.startsWith("http")) return url;
