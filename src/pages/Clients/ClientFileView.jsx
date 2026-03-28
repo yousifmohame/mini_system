@@ -50,7 +50,8 @@ import {
   ExternalLink,
   SquarePen,
   ScanSearch,
-  AlertTriangle
+  AlertTriangle,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import api from "../../api/axios";
@@ -131,12 +132,25 @@ const getRemainingTime = (expiryDateString) => {
   return { expired: false, text: textParts.join(" و "), color };
 };
 
+const getFullUrl = (url) => {
+  if (!url) return null;
+  if (url.startsWith("http")) return url;
+  let fixedUrl = url;
+  if (url.startsWith("/uploads/")) {
+    fixedUrl = `/api${url}`;
+  }
+  const baseUrl = "http://95.216.73.243";
+  return `${baseUrl}${fixedUrl}`;
+};
+
 const ClientFileView = ({ clientId, onBack }) => {
   // ==========================================
   // حالات التعديل لتاب البيانات الأساسية
   // ==========================================
   const [isEditingBasicInfo, setIsEditingBasicInfo] = useState(false);
   const [editFormData, setEditFormData] = useState({});
+
+  const [previewDoc, setPreviewDoc] = useState(null);
 
   // 💡 متغيرات وحالات الذكاء الاصطناعي للوكيل في التعديل
   const repIdRef = useRef(null);
@@ -344,6 +358,22 @@ const ClientFileView = ({ clientId, onBack }) => {
     },
   });
 
+  const deleteDocMutation = useMutation({
+    mutationFn: async (docId) => {
+      const res = await api.delete(`/attachments/${docId}`); // بافتراض وجود هذا المسار في الباك إند
+      return res.data;
+    },
+    onSuccess: () => {
+      toast.success("تم حذف الوثيقة بنجاح");
+      queryClient.invalidateQueries({ queryKey: ["client", clientId] });
+    },
+    onError: (error) => {
+      toast.error(
+        error.response?.data?.message || "حدث خطأ أثناء حذف الوثيقة.",
+      );
+    },
+  });
+
   const closeUploadModal = () => {
     setIsUploadModalOpen(false);
     setUploadForm({ file: null, name: "", notes: "" });
@@ -373,26 +403,36 @@ const ClientFileView = ({ clientId, onBack }) => {
     uploadDocMutation.mutate(formData);
   };
 
-  // 👈 دالة فتح/معاينة الملف
-  const handleViewDocument = (filePath) => {
-    if (!filePath) return toast.error("مسار الملف غير متوفر");
-    // بناء الرابط الكامل للملف (يجب أن يكون الباك إند يوفر مجلد uploads كـ static)
-    const fileUrl = `${api.defaults.baseURL.replace("/api", "")}${filePath}`;
-    window.open(fileUrl, "_blank");
+  const handleDeleteDocument = (docId) => {
+    if (window.confirm("هل أنت متأكد من حذف هذه الوثيقة نهائياً؟")) {
+      deleteDocMutation.mutate(docId);
+    }
   };
 
-  // 👈 دالة تحميل الملف
-  const handleDownloadDocument = async (filePath, fileName) => {
-    if (!filePath) return toast.error("مسار الملف غير متوفر");
+  // 👈 دالة فتح/معاينة الملف
+  const handleViewDocument = (doc) => {
+    const fileUrl = getFullUrl(doc.filePath);
+    if (!fileUrl) return toast.error("مسار الملف غير متوفر");
 
-    const fileUrl = `${api.defaults.baseURL.replace("/api", "")}${filePath}`;
+    // حفظ بيانات الملف ليتم عرضها في المودال
+    setPreviewDoc({
+      url: fileUrl,
+      name: doc.fileName || doc.name,
+      type: doc.fileType || "application/pdf", // افتراضي
+    });
+  };
+
+  // 💡 تحميل الوثيقة باستخدام getFullUrl
+  const handleDownloadDocument = async (filePath, fileName) => {
+    const fileUrl = getFullUrl(filePath);
+    if (!fileUrl) return toast.error("مسار الملف غير متوفر");
+
     try {
       const response = await fetch(fileUrl);
       const blob = await response.blob();
       const url = window.URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      // استخراج امتداد الملف من المسار الأصلي لإضافته للاسم
       const ext = filePath.split(".").pop();
       link.setAttribute("download", `${fileName}.${ext}`);
       document.body.appendChild(link);
@@ -503,6 +543,13 @@ const ClientFileView = ({ clientId, onBack }) => {
     },
   ];
 
+  const inputClass =
+    "w-full p-3 rounded-xl border border-slate-200 bg-slate-50/50 hover:bg-white focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 transition-all text-sm font-bold text-slate-800 outline-none placeholder:font-normal placeholder:text-slate-400";
+  const labelClass =
+    "text-[11px] font-bold text-slate-500 mb-1.5 flex items-center gap-1.5";
+  const cardClass =
+    "bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-md transition-shadow duration-300";
+
   // Helper
   const handleCopy = (text) => {
     navigator.clipboard.writeText(text);
@@ -548,6 +595,85 @@ const ClientFileView = ({ clientId, onBack }) => {
   const clientName = getFullName(client.name);
   const englishName =
     client.name?.en || client.name?.englishName || client.name?.firstEn || "";
+
+  const renderPreviewModal = () => {
+    if (!previewDoc) return null;
+
+    // تحديد نوع العرض بناءً على امتداد الملف أو الـ Mime Type
+    const isPdf =
+      previewDoc.type.includes("pdf") ||
+      previewDoc.url.toLowerCase().endsWith(".pdf");
+
+    return (
+      <div
+        className="fixed inset-0 z-[200] bg-slate-900/90 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200"
+        dir="rtl"
+      >
+        <div className="bg-white w-full max-w-5xl h-[90vh] rounded-3xl flex flex-col overflow-hidden shadow-2xl animate-in zoom-in-95">
+          {/* Header */}
+          <div className="px-6 py-4 bg-slate-800 flex justify-between items-center shrink-0">
+            <div className="flex items-center gap-3 text-white">
+              <div className="p-2 bg-slate-700 rounded-lg">
+                {isPdf ? (
+                  <FileText className="w-5 h-5" />
+                ) : (
+                  <Eye className="w-5 h-5" />
+                )}
+              </div>
+              <div>
+                <h3
+                  className="font-bold text-base line-clamp-1 max-w-md"
+                  title={previewDoc.name}
+                >
+                  {previewDoc.name}
+                </h3>
+                <p className="text-[10px] text-slate-400 font-mono mt-0.5">
+                  Preview Mode
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() =>
+                  handleDownloadDocument(previewDoc.url, previewDoc.name)
+                }
+                className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-xl text-xs font-bold transition-colors flex items-center gap-2"
+              >
+                <Download className="w-4 h-4" /> تنزيل الملف
+              </button>
+              <button
+                onClick={() => setPreviewDoc(null)}
+                className="p-2 bg-slate-700 hover:bg-red-500 text-white rounded-xl transition-colors"
+                title="إغلاق"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+
+          {/* Viewer Area */}
+          <div className="flex-1 bg-slate-100 relative overflow-hidden flex justify-center items-center p-4 md:p-8">
+            {isPdf ? (
+              <iframe
+                src={previewDoc.url}
+                className="w-full h-full rounded-2xl shadow-sm bg-white"
+                title={previewDoc.name}
+              />
+            ) : (
+              <div className="w-full h-full bg-white rounded-2xl shadow-sm flex items-center justify-center overflow-auto p-4">
+                <img
+                  src={previewDoc.url}
+                  alt={previewDoc.name}
+                  className="max-w-full max-h-full object-contain rounded-lg"
+                  draggable="false"
+                />
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   // ==========================================
   // 👈 نافذة رفع الوثيقة (Upload Modal)
@@ -1069,340 +1195,293 @@ const ClientFileView = ({ clientId, onBack }) => {
         <div
           className={`p-5 rounded-2xl border transition-colors ${isEditingBasicInfo ? "bg-blue-50 border-blue-300 ring-2 ring-blue-100" : "bg-blue-50/50 border-blue-100"}`}
         >
-          <div className="flex items-center gap-2 mb-4 text-blue-800 font-bold">
-            <Shield className="w-5 h-5" /> لقب العميل وأسلوب التعامل
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <div className="text-xs font-bold text-slate-600 mb-2">
-                اللقب الافتراضي في عروض الأسعار:
+          <div className={cardClass}>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <div>
+                <label className="text-sm font-bold text-slate-800 flex items-center gap-2 mb-3">
+                  <Award className="w-4 h-4 text-amber-500" /> لقب العميل في
+                  العروض
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    "تلقائي",
+                    "المواطن",
+                    "المواطنة",
+                    "السادة",
+                    "صاحب السمو",
+                    "مخصص",
+                  ].map((title) => {
+                    const isSelected = isEditingBasicInfo
+                      ? editFormData.defaultTitle === title
+                      : client.clientTitle === title ||
+                        (client.clientTitle == null && title === "تلقائي");
+                    return (
+                      <span
+                        key={title}
+                        onClick={() =>
+                          isEditingBasicInfo &&
+                          handleEditChange("defaultTitle", title)
+                        }
+                        className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${isSelected ? "bg-amber-100 text-amber-800 border-2 border-amber-300 shadow-sm" : "bg-white text-slate-500 border border-slate-200"} ${isEditingBasicInfo ? "cursor-pointer hover:border-amber-400" : "opacity-90"}`}
+                      >
+                        {title}
+                      </span>
+                    );
+                  })}
+                </div>
               </div>
-              <div className="flex flex-wrap gap-1.5">
-                {[
-                  "تلقائي",
-                  "المواطن",
-                  "المواطنة",
-                  "السادة",
-                  "صاحب السمو الأمير",
-                  "مخصص",
-                ].map((title, i) => {
-                  const isSelected = isEditingBasicInfo
-                    ? editFormData.defaultTitle === title
-                    : client.clientTitle === title ||
-                      (client.clientTitle == null && title === "تلقائي");
-                  return (
-                    <span
-                      key={i}
-                      onClick={() =>
-                        isEditingBasicInfo &&
-                        handleEditChange("defaultTitle", title)
-                      }
-                      className={`px-3 py-1.5 text-[10px] font-bold rounded-lg transition-colors ${isSelected ? "bg-blue-600 text-white border border-blue-600 shadow-sm" : "bg-white text-slate-600 border border-slate-200"} ${isEditingBasicInfo ? "cursor-pointer hover:bg-blue-50" : "opacity-80"}`}
-                    >
-                      {title}
-                    </span>
-                  );
-                })}
+
+              <div>
+                <label className="text-sm font-bold text-slate-800 flex items-center gap-2 mb-3">
+                  <UsersRound className="w-4 h-4 text-blue-500" /> أسلوب التعامل
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {["عن نفسه", "مفوض", "وكيل"].map((method) => {
+                    const isSelected = isEditingBasicInfo
+                      ? editFormData.handlingMethod === method
+                      : method === "عن نفسه"
+                        ? !hasRep
+                        : hasRep && rep?.type === method;
+                    return (
+                      <span
+                        key={method}
+                        onClick={() =>
+                          isEditingBasicInfo &&
+                          handleEditChange("handlingMethod", method)
+                        }
+                        className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${isSelected ? "bg-blue-600 text-white shadow-md shadow-blue-500/20" : "bg-white text-slate-600 border border-slate-200"} ${isEditingBasicInfo ? "cursor-pointer hover:border-blue-400" : "opacity-90"}`}
+                      >
+                        {method === "عن نفسه"
+                          ? "يتعامل عن نفسه"
+                          : `عبر ${method}`}
+                      </span>
+                    );
+                  })}
+                </div>
               </div>
             </div>
 
-            <div>
-              <div className="text-xs font-bold text-slate-600 mb-2">
-                أسلوب التعامل مع المكتب:
-              </div>
-              <div className="flex gap-2">
-                {["عن نفسه", "مفوض", "وكيل"].map((method) => {
-                  const isSelected = isEditingBasicInfo
-                    ? editFormData.handlingMethod === method
-                    : method === "عن نفسه"
-                      ? !hasRep
-                      : hasRep && rep?.type === method;
-                  return (
-                    <span
-                      key={method}
-                      onClick={() =>
-                        isEditingBasicInfo &&
-                        handleEditChange("handlingMethod", method)
-                      }
-                      className={`px-4 py-2 text-[11px] font-bold rounded-xl transition-colors ${isSelected ? "bg-amber-600 text-white border border-amber-600 shadow-sm" : "bg-white text-slate-600 border border-slate-200"} ${isEditingBasicInfo ? "cursor-pointer hover:bg-amber-50" : "opacity-80"}`}
-                    >
-                      {method === "عن نفسه" ? "عن نفسه" : `عن طريق ${method}`}
+            {hasRep && !isEditingBasicInfo && (
+              <div className="mt-6 p-5 bg-gradient-to-r from-slate-50 to-blue-50/30 rounded-2xl border border-blue-100 animate-in fade-in">
+                <div className="flex items-center gap-2 mb-4 text-blue-800">
+                  <ShieldCheck className="w-5 h-5" />
+                  <h4 className="font-bold text-sm">
+                    البيانات المسجلة لـ ({rep.type})
+                  </h4>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
+                    <span className="block text-[10px] text-slate-400 font-bold mb-1">
+                      الاسم الكامل
                     </span>
-                  );
-                })}
-              </div>
-
-              {/* 💡 بيانات المفوض/الوكيل في حالة العرض */}
-              {hasRep && !isEditingBasicInfo && (
-                <div className="mt-3 p-3 bg-purple-50/50 rounded-xl border border-purple-200 animate-in fade-in">
-                  <div className="font-bold text-purple-700 mb-2 text-xs flex items-center gap-1.5">
-                    <UsersRound className="w-4 h-4" /> بيانات {rep.type}{" "}
-                    الافتراضي
+                    <strong className="text-xs text-slate-800">
+                      {rep.name || "—"}
+                    </strong>
                   </div>
-                  <div className="grid grid-cols-2 gap-y-2 gap-x-4 text-[11px]">
-                    <div>
-                      <span className="text-slate-500">الاسم:</span>{" "}
-                      <strong className="text-slate-800">
-                        {rep.name || "—"}
-                      </strong>
-                    </div>
-                    <div>
-                      <span className="text-slate-500">الهوية:</span>{" "}
-                      <strong className="text-slate-800 font-mono">
-                        {rep.idNumber || "—"}
-                      </strong>
-                    </div>
-                    <div>
-                      <span className="text-slate-500">الجوال:</span>{" "}
-                      <strong className="text-slate-800 font-mono dir-ltr">
-                        {rep.mobile || "—"}
-                      </strong>
-                    </div>
-                    <div>
-                      <span className="text-slate-500">رقم المستند:</span>{" "}
-                      <strong className="text-purple-700 font-mono">
-                        {rep.authNumber || "—"}
-                      </strong>
-                    </div>
-                    {rep.authExpiry && (
-                      <div className="col-span-2 mt-1">
-                        <span className="text-slate-500">صلاحية التوثيق:</span>{" "}
-                        <strong className="font-mono">
+                  <div className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
+                    <span className="block text-[10px] text-slate-400 font-bold mb-1">
+                      رقم الهوية
+                    </span>
+                    <strong className="text-xs text-slate-800 font-mono">
+                      {rep.idNumber || "—"}
+                    </strong>
+                  </div>
+                  <div className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
+                    <span className="block text-[10px] text-slate-400 font-bold mb-1">
+                      رقم الجوال
+                    </span>
+                    <strong className="text-xs text-slate-800 font-mono dir-ltr">
+                      {rep.mobile || "—"}
+                    </strong>
+                  </div>
+                  <div className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
+                    <span className="block text-[10px] text-slate-400 font-bold mb-1">
+                      رقم التوثيق/الوكالة
+                    </span>
+                    <strong className="text-xs text-blue-700 font-mono">
+                      {rep.authNumber || "—"}
+                    </strong>
+                  </div>
+
+                  {rep.authExpiry && (
+                    <div className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm col-span-2 md:col-span-4 flex justify-between items-center">
+                      <div>
+                        <span className="block text-[10px] text-slate-400 font-bold mb-1">
+                          صلاحية التوثيق
+                        </span>
+                        <strong className="text-xs text-slate-800 font-mono">
                           {formatDate(rep.authExpiry)}
                         </strong>
                       </div>
-                    )}
-                    {rep.powersScope && (
-                      <div className="col-span-2 mt-1">
-                        <span className="text-slate-500">نطاق الصلاحيات:</span>{" "}
-                        <p className="text-slate-700 mt-1 p-2 bg-white rounded border border-purple-100">
-                          {rep.powersScope}
+                      {getRemainingTime(rep.authExpiry) && (
+                        <span
+                          className={`px-3 py-1.5 rounded-lg text-[10px] font-bold border flex items-center gap-1.5 ${getRemainingTime(rep.authExpiry).color}`}
+                        >
+                          {getRemainingTime(rep.authExpiry).expired ? (
+                            <TriangleAlert className="w-3 h-3" />
+                          ) : (
+                            <Clock className="w-3 h-3" />
+                          )}
+                          {getRemainingTime(rep.authExpiry).text}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                  {rep.powersScope && (
+                    <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm col-span-2 md:col-span-4">
+                      <span className="block text-[10px] text-slate-400 font-bold mb-2">
+                        نطاق الصلاحيات الممنوحة
+                      </span>
+                      <p className="text-xs text-slate-700 leading-relaxed bg-slate-50 p-3 rounded-lg">
+                        {rep.powersScope}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {isEditingBasicInfo &&
+              editFormData.handlingMethod !== "عن نفسه" && (
+                <div className="mt-8 border-t border-slate-200 pt-8 animate-in slide-in-from-top-4">
+                  <div className="flex items-center justify-between mb-6">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-indigo-100 text-indigo-600 rounded-xl">
+                        <ShieldCheck className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-slate-800">
+                          بيانات {editFormData.handlingMethod}
+                        </h4>
+                        <p className="text-[10px] text-slate-500 font-bold mt-0.5">
+                          قم بإدخال بيانات الوكيل أو استخراجها من المستند
                         </p>
                       </div>
-                    )}
+                    </div>
+
+                    <div className="flex gap-2">
+                      <input
+                        type="file"
+                        ref={repAuthRef}
+                        className="hidden"
+                        accept=".pdf,image/*"
+                        onChange={(e) =>
+                          handleRepDocUpload(
+                            e,
+                            `مستند ${editFormData.handlingMethod}`,
+                            true,
+                          )
+                        }
+                      />
+                      <button
+                        onClick={() => repAuthRef.current?.click()}
+                        disabled={isAnalyzingRepAuth}
+                        className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-md transition-all disabled:opacity-50"
+                      >
+                        {isAnalyzingRepAuth ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <ScanSearch className="w-4 h-4" />
+                        )}
+                        قراءة الوكالة بالـ AI
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className={labelClass}>
+                            رقم التوثيق / الوكالة *
+                          </label>
+                          <input
+                            type="text"
+                            value={editFormData.repAuthNumber}
+                            onChange={(e) =>
+                              handleEditChange(
+                                "repAuthNumber",
+                                toEnglishNumbers(e.target.value),
+                              )
+                            }
+                            className={`${inputClass} font-mono dir-ltr text-right`}
+                            placeholder="أدخل الرقم..."
+                          />
+                        </div>
+                        <div>
+                          <label className={labelClass}>تاريخ الانتهاء *</label>
+                          <input
+                            type="date"
+                            value={editFormData.repAuthExpiry}
+                            onChange={(e) =>
+                              handleEditChange("repAuthExpiry", e.target.value)
+                            }
+                            className={`${inputClass} dir-ltr`}
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className={labelClass}>الاسم الكامل *</label>
+                        <input
+                          type="text"
+                          value={editFormData.repName}
+                          onChange={(e) =>
+                            handleEditChange("repName", e.target.value)
+                          }
+                          className={inputClass}
+                          placeholder={`اسم ${editFormData.handlingMethod}...`}
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className={labelClass}>رقم الهوية *</label>
+                          <input
+                            type="text"
+                            value={editFormData.repIdNumber}
+                            onChange={(e) =>
+                              handleEditChange(
+                                "repIdNumber",
+                                toEnglishNumbers(e.target.value),
+                              )
+                            }
+                            className={`${inputClass} font-mono dir-ltr text-right`}
+                            placeholder="10XXXXXX"
+                          />
+                        </div>
+                        <div>
+                          <label className={labelClass}>رقم الجوال</label>
+                          <input
+                            type="tel"
+                            value={editFormData.repMobile}
+                            onChange={(e) =>
+                              handleEditChange(
+                                "repMobile",
+                                toEnglishNumbers(e.target.value),
+                              )
+                            }
+                            className={`${inputClass} font-mono dir-ltr text-right`}
+                            placeholder="05XXXXXX"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col h-full">
+                      <label className={labelClass}>
+                        نطاق الصلاحيات والبنود
+                      </label>
+                      <textarea
+                        value={editFormData.repPowersScope}
+                        onChange={(e) =>
+                          handleEditChange("repPowersScope", e.target.value)
+                        }
+                        className={`${inputClass} flex-1 resize-none h-full min-h-[150px] leading-relaxed`}
+                        placeholder="أدخل البنود المستخرجة أو اكتبها يدوياً لتوضيح صلاحيات الوكيل في التعامل مع المكتب..."
+                      />
+                    </div>
                   </div>
                 </div>
               )}
-
-              {/* 💡 بيانات المفوض/الوكيل في حالة التعديل (تصميم تفاعلي مطابق لإنشاء العميل) */}
-              {isEditingBasicInfo &&
-                editFormData.handlingMethod !== "عن نفسه" && (
-                  <div className="mt-4 bg-white rounded-xl border-2 border-blue-200 shadow-sm overflow-hidden animate-in slide-in-from-top-2">
-                    <div className="w-full flex items-center justify-between p-3.5 bg-gradient-to-l from-blue-50 to-indigo-50 border-b border-blue-200">
-                      <div className="flex items-center gap-2.5">
-                        <Shield className="w-5 h-5 text-blue-600" />
-                        <div className="text-sm font-bold text-blue-900">
-                          تعديل بيانات {editFormData.handlingMethod}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="p-4 space-y-6">
-                      {/* قسم مستند التفويض/الوكالة واستخراج الـ AI */}
-                      <div className="p-4 bg-indigo-50/50 rounded-xl border border-indigo-200 space-y-4">
-                        <div className="flex items-center justify-between border-b border-indigo-100 pb-3">
-                          <div className="flex items-center gap-2 text-sm font-bold text-indigo-900">
-                            <FileCheck className="w-4 h-4" /> وثيقة{" "}
-                            {editFormData.handlingMethod === "وكيل"
-                              ? "الوكالة"
-                              : "التفويض"}
-                          </div>
-                          <button
-                            onClick={() => repAuthRef.current?.click()}
-                            disabled={isAnalyzingRepAuth}
-                            className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-indigo-600 to-violet-600 text-white rounded-lg text-xs font-bold shadow-md hover:shadow-lg transition-all disabled:opacity-70"
-                          >
-                            {isAnalyzingRepAuth ? (
-                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                            ) : (
-                              <ScanSearch className="w-3.5 h-3.5" />
-                            )}
-                            استخراج بالـ AI
-                          </button>
-                          <input
-                            type="file"
-                            ref={repAuthRef}
-                            className="hidden"
-                            accept=".pdf,image/*"
-                            onChange={(e) =>
-                              handleRepDocUpload(
-                                e,
-                                `مستند ${editFormData.handlingMethod}`,
-                                true,
-                              )
-                            }
-                          />
-                        </div>
-
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div>
-                            <label className="text-[10px] font-bold text-slate-500 block mb-1">
-                              رقم المستند *
-                            </label>
-                            <input
-                              type="text"
-                              value={editFormData.repAuthNumber}
-                              onChange={(e) =>
-                                handleEditChange(
-                                  "repAuthNumber",
-                                  e.target.value,
-                                )
-                              }
-                              className="w-full h-10 px-3 text-sm border-2 border-slate-200 rounded-lg outline-none font-mono focus:border-indigo-500 bg-white"
-                              dir="ltr"
-                            />
-                          </div>
-                          <div>
-                            <label className="text-[10px] font-bold text-slate-500 block mb-1">
-                              تاريخ الانتهاء (ميلادي) *
-                            </label>
-                            <div className="flex gap-2 h-10">
-                              <input
-                                type="date"
-                                value={editFormData.repAuthExpiry}
-                                onChange={(e) =>
-                                  handleEditChange(
-                                    "repAuthExpiry",
-                                    e.target.value,
-                                  )
-                                }
-                                className="flex-1 px-3 text-sm border-2 border-slate-200 rounded-lg outline-none focus:border-indigo-500 bg-white"
-                                dir="ltr"
-                              />
-                              {getRemainingTime(editFormData.repAuthExpiry) && (
-                                <div
-                                  className={`px-3 flex items-center justify-center gap-1.5 rounded-lg border-2 text-[10px] font-bold whitespace-nowrap ${getRemainingTime(editFormData.repAuthExpiry).color}`}
-                                >
-                                  {getRemainingTime(editFormData.repAuthExpiry)
-                                    .expired ? (
-                                    <AlertTriangle className="w-3.5 h-3.5" />
-                                  ) : (
-                                    <Clock className="w-3.5 h-3.5" />
-                                  )}
-                                  {
-                                    getRemainingTime(editFormData.repAuthExpiry)
-                                      .text
-                                  }
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                          <div className="md:col-span-2">
-                            <label className="text-[10px] font-bold text-slate-500 block mb-1">
-                              نطاق الصلاحيات والبنود
-                            </label>
-                            <textarea
-                              value={editFormData.repPowersScope}
-                              onChange={(e) =>
-                                handleEditChange(
-                                  "repPowersScope",
-                                  e.target.value,
-                                )
-                              }
-                              className="w-full h-20 px-3 py-2 text-xs border-2 border-slate-200 rounded-lg outline-none resize-none focus:border-indigo-500 leading-relaxed bg-white"
-                              placeholder="أدخل ملخص الصلاحيات..."
-                            ></textarea>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* قسم بيانات الشخص وهوية AI */}
-                      <div className="p-4 bg-slate-50 rounded-xl border border-slate-200 space-y-4">
-                        <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-                          <div className="flex items-center gap-2 text-sm font-bold text-slate-800">
-                            <User className="w-4 h-4 text-slate-500" /> البيانات
-                            الشخصية للـ{editFormData.handlingMethod}
-                          </div>
-                          <button
-                            onClick={() => repIdRef.current?.click()}
-                            disabled={isAnalyzingRepId}
-                            className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-300 text-slate-700 rounded-lg text-xs font-bold hover:bg-slate-100 transition-all disabled:opacity-70 shadow-sm"
-                          >
-                            {isAnalyzingRepId ? (
-                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                            ) : (
-                              <ScanSearch className="w-3.5 h-3.5" />
-                            )}
-                            قراءة الهوية (AI)
-                          </button>
-                          <input
-                            type="file"
-                            ref={repIdRef}
-                            className="hidden"
-                            accept=".pdf,image/*"
-                            onChange={(e) =>
-                              handleRepDocUpload(
-                                e,
-                                `هوية ${editFormData.handlingMethod}`,
-                                false,
-                              )
-                            }
-                          />
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="col-span-2 md:col-span-1">
-                            <label className="text-[10px] font-bold text-slate-500 block mb-1">
-                              الاسم الكامل *
-                            </label>
-                            <input
-                              type="text"
-                              value={editFormData.repName}
-                              onChange={(e) =>
-                                handleEditChange("repName", e.target.value)
-                              }
-                              className="w-full h-10 px-3 text-sm border-2 border-slate-200 rounded-lg focus:border-blue-500 outline-none bg-white"
-                            />
-                          </div>
-                          <div className="col-span-2 md:col-span-1">
-                            <label className="text-[10px] font-bold text-slate-500 block mb-1">
-                              رقم الهوية *
-                            </label>
-                            <input
-                              type="text"
-                              value={editFormData.repIdNumber}
-                              onChange={(e) =>
-                                handleEditChange("repIdNumber", e.target.value)
-                              }
-                              className="w-full h-10 px-3 text-sm border-2 border-slate-200 rounded-lg focus:border-blue-500 outline-none font-mono bg-white"
-                              dir="ltr"
-                            />
-                          </div>
-                          <div className="col-span-2 md:col-span-1">
-                            <label className="text-[10px] font-bold text-slate-500 block mb-1">
-                              انتهاء الهوية
-                            </label>
-                            <input
-                              type="date"
-                              value={editFormData.repIdExpiry}
-                              onChange={(e) =>
-                                handleEditChange("repIdExpiry", e.target.value)
-                              }
-                              className="w-full h-10 px-3 text-sm border-2 border-slate-200 rounded-lg focus:border-blue-500 outline-none bg-white"
-                              dir="ltr"
-                            />
-                          </div>
-                          <div className="col-span-2 md:col-span-1">
-                            <label className="text-[10px] font-bold text-slate-500 block mb-1">
-                              رقم الجوال
-                            </label>
-                            <input
-                              type="tel"
-                              value={editFormData.repMobile}
-                              onChange={(e) =>
-                                handleEditChange("repMobile", e.target.value)
-                              }
-                              className="w-full h-10 px-3 text-sm border-2 border-slate-200 rounded-lg focus:border-blue-500 outline-none font-mono bg-white"
-                              dir="ltr"
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
-            </div>
           </div>
         </div>
 
@@ -1728,60 +1807,67 @@ const ClientFileView = ({ clientId, onBack }) => {
   // 👈 تاب الوثائق (تم التحديث ليقرأ من الداتابيز ويرفع)
   // ==========================================
   const renderDocsTab = () => (
-    <div className="space-y-4 animate-in fade-in duration-300">
-      <div className="flex justify-between items-center mb-2">
-        <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-          <FileCheck className="w-5 h-5 text-violet-500" /> وثائق العميل
-        </h3>
+    <div className="space-y-6 animate-in slide-in-from-bottom-4 duration-500">
+      <div className="flex justify-between items-center bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 bg-violet-50 rounded-xl flex items-center justify-center text-violet-600">
+            <FileCheck className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="text-base font-bold text-slate-800">
+              مستودع الوثائق
+            </h3>
+            <p className="text-[10px] font-bold text-slate-400 mt-0.5">
+              الهويات، السجلات، والملفات المرفقة للعميل
+            </p>
+          </div>
+        </div>
         <button
           onClick={() => setIsUploadModalOpen(true)}
-          className="px-3 py-1.5 bg-gradient-to-r from-violet-600 to-purple-600 text-white rounded-lg text-xs font-bold shadow flex items-center gap-1 hover:from-violet-700 hover:to-purple-700 transition-all"
+          className="flex items-center gap-2 px-5 py-2.5 bg-violet-600 text-white rounded-xl text-xs font-bold hover:bg-violet-700 shadow-md shadow-violet-500/20 transition-all active:scale-95"
         >
-          <Upload className="w-3 h-3" /> رفع وثيقة
+          <Upload className="w-4 h-4" /> رفع وثيقة جديدة
         </button>
       </div>
 
       {client.attachments?.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mt-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
           {client.attachments.map((doc, idx) => (
             <div
               key={doc.id || idx}
-              className="p-4 bg-white border border-slate-200 rounded-xl flex items-center justify-between hover:border-violet-300 transition-colors shadow-sm"
+              className="p-5 bg-white border border-slate-200/80 rounded-2xl shadow-sm hover:shadow-md hover:border-violet-300 transition-all group flex flex-col h-full"
             >
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-violet-50 rounded-lg text-violet-600">
-                  <FileText className="w-6 h-6" />
+              <div className="flex items-start gap-4 mb-4">
+                <div className="p-3.5 bg-violet-50/80 rounded-xl text-violet-600 group-hover:bg-violet-600 group-hover:text-white transition-colors">
+                  <FileText className="w-7 h-7" />
                 </div>
-                <div>
+                <div className="flex-1 overflow-hidden">
                   <div
-                    className="font-bold text-sm text-slate-700 truncate max-w-[150px]"
+                    className="font-bold text-sm text-slate-800 truncate mb-1"
                     title={doc.fileName || doc.name}
                   >
-                    {doc.fileName || doc.name || "مستند"}
+                    {doc.fileName || doc.name || "مستند بدون اسم"}
                   </div>
-                  <div className="text-[10px] text-slate-400 mt-1">
+                  <div className="text-[10px] font-mono font-bold text-slate-400 bg-slate-100 w-max px-2 py-0.5 rounded">
                     {formatDate(doc.createdAt)}
                   </div>
-                  {doc.notes && (
-                    <div
-                      className="text-[9px] text-slate-500 mt-1 truncate max-w-[150px]"
-                      title={doc.notes}
-                    >
-                      ملاحظة: {doc.notes}
-                    </div>
-                  )}
                 </div>
               </div>
-              <div className="flex gap-1">
-                {/* 👈 زر المعاينة */}
+
+              {doc.notes && (
+                <div className="text-[11px] text-slate-500 mb-4 bg-slate-50 p-2.5 rounded-lg border border-slate-100 flex-1">
+                  {doc.notes}
+                </div>
+              )}
+
+              {/* 💡 أزرار التفاعل المحدثة */}
+              <div className="flex gap-2 mt-auto pt-4 border-t border-slate-100">
                 <button
-                  onClick={() => handleViewDocument(doc.filePath)}
-                  className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                  title="عرض"
+                  onClick={() => handleViewDocument(doc)}
+                  className="flex-1 flex justify-center items-center gap-1.5 py-2 bg-blue-50 hover:bg-blue-600 text-blue-600 hover:text-white rounded-xl text-xs font-bold transition-colors"
                 >
-                  <Eye className="w-4 h-4" />
+                  <Eye className="w-3.5 h-3.5" /> عرض
                 </button>
-                {/* 👈 زر التنزيل */}
                 <button
                   onClick={() =>
                     handleDownloadDocument(
@@ -1789,24 +1875,37 @@ const ClientFileView = ({ clientId, onBack }) => {
                       doc.fileName || "document",
                     )
                   }
-                  className="p-2 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors"
-                  title="تحميل"
+                  className="flex-1 flex justify-center items-center gap-1.5 py-2 bg-emerald-50 hover:bg-emerald-600 text-emerald-600 hover:text-white rounded-xl text-xs font-bold transition-colors"
                 >
-                  <Download className="w-4 h-4" />
+                  <Download className="w-3.5 h-3.5" /> تحميل
+                </button>
+                <button
+                  onClick={() => handleDeleteDocument(doc.id)}
+                  disabled={deleteDocMutation.isPending}
+                  className="flex-1 flex justify-center items-center gap-1.5 py-2 bg-red-50 hover:bg-red-600 text-red-500 hover:text-white rounded-xl text-xs font-bold transition-colors disabled:opacity-50"
+                >
+                  <Trash2 className="w-3.5 h-3.5" /> حذف
                 </button>
               </div>
             </div>
           ))}
         </div>
       ) : (
-        <div className="mt-6 text-center py-12 bg-white border border-slate-200 rounded-xl shadow-sm">
-          <FileStack className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-          <div className="font-bold text-slate-600 text-lg">
+        <div className="flex flex-col items-center justify-center py-20 bg-slate-50/50 border-2 border-dashed border-slate-200 rounded-3xl">
+          <FileStack className="w-16 h-16 text-slate-300 mb-4" />
+          <h4 className="text-lg font-bold text-slate-700 mb-1">
             لا توجد وثائق مرفوعة
-          </div>
-          <div className="text-sm text-slate-400 mt-1">
-            قم برفع الهوية، السجل التجاري، أو أي مستندات أخرى للعميل
-          </div>
+          </h4>
+          <p className="text-sm text-slate-400 mb-6 max-w-sm text-center">
+            قم برفع الهوية، السجل التجاري، أو أي مستندات هامة لتكوين أرشيف
+            متكامل للعميل.
+          </p>
+          <button
+            onClick={() => setIsUploadModalOpen(true)}
+            className="px-6 py-2.5 bg-white border border-slate-300 text-slate-700 rounded-xl font-bold shadow-sm hover:bg-slate-50 transition-colors"
+          >
+            بدء الرفع
+          </button>
         </div>
       )}
     </div>
@@ -1875,7 +1974,7 @@ const ClientFileView = ({ clientId, onBack }) => {
       dir="rtl"
     >
       {/* Header (Sticky) */}
-      <div className="sticky top-0 z-50 bg-white border border-slate-200 rounded-xl shadow-sm mb-4">
+      <div className=" z-50 bg-white border border-slate-200 rounded-xl shadow-sm mb-4">
         {/* Top Bar */}
         <div className="p-4 border-b border-slate-100 flex flex-wrap justify-between items-center gap-4">
           <div className="flex items-center gap-3">
@@ -1960,7 +2059,7 @@ const ClientFileView = ({ clientId, onBack }) => {
       </div>
 
       {/* Content Area */}
-      <div className="flex-1 bg-white border border-slate-200 rounded-xl p-6 shadow-sm overflow-y-auto custom-scrollbar min-h-[500px]">
+      <div className="flex-1 bg-white border border-slate-200 rounded-xl p-6 shadow-sm ">
         {activeTab === "summary" && renderSummaryTab()}
         {activeTab === "basic" && renderBasicInfoTab()}
         {activeTab === "contact" && renderContactTab()}
@@ -1987,6 +2086,7 @@ const ClientFileView = ({ clientId, onBack }) => {
         )}
       </div>
       {renderUploadModal()}
+      {renderPreviewModal()}
     </div>
   );
 };
