@@ -33,7 +33,7 @@ import {
   Loader2,
   Wallet,
 } from "lucide-react";
-import { TransactionDetailsModal } from "../components/TransactionDetailsModal"; // 👈 قم بتعديل المسار إذا لزم الأمر
+import { TransactionDetailsModal } from "../components/TransactionDetails/components/TransactionDetailsModal";
 
 const MONTHLY_UI = {
   TITLE: "مركز التسوية الشهرية (إغلاق الشهر)",

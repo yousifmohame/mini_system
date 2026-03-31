@@ -9,7 +9,7 @@ import { toast } from "sonner"; // 👈 استيراد الإشعارات
 
 // 💡 الاستيرادات للمودالز المنفصلة
 import { CreateTransactionModal } from "../components/CreateTransactionModal";
-import { TransactionDetailsModal } from "../components/TransactionDetailsModal";
+import { TransactionDetailsModal } from "../components/TransactionDetails/components/TransactionDetailsModal";
 
 import {
   Search,
