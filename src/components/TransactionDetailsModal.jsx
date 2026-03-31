@@ -898,8 +898,8 @@ export const TransactionDetailsModal = ({
         (c) => (c.name?.ar || c.name) === safeText(tx.client),
       );
       setEditFormData({
-        year: new Date(tx.createdAt || tx.date).getFullYear().toString(),
-        month: (new Date(tx.createdAt || tx.date).getMonth() + 1)
+        year: new Date(tx.created || tx.date).getFullYear().toString(),
+        month: (new Date(tx.created || tx.date).getMonth() + 1)
           .toString()
           .padStart(2, "0"),
         clientId: currentClient?.id || "",
@@ -911,7 +911,10 @@ export const TransactionDetailsModal = ({
         office: tx.office || "مكتب ديتيلز",
         sourceName: tx.sourceName || "مباشر",
         totalFees: tx.totalFees || 0,
-        taxType: tx.notes?.taxData?.taxType || "بدون احتساب ضريبة",
+        taxType:
+          tx.taxData?.taxType ||
+          tx.notes?.taxData?.taxType ||
+          "بدون احتساب ضريبة",
         mediatorFees:
           tx.mediatorFees ||
           tx.brokers?.reduce((sum, b) => sum + safeNum(b.fees), 0) ||
@@ -922,14 +925,13 @@ export const TransactionDetailsModal = ({
           0,
         internalName: tx.internalName || tx.notes?.internalName || "",
         isInternalNameHidden: tx.notes?.isInternalNameHidden || false,
-        // 💡 الحقول الجديدة للبيانات الأساسية
-        plots: Array.isArray(tx.notes?.refs?.plots)
-          ? tx.notes.refs.plots.join(", ")
-          : tx.notes?.refs?.plots || "",
-        plan: tx.notes?.refs?.plan || "",
+
+        // 💡 التعديل الجذري هنا: قراءة القيم المباشرة التي أرسلناها من الباك إند
+        plots: tx.plots || tx.notes?.refs?.plots || "",
+        plan: tx.plan || tx.notes?.refs?.plan || "",
         area:
-          tx.landArea || tx.notes?.refs?.landArea || tx.notes?.refs?.area || "", // 👈 التعديل هنا
-        mapsLink: tx.notes?.refs?.mapsLink || "",
+          tx.landArea || tx.notes?.refs?.landArea || tx.notes?.refs?.area || "",
+        mapsLink: tx.mapsLink || tx.notes?.refs?.mapsLink || "",
       });
 
       if (tx.notes?.transactionStatusData) {
