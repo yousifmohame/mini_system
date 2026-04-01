@@ -331,12 +331,28 @@ export const TransactionDetailsModal = ({
         mapsLink: tx.mapsLink || tx.notes?.refs?.mapsLink || "",
       });
 
-      if (tx.notes?.transactionStatusData) {
-        setStatusForm({
-          ...tx.notes.transactionStatusData,
-          newAuthorityNote: "",
-        });
-      }
+      // 💡 التعديل هنا: سحب بيانات الرفع بقوة من قاعدة البيانات الأساسية
+      const existingStatusData = tx.notes?.transactionStatusData || {};
+
+      setStatusForm({
+        currentStatus:
+          existingStatusData.currentStatus || "عند المهندس للدراسة",
+        // إعطاء الأولوية لبيانات الإنشاء ثم البحث في الملاحظات القديمة
+        serviceNumber:
+          tx.serviceNo ||
+          tx.requestNo ||
+          existingStatusData.serviceNumber ||
+          "",
+        hijriYear1: existingStatusData.hijriYear1 || "",
+        licenseNumber: tx.licenseNo || existingStatusData.licenseNumber || "",
+        hijriYear2: existingStatusData.hijriYear2 || "",
+        oldLicenseNumber:
+          tx.oldDeed || existingStatusData.oldLicenseNumber || "",
+        newAuthorityNote: "",
+        noteAttachment: null,
+        approvalAttachments: existingStatusData.approvalAttachments || [],
+        approvalDate: existingStatusData.approvalDate || null,
+      });
     }
   }, [tx, clients]);
 

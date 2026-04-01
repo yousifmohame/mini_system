@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import {
   FileText,
   Edit3,
@@ -19,7 +19,8 @@ import {
   Send,
   Paperclip,
   Plus,
-  Briefcase
+  Briefcase,
+  CalendarDays
 } from "lucide-react";
 
 // بقية التبويبات (StatusTab, AttachmentsTab, LogsTab)...
@@ -32,9 +33,62 @@ export const StatusTab = ({
   backendUrl,
   handlePreviewAttachmentSafe,
   formatDateTime,
-  safeAttachments,           // 👈 تمت إضافته هنا
-  deleteAttachmentMutation   // 👈 تمت إضافته هنا
+  safeAttachments,
+  deleteAttachmentMutation,
+  txType,
+
+  // 💡 Props جديدة ضرورية لإضافة المهمة من داخل StatusTab
+  persons,
+  isSuperAdmin,
+  addTaskMutation,
 }) => {
+  // 💡 State محلية داخل StatusTab للتحكم بفورم المهام المصغر
+  const [isAddingTask, setIsAddingTask] = useState(false);
+  const [taskForm, setTaskForm] = useState({
+    assigneeId: "",
+    description: "",
+    deadline: "",
+    isUrgent: false,
+  });
+
+  const employees = persons?.filter((p) => p.role !== "عميل") || [];
+
+  // 💡 الذكاء الآلي: مراقبة المدخلات وتغيير الحالة تلقائياً
+  useEffect(() => {
+    if (
+      statusForm.currentStatus === "ملاحظات من الجهات" ||
+      statusForm.currentStatus === "تم الاعتماد"
+    )
+      return;
+
+    const hasNewServiceNum = !!statusForm.serviceNumber;
+    const hasNewHijriYear = !!statusForm.hijriYear1;
+    const hasNewLicense = !!statusForm.licenseNumber;
+    const hasOldLicenseOnly =
+      !!statusForm.oldLicenseNumber || !!statusForm.hijriYear2;
+    const hasNewData = hasNewServiceNum || hasNewHijriYear || hasNewLicense;
+
+    let shouldAutoMoveToStage2 = false;
+
+    if (txType === "تصحيح وضع مبني قائم") {
+      if (hasNewData) shouldAutoMoveToStage2 = true;
+    } else {
+      if (hasNewData || hasOldLicenseOnly) shouldAutoMoveToStage2 = true;
+    }
+
+    if (shouldAutoMoveToStage2 && statusForm.currentStatus !== "تم الرفع") {
+      setStatusForm((prev) => ({ ...prev, currentStatus: "تم الرفع" }));
+    }
+  }, [
+    statusForm.serviceNumber,
+    statusForm.hijriYear1,
+    statusForm.licenseNumber,
+    statusForm.oldLicenseNumber,
+    statusForm.hijriYear2,
+    txType,
+    setStatusForm,
+  ]);
+
   return (
     <div className="max-w-5xl mx-auto space-y-6 animate-in fade-in pb-10">
       <div className="bg-white p-6 rounded-2xl border border-gray-200 shadow-sm flex justify-between items-center relative overflow-hidden">
@@ -91,17 +145,155 @@ export const StatusTab = ({
 
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
         {statusForm.currentStatus === "عند المهندس للدراسة" && (
-          <div className="p-16 flex flex-col items-center justify-center text-center bg-slate-50/50">
-            <div className="w-20 h-20 bg-blue-50 rounded-full flex items-center justify-center mb-4 border border-blue-100">
-              <Briefcase className="w-10 h-10 text-blue-500" />
+          <div className="p-8 flex flex-col items-center justify-center bg-slate-50/50">
+            <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mb-4 border border-blue-100">
+              <Briefcase className="w-8 h-8 text-blue-500" />
             </div>
             <h3 className="text-lg font-black text-gray-800 mb-2">
               المعاملة قيد الدراسة الهندسية
             </h3>
-            <p className="text-sm font-semibold text-gray-500 max-w-md">
+            <p className="text-sm font-semibold text-gray-500 max-w-md text-center mb-8">
               لم يتم رفع المعاملة على منصة (بلدي/إحكام) حتى الآن. يُرجى استكمال
               المخططات والدراسات الفنية المطلوبة.
             </p>
+
+            {/* 💡 فورم مصغر لإسناد المهام يظهر للمشرف فقط */}
+            {isSuperAdmin && (
+              <div className="w-full max-w-2xl bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+                <div className="bg-indigo-50/50 px-5 py-3 border-b border-indigo-100 flex justify-between items-center">
+                  <h4 className="text-sm font-bold text-indigo-800 flex items-center gap-2">
+                    <CalendarDays className="w-4 h-4" /> توجيه مهام للموظفين
+                    (دراسة / تصميم)
+                  </h4>
+                  <button
+                    onClick={() => setIsAddingTask(!isAddingTask)}
+                    className="bg-white text-indigo-600 border border-indigo-200 hover:bg-indigo-100 px-3 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1"
+                  >
+                    {isAddingTask ? (
+                      <X className="w-3.5 h-3.5" />
+                    ) : (
+                      <Plus className="w-3.5 h-3.5" />
+                    )}
+                    {isAddingTask ? "إلغاء" : "إضافة مهمة"}
+                  </button>
+                </div>
+
+                {isAddingTask && (
+                  <div className="p-5 space-y-4 animate-in slide-in-from-top-2">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-xs font-bold text-gray-700 mb-1 block">
+                          اختر الموظف (المهندس)
+                        </label>
+                        <select
+                          value={taskForm.assigneeId}
+                          onChange={(e) =>
+                            setTaskForm({
+                              ...taskForm,
+                              assigneeId: e.target.value,
+                            })
+                          }
+                          className="w-full border border-gray-300 p-2.5 rounded-lg text-sm font-bold outline-none focus:border-indigo-500 bg-white"
+                        >
+                          <option value="">-- اختر موظف --</option>
+                          {employees.map((emp) => (
+                            <option key={emp.id} value={emp.id}>
+                              {emp.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-xs font-bold text-gray-700 mb-1 block">
+                          وقت التسليم المطلوب
+                        </label>
+                        <input
+                          type="datetime-local"
+                          value={taskForm.deadline}
+                          onChange={(e) =>
+                            setTaskForm({
+                              ...taskForm,
+                              deadline: e.target.value,
+                            })
+                          }
+                          className="w-full border border-gray-300 p-2.5 rounded-lg text-sm font-mono outline-none focus:border-indigo-500 bg-white"
+                        />
+                      </div>
+                      <div className="col-span-2">
+                        <label className="text-xs font-bold text-gray-700 mb-1 block">
+                          وصف المطلوب
+                        </label>
+                        <textarea
+                          value={taskForm.description}
+                          onChange={(e) =>
+                            setTaskForm({
+                              ...taskForm,
+                              description: e.target.value,
+                            })
+                          }
+                          className="w-full border border-gray-300 p-3 rounded-lg text-sm outline-none focus:border-indigo-500 bg-white min-h-[60px]"
+                          placeholder="مثال: مراجعة المخططات الإنشائية وتجهيزها للرفع..."
+                        />
+                      </div>
+                    </div>
+                    <div className="flex justify-between items-center pt-2 border-t border-gray-100">
+                      <label className="flex items-center gap-2 cursor-pointer text-sm font-bold text-red-600">
+                        <input
+                          type="checkbox"
+                          checked={taskForm.isUrgent}
+                          onChange={(e) =>
+                            setTaskForm({
+                              ...taskForm,
+                              isUrgent: e.target.checked,
+                            })
+                          }
+                          className="accent-red-600 w-4 h-4"
+                        />
+                        مهمة عاجلة 🔥
+                      </label>
+                      <button
+                        onClick={() => {
+                          if (
+                            !taskForm.assigneeId ||
+                            !taskForm.description ||
+                            !taskForm.deadline
+                          )
+                            return toast.error("أكمل بيانات المهمة");
+
+                          addTaskMutation.mutate(taskForm, {
+                            onSuccess: () => {
+                              setIsAddingTask(false);
+                              setTaskForm({
+                                assigneeId: "",
+                                description: "",
+                                deadline: "",
+                                isUrgent: false,
+                              });
+                              // إشعار نجاح إضافي (الـ Mutation الأصلي يعرض إشعاراً أيضاً)
+                            },
+                          });
+                        }}
+                        disabled={addTaskMutation.isPending}
+                        className="px-6 py-2 bg-indigo-600 text-white rounded-lg font-bold text-sm flex items-center gap-2 hover:bg-indigo-700 disabled:opacity-50"
+                      >
+                        {addTaskMutation.isPending ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Save className="w-4 h-4" />
+                        )}
+                        توجيه المهمة
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {!isAddingTask && (
+                  <div className="p-4 text-center text-xs text-gray-500 font-bold bg-white">
+                    يمكنك إسناد مهام (رسم، مساحة، تدقيق) للموظفين من هنا مباشرة.
+                    المهام المسندة ستظهر في تبويب "مهام المعاملة".
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
         {statusForm.currentStatus === "تم الرفع" && (
