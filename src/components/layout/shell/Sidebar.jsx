@@ -202,7 +202,7 @@ const Sidebar = () => {
             {/* 💡 تم نقل "كل القطاعات" هنا */}
             <NavItem
               screenId="TXN_LIST"
-              title="🌐 كل القطاعات (المعاملات)"
+              title="كل المعاملات "
               icon={Layers}
               props={{ sector: "الكل" }}
               code="SCR_TXN_ALL"
