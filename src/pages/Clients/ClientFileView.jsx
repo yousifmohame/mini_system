@@ -55,22 +55,26 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import api from "../../api/axios";
-// دالة مساعدة لاسم العميل
+// دالة مساعدة لاسم العميل (محدثة لمنع التكرار)
 const getFullName = (nameObj) => {
   if (!nameObj) return "غير محدد";
   if (typeof nameObj === "string") return nameObj;
   if (nameObj.ar) return nameObj.ar;
+
   const parts = [
     nameObj.firstAr || nameObj.firstName,
     nameObj.fatherAr || nameObj.fatherName,
     nameObj.grandAr || nameObj.grandFatherName,
     nameObj.familyAr || nameObj.familyName,
-  ];
+  ].filter((p) => p && typeof p === "string" && p.trim() !== "");
+
+  // 💡 حماية ذكية: إذا كانت كل الحقول تحتوي على نفس الاسم الكامل بالخطأ (بيانات قديمة)
+  if (parts.length > 1 && parts.every((p) => p === parts[0])) {
+    return parts[0];
+  }
+
   return (
-    parts.filter(Boolean).join(" ").trim() ||
-    nameObj.en ||
-    nameObj.englishName ||
-    "غير محدد"
+    parts.join(" ").trim() || nameObj.en || nameObj.englishName || "غير محدد"
   );
 };
 
@@ -167,19 +171,33 @@ const ClientFileView = ({ clientId, onBack }) => {
   const handleStartEdit = () => {
     const nameDetails = client.name?.details || client.name || {};
 
+    let firstAr = nameDetails.firstAr || nameDetails.firstName || "";
+    let fatherAr = nameDetails.fatherAr || nameDetails.fatherName || "";
+    let grandAr = nameDetails.grandAr || nameDetails.grandFatherName || "";
+    let familyAr = nameDetails.familyAr || nameDetails.familyName || "";
+
+    // 💡 الاصلاح الذكي: معالجة البيانات القديمة المكررة وتوزيعها بشكل صحيح
+    if (firstAr && firstAr === familyAr && firstAr.includes(" ")) {
+      const splitName = firstAr.split(" ").filter(Boolean);
+      firstAr = splitName[0] || "";
+      fatherAr = splitName[1] || "";
+      grandAr = splitName.length > 3 ? splitName[2] : "";
+      familyAr = splitName.length > 2 ? splitName[splitName.length - 1] : "";
+    }
+
     setEditFormData({
       type: client.type || "فرد سعودي",
       idNumber: client.idNumber || client.identification?.idNumber || "",
       mobile: client.mobile || client.contact?.mobile || "",
       email: client.email || client.contact?.email || "",
 
-      firstAr: nameDetails.firstAr || nameDetails.firstName || "",
+      firstAr,
       firstEn: nameDetails.firstEn || nameDetails.englishName || "",
-      fatherAr: nameDetails.fatherAr || nameDetails.fatherName || "",
+      fatherAr,
       fatherEn: nameDetails.fatherEn || "",
-      grandAr: nameDetails.grandAr || nameDetails.grandFatherName || "",
+      grandAr,
       grandEn: nameDetails.grandEn || "",
-      familyAr: nameDetails.familyAr || nameDetails.familyName || "",
+      familyAr,
       familyEn: nameDetails.familyEn || "",
 
       defaultTitle: client.clientTitle || "تلقائي",
@@ -192,7 +210,6 @@ const ClientFileView = ({ clientId, onBack }) => {
       occupation: client.occupation || "",
       nationality: client.nationality || "سعودي",
 
-      // 💡 بيانات الوكيل المضافة للتعديل
       repName: client.representative?.name || "",
       repIdNumber: client.representative?.idNumber || "",
       repIdExpiry: client.representative?.idExpiry || "",
@@ -228,15 +245,22 @@ const ClientFileView = ({ clientId, onBack }) => {
   });
 
   const handleSaveBasicInfo = () => {
-    // 👈 تجميع الاسم بشكل آمن
-    const officialNameAr =
-      `${editFormData.firstAr} ${editFormData.fatherAr} ${editFormData.grandAr || ""} ${editFormData.familyAr}`
-        .replace(/\s+/g, " ")
-        .trim();
-    const officialNameEn =
-      `${editFormData.firstEn} ${editFormData.fatherEn} ${editFormData.grandEn || ""} ${editFormData.familyEn}`
-        .replace(/\s+/g, " ")
-        .trim();
+    // 👈 تجميع الاسم بشكل آمن واحترافي لمنع التكرار أو ظهور مسافات فارغة
+    const partsAr = [
+      editFormData.firstAr,
+      editFormData.fatherAr,
+      editFormData.grandAr,
+      editFormData.familyAr,
+    ].filter((p) => p && p.trim() !== "");
+    const officialNameAr = partsAr.join(" ");
+
+    const partsEn = [
+      editFormData.firstEn,
+      editFormData.fatherEn,
+      editFormData.grandEn,
+      editFormData.familyEn,
+    ].filter((p) => p && p.trim() !== "");
+    const officialNameEn = partsEn.join(" ");
 
     // حماية إضافية: إذا كان الاسم ممسوحاً، نستخدم الاسم القديم
     const finalAr =
