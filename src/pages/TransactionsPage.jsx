@@ -28,23 +28,17 @@ import {
   Trash2,
   X,
   Edit3,
+  Users,
+  Activity,
 } from "lucide-react";
 
 // =========================================================================
 // مكون إدارة مصادر المعاملات (Modal) المحدث
 // =========================================================================
-const ManageSourcesModal = ({ isOpen, onClose, coopOffices = [] }) => {
+const ManageSourcesModal = ({ isOpen, onClose, availableEntities = [] }) => {
   const queryClient = useQueryClient();
   const [newSourceName, setNewSourceName] = useState("");
   const [isManualInput, setIsManualInput] = useState(false);
-
-  // 💡 الإصلاح هنا: استخراج أسماء المكاتب التعاونية مباشرة (بدون البحث عن role لأن هذا الجدول مخصص للمكاتب فقط)
-  const availableOffices = useMemo(() => {
-    return coopOffices
-      .map((office) => office.name)
-      .filter(Boolean) // للتأكد من عدم وجود قيم فارغة
-      .sort();
-  }, [coopOffices]);
 
   const { data: sources = [], isLoading } = useQuery({
     queryKey: ["transaction-sources"],
@@ -107,7 +101,7 @@ const ManageSourcesModal = ({ isOpen, onClose, coopOffices = [] }) => {
         <div className="p-5">
           <form onSubmit={handleAdd} className="flex flex-col gap-2 mb-5">
             <label className="text-[11px] font-bold text-gray-600">
-              إضافة مكتب جديد للفلترة:
+              إضافة (مكتب / شخص) كجهة مصدر للفلترة:
             </label>
             <div className="flex gap-2">
               {!isManualInput ? (
@@ -118,11 +112,11 @@ const ManageSourcesModal = ({ isOpen, onClose, coopOffices = [] }) => {
                     className="w-full border border-gray-200 rounded-lg pl-8 pr-3 py-2 text-[12px] font-semibold outline-none focus:border-blue-500 appearance-none bg-white"
                   >
                     <option value="" disabled>
-                      اختر من المكاتب المسجلة بالنظام...
+                      اختر من المكاتب والأشخاص المسجلين...
                     </option>
-                    {availableOffices.map((office) => (
-                      <option key={office} value={office}>
-                        {office}
+                    {availableEntities.map((entity, idx) => (
+                      <option key={idx} value={entity}>
+                        {entity}
                       </option>
                     ))}
                   </select>
@@ -163,7 +157,7 @@ const ManageSourcesModal = ({ isOpen, onClose, coopOffices = [] }) => {
             >
               <Edit3 className="w-3 h-3" />
               {isManualInput
-                ? "العودة لاختيار مكتب من القائمة المسجلة"
+                ? "العودة لاختيار جهة من القائمة المسجلة"
                 : "إضافة مصدر غير موجود في القائمة يدوياً؟"}
             </button>
           </form>
@@ -175,7 +169,7 @@ const ManageSourcesModal = ({ isOpen, onClose, coopOffices = [] }) => {
               </div>
             ) : sources.length === 0 ? (
               <p className="text-center text-gray-400 text-[11px] py-6 font-semibold">
-                لم تقم بإضافة أي مكاتب خاصة للفلترة حتى الآن.
+                لم تقم بإضافة أي مصادر خاصة للفلترة حتى الآن.
               </p>
             ) : (
               <ul className="space-y-1.5">
@@ -236,13 +230,15 @@ const TransactionsPage = () => {
   if (hasRemainingAccess) totalVisibleColumns++;
   if (hasCollStatusAccess) totalVisibleColumns++;
 
+  // الفلاتر
   const [activeSourceFilter, setActiveSourceFilter] = useState("الكل");
+  const [activeClientFilter, setActiveClientFilter] = useState("الكل");
+  const [activeStatusFilter, setActiveStatusFilter] = useState("الكل");
   const [searchQuery, setSearchQuery] = useState("");
 
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
   const [advFilters, setAdvFilters] = useState({
     type: "الكل",
-    sysStatus: "الكل",
   });
 
   const [isTxModalOpen, setIsTxModalOpen] = useState(false);
@@ -263,10 +259,20 @@ const TransactionsPage = () => {
     },
   });
 
+  // 💡 جلب المكاتب التعاونية
   const { data: coopOffices = [] } = useQuery({
     queryKey: ["coop-offices-list"],
     queryFn: async () => {
       const res = await api.get("/coop-offices");
+      return res.data?.data || [];
+    },
+  });
+
+  // 💡 جلب الأشخاص
+  const { data: persons = [] } = useQuery({
+    queryKey: ["persons-list"],
+    queryFn: async () => {
+      const res = await api.get("/persons");
       return res.data?.data || [];
     },
   });
@@ -279,9 +285,38 @@ const TransactionsPage = () => {
     },
   });
 
+  // 💡 دمج الأشخاص والمكاتب معاً لتمريرهم لنافذة المصادر
+  const availableEntities = useMemo(() => {
+    const offices = coopOffices.map((o) => o.name).filter(Boolean);
+    const people = persons.map((p) => p.name).filter(Boolean);
+    return Array.from(new Set([...offices, ...people])).sort();
+  }, [coopOffices, persons]);
+
+  // 💡 استخراج العملاء الفعليين من المعاملات لفلتر العملاء
+  const uniqueClients = useMemo(() => {
+    const clients = transactionsData
+      .map((tx) => tx.client || tx.owner)
+      .filter(Boolean);
+    return ["الكل", ...new Set(clients)].sort();
+  }, [transactionsData]);
+
+  const uniqueStatuses = useMemo(() => {
+    const statuses = transactionsData
+      .map(
+        (tx) =>
+          tx.status ||
+          tx.transactionStatus ||
+          tx.notes?.transactionStatusData?.currentStatus ||
+          tx.notes?.status ||
+          "مسجلة",
+      )
+      .filter(Boolean);
+    return ["الكل", ...new Set(statuses)].sort();
+  }, [transactionsData]);
+
   // 1. تحديد المصادر الرئيسية (الأزرار الظاهرة)
   const mainFilters = useMemo(() => {
-    const base = ["الكل", "مكتب ديتيلز", "مباشر"];
+    const base = ["الكل"];
     const custom = dbSources.map((s) => s.name);
     return Array.from(new Set([...base, ...custom]));
   }, [dbSources]);
@@ -295,20 +330,27 @@ const TransactionsPage = () => {
         sourcesSet.add(source);
       }
     });
-
     mainFilters.forEach((f) => sourcesSet.delete(f));
-
     return Array.from(sourcesSet).sort();
   }, [transactionsData, mainFilters]);
 
+  // تطبيق الفلترة
   const filteredTransactions = useMemo(() => {
     return transactionsData.filter((tx) => {
       const internalName = tx.internalName || tx.notes?.internalName || "";
+      const txClientName = tx.client || tx.owner || "";
+      // 💡 قراءة الحالة بشكل ذكي من جميع الأماكن المحتملة التي قد يحفظها الباك إند
+      const sysStat =
+        tx.status ||
+        tx.transactionStatus ||
+        tx.notes?.transactionStatusData?.currentStatus ||
+        tx.notes?.status ||
+        "مسجلة";
 
       const matchesSearch =
         searchQuery === "" ||
         tx.ref?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        tx.client?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        txClientName.toLowerCase().includes(searchQuery.toLowerCase()) ||
         tx.district?.toLowerCase().includes(searchQuery.toLowerCase()) ||
         internalName.toLowerCase().includes(searchQuery.toLowerCase());
 
@@ -318,26 +360,33 @@ const TransactionsPage = () => {
         tx.sourceType === activeSourceFilter ||
         tx.source === activeSourceFilter;
 
+      const matchesClient =
+        activeClientFilter === "الكل" || txClientName === activeClientFilter;
+
+      const matchesStatus =
+        activeStatusFilter === "الكل" || sysStat === activeStatusFilter;
+
       const matchesSector =
         activeSector === "الكل" || tx.sector?.includes(activeSector);
+
       const matchesType =
         advFilters.type === "الكل" || tx.type === advFilters.type;
-      const sysStat = tx.status || tx.transactionStatus || "مسجلة";
-      const matchesSysStatus =
-        advFilters.sysStatus === "الكل" || sysStat === advFilters.sysStatus;
 
       return (
         matchesSearch &&
         matchesSource &&
+        matchesClient &&
+        matchesStatus &&
         matchesSector &&
-        matchesType &&
-        matchesSysStatus
+        matchesType
       );
     });
   }, [
     transactionsData,
     searchQuery,
     activeSourceFilter,
+    activeClientFilter,
+    activeStatusFilter,
     activeSector,
     advFilters,
   ]);
@@ -423,11 +472,10 @@ const TransactionsPage = () => {
       className="flex flex-col h-full overflow-hidden bg-[var(--wms-bg-0)] font-sans"
       dir="rtl"
     >
-      {/* 💡 تمرير coopOffices كـ Prop للنافذة */}
       <ManageSourcesModal
         isOpen={isManageSourcesOpen}
         onClose={() => setIsManageSourcesOpen(false)}
-        coopOffices={coopOffices}
+        availableEntities={availableEntities}
       />
 
       {isTxModalOpen && (
@@ -462,15 +510,49 @@ const TransactionsPage = () => {
       <div className="p-3 flex flex-col gap-2 flex-1 overflow-hidden">
         {/* شريط الأدوات العلوي */}
         <div className="flex items-center gap-2 flex-wrap shrink-0">
-          <div className="relative flex-1 max-w-[300px]">
+          <div className="relative flex-1 max-w-[250px]">
             <Search className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="بحث بالرقم، المالك، الحي، الاسم المتداول..."
+              placeholder="بحث برقم، مالك، حي..."
               className="w-full bg-white border border-gray-200 rounded-md pr-8 pl-3 text-gray-700 placeholder:text-gray-400 h-[32px] text-[12px] outline-none focus:border-blue-500"
             />
+          </div>
+
+          {/* 💡 فلتر العملاء المخصص */}
+          <div className="relative flex items-center">
+            <Users className="absolute right-2 w-3.5 h-3.5 text-blue-500 pointer-events-none" />
+            <select
+              value={activeClientFilter}
+              onChange={(e) => setActiveClientFilter(e.target.value)}
+              className="appearance-none bg-white border border-gray-200 rounded-md pr-7 pl-6 h-[32px] text-[11px] font-semibold text-gray-700 outline-none focus:border-blue-500 cursor-pointer min-w-[140px] max-w-[200px] truncate"
+            >
+              {uniqueClients.map((client) => (
+                <option key={client} value={client}>
+                  {client === "الكل" ? "جميع العملاء" : client}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="absolute left-2 w-3 h-3 text-gray-400 pointer-events-none" />
+          </div>
+
+          {/* 💡 فلتر حالة المعاملة */}
+          <div className="relative flex items-center">
+            <Activity className="absolute right-2 w-3.5 h-3.5 text-amber-500 pointer-events-none" />
+            <select
+              value={activeStatusFilter}
+              onChange={(e) => setActiveStatusFilter(e.target.value)}
+              className="appearance-none bg-white border border-gray-200 rounded-md pr-7 pl-6 h-[32px] text-[11px] font-semibold text-gray-700 outline-none focus:border-blue-500 cursor-pointer min-w-[130px]"
+            >
+              {uniqueStatuses.map((status) => (
+                <option key={status} value={status}>
+                  {status === "الكل" ? "كل الحالات" : status}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="absolute left-2 w-3 h-3 text-gray-400 pointer-events-none" />
           </div>
 
           <button
@@ -478,7 +560,7 @@ const TransactionsPage = () => {
             className={`flex items-center gap-1.5 px-3 rounded-md border h-[32px] text-[11px] font-semibold transition-colors ${showAdvancedFilters ? "bg-blue-50 border-blue-200 text-blue-700" : "bg-white border-gray-200 text-gray-600 hover:bg-gray-50"}`}
           >
             <SlidersHorizontal className="w-3.5 h-3.5" />
-            <span>فلاتر متقدمة</span>
+            <span>نوع المعاملة</span>
           </button>
 
           <button
@@ -493,7 +575,7 @@ const TransactionsPage = () => {
           <div className="flex-1"></div>
 
           {/* ملخص المبالغ العلوية */}
-          <div className="flex items-center gap-3 text-[11px] bg-white border border-gray-100 px-3 py-1.5 rounded-md shadow-sm">
+          <div className="hidden lg:flex items-center gap-3 text-[11px] bg-white border border-gray-100 px-3 py-1.5 rounded-md shadow-sm">
             <span className="text-gray-500">
               الإجمالي:{" "}
               <span className="text-gray-800 font-mono font-bold">
@@ -578,7 +660,7 @@ const TransactionsPage = () => {
             <div className="flex items-center gap-2">
               <Filter className="w-4 h-4 text-blue-500" />
               <span className="text-[11px] font-bold text-gray-700">
-                تصفية إضافية:
+                تصفية إضافية للنوع:
               </span>
             </div>
 
@@ -595,26 +677,13 @@ const TransactionsPage = () => {
               <option value="تعديل">تعديل</option>
             </select>
 
-            <select
-              value={advFilters.sysStatus}
-              onChange={(e) =>
-                setAdvFilters({ ...advFilters, sysStatus: e.target.value })
-              }
-              className="bg-gray-50 border border-gray-200 rounded-md px-2 py-1 text-[11px] font-semibold text-gray-700 outline-none focus:border-blue-500"
-            >
-              <option value="الكل">كل حالات النظام</option>
-              <option value="جارية">جارية</option>
-              <option value="مكتملة">مكتملة</option>
-              <option value="مجمّدة">مجمّدة</option>
-            </select>
-
             <div className="flex-1"></div>
 
             <button
-              onClick={() => setAdvFilters({ type: "الكل", sysStatus: "الكل" })}
+              onClick={() => setAdvFilters({ type: "الكل" })}
               className="text-[10px] font-bold text-red-500 hover:bg-red-50 px-2 py-1 rounded transition-colors"
             >
-              مسح الفلاتر
+              مسح فلاتر النوع
             </button>
           </div>
         )}
@@ -622,7 +691,7 @@ const TransactionsPage = () => {
         {/* 🚀 شريط ملخص مصادر المعاملات (الأزرار الديناميكية) 🚀 */}
         <div className="shrink-0 bg-white border border-gray-200 rounded-md py-1.5 px-2 flex items-center shadow-sm">
           <span className="text-gray-400 text-[10px] font-bold ml-3">
-            تصفية بالمصدر:
+            المصدر (مكتب/شخص):
           </span>
 
           <div className="flex items-center gap-1.5 flex-wrap flex-1">
@@ -935,8 +1004,31 @@ const TransactionsPage = () => {
                         )}
 
                         <td className="px-2 border-l border-gray-100 py-2">
-                          <span className="inline-flex px-1.5 py-0.5 rounded text-[9px] font-bold bg-gray-100 text-gray-600 border border-gray-200">
-                            {tx.status || tx.transactionStatus || "مسجلة"}
+                          <span
+                            className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold border whitespace-nowrap ${
+                              (tx.status ||
+                                tx.notes?.transactionStatusData
+                                  ?.currentStatus ||
+                                "مسجلة") === "تم الاعتماد"
+                                ? "bg-green-50 text-green-700 border-green-200"
+                                : (tx.status ||
+                                      tx.notes?.transactionStatusData
+                                        ?.currentStatus ||
+                                      "مسجلة") === "ملاحظات من الجهات"
+                                  ? "bg-orange-50 text-orange-700 border-orange-200"
+                                  : (tx.status ||
+                                        tx.notes?.transactionStatusData
+                                          ?.currentStatus ||
+                                        "مسجلة") === "تم الرفع"
+                                    ? "bg-blue-50 text-blue-700 border-blue-200"
+                                    : "bg-gray-100 text-gray-600 border-gray-200"
+                            }`}
+                          >
+                            {tx.status ||
+                              tx.transactionStatus ||
+                              tx.notes?.transactionStatusData?.currentStatus ||
+                              tx.notes?.status ||
+                              "مسجلة"}
                           </span>
                         </td>
                         <td className="px-2 border-l border-gray-100 font-mono text-[10px] text-gray-400 py-2">

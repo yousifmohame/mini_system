@@ -26,9 +26,9 @@ import {
   Paperclip,
   Loader2,
   Save,
+  Printer,
+  Undo2,
 } from "lucide-react";
-
-import { ReportPreviewModal } from "../components/ReportPreviewModal";
 
 const OUTSOURCE_UI = {
   DISCLAIMER:
@@ -75,12 +75,6 @@ function daysBetween(start, end) {
   return Math.ceil(diff / (1000 * 60 * 60 * 24)) + 1;
 }
 
-function roundAmount(amount, option) {
-  if (option === "none") return amount;
-  const factor = parseInt(option);
-  return Math.round(amount / factor) * factor;
-}
-
 // ============================================================================
 // 💡 Main Component
 // ============================================================================
@@ -97,9 +91,10 @@ export default function ScreenOutsourceSalaries() {
   const [showAddEmployeeModal, setShowAddEmployeeModal] = useState(false);
   const [showCreateSalaryModal, setShowCreateSalaryModal] = useState(false);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
-  const [showReportModal, setShowReportModal] = useState(false);
+  const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [editEmployee, setEditEmployee] = useState(null);
   const [selectedSalaryRecord, setSelectedSalaryRecord] = useState(null);
+  const [detailsRecord, setDetailsRecord] = useState(null); // لعرض التفاصيل
 
   // Form States
   const initialEmpForm = {
@@ -125,7 +120,7 @@ export default function ScreenOutsourceSalaries() {
   const [salStartDate, setSalStartDate] = useState("");
   const [salEndDate, setSalEndDate] = useState("");
   const [salDeductions, setSalDeductions] = useState("");
-  const [salRounding, setSalRounding] = useState("none");
+  const [salAdjustment, setSalAdjustment] = useState(""); // 💡 تعديل التقريب ليكون تسوية موجبة/سالبة
   const [salType, setSalType] = useState("regular");
 
   const [payAmount, setPayAmount] = useState("");
@@ -135,9 +130,8 @@ export default function ScreenOutsourceSalaries() {
   const [payCurrency, setPayCurrency] = useState("SAR");
   const [payNotes, setPayNotes] = useState("");
   const [payIsPartial, setPayIsPartial] = useState(false);
-  const [payPartialMode, setPayPartialMode] = useState("percentage");
-  const [payPercentage, setPayPercentage] = useState(50);
   const [payCustomPercentage, setPayCustomPercentage] = useState("");
+  const [payAttachment, setPayAttachment] = useState(null); // 💡 المرفق للدفعة
 
   // ============================================================================
   // 💡 API Queries
@@ -156,7 +150,6 @@ export default function ScreenOutsourceSalaries() {
         name: p.name,
         phone: p.phone || "",
         email: p.email || "",
-        // ✅ قراءة مباشرة من الأعمدة الجديدة
         nationalId: p.idNumber || "",
         monthlySalary: safeNum(p.monthlySalary),
         jobTitle: p.jobTitle || "متعاون خارجي",
@@ -198,8 +191,6 @@ export default function ScreenOutsourceSalaries() {
       fd.append("email", payload.email || "");
       fd.append("isActive", payload.status === "active");
       fd.append("notes", payload.notes || "");
-
-      // ✅ إرسال الحقول كبيانات مستقلة لتعريفها في Prisma
       fd.append("idNumber", payload.nationalId || "");
       fd.append("monthlySalary", payload.monthlySalary || 0);
       fd.append("jobTitle", payload.jobTitle || "");
@@ -236,9 +227,31 @@ export default function ScreenOutsourceSalaries() {
     onError: () => toast.error("تأكد من إعدادات الباك إند"),
   });
 
+  const deleteSalaryMutation = useMutation({
+    mutationFn: async (id) =>
+      await api.delete(`/finance/outsource-salaries/${id}`),
+    onSuccess: () => {
+      toast.success("تم التراجع عن سجل الراتب بنجاح");
+      queryClient.invalidateQueries(["outsource-salaries"]);
+    },
+    onError: () => toast.error("لا يمكن الحذف لتواجد دفعات مرتبطة به"),
+  });
+
   const paySalaryMutation = useMutation({
-    mutationFn: async (payload) =>
-      await api.post("/finance/outsource-payments", payload),
+    mutationFn: async (payload) => {
+      const fd = new FormData();
+      Object.keys(payload).forEach((key) => {
+        if (key === "file" && payload[key]) {
+          fd.append("file", payload[key]);
+        } else {
+          fd.append(key, payload[key]);
+        }
+      });
+      // 💡 استخدم FormData لدعم المرفقات
+      return await api.post("/finance/outsource-payments", fd, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+    },
     onSuccess: () => {
       toast.success("تم تسجيل الدفعة بنجاح");
       queryClient.invalidateQueries(["outsource-salaries"]);
@@ -246,6 +259,17 @@ export default function ScreenOutsourceSalaries() {
       closePaymentModal();
     },
     onError: () => toast.error("حدث خطأ أثناء الدفع"),
+  });
+
+  const deletePaymentMutation = useMutation({
+    mutationFn: async (id) =>
+      await api.delete(`/finance/outsource-payments/${id}`),
+    onSuccess: () => {
+      toast.success("تم إلغاء الدفعة والتراجع بنجاح");
+      queryClient.invalidateQueries(["outsource-salaries"]);
+      queryClient.invalidateQueries(["outsource-payments"]);
+    },
+    onError: () => toast.error("حدث خطأ أثناء التراجع عن الدفعة"),
   });
 
   // ============================================================================
@@ -280,6 +304,14 @@ export default function ScreenOutsourceSalaries() {
     );
   });
 
+  const filteredPayments = paymentTransactions.filter((txn) => {
+    return (
+      !searchTerm ||
+      txn.notes?.includes(searchTerm) ||
+      txn.salaryRecordId?.includes(searchTerm)
+    );
+  });
+
   const salaryCalculation = useMemo(() => {
     const emp = employees.find((e) => e.id === salEmpId);
     if (!emp || !emp.monthlySalary) return null;
@@ -304,7 +336,8 @@ export default function ScreenOutsourceSalaries() {
     const grossAmount = dailyRate * daysCount;
     const deductions = parseFloat(salDeductions) || 0;
     const netAmount = grossAmount - deductions;
-    const roundedAmount = roundAmount(netAmount, salRounding);
+    const adjustment = parseFloat(salAdjustment) || 0; // 💡 التسوية (موجب أو سالب)
+    const roundedAmount = netAmount + adjustment;
 
     return {
       daysCount,
@@ -312,6 +345,7 @@ export default function ScreenOutsourceSalaries() {
       dailyRate,
       grossAmount,
       deductions,
+      adjustment,
       netAmount,
       roundedAmount,
     };
@@ -322,7 +356,7 @@ export default function ScreenOutsourceSalaries() {
     salStartDate,
     salEndDate,
     salDeductions,
-    salRounding,
+    salAdjustment,
     employees,
   ]);
 
@@ -382,6 +416,7 @@ export default function ScreenOutsourceSalaries() {
       currency: payCurrency,
       notes: payNotes,
       isPartial: payIsPartial || amount < selectedSalaryRecord.remainingAmount,
+      file: payAttachment,
     };
     paySalaryMutation.mutate(payload);
   };
@@ -424,6 +459,7 @@ export default function ScreenOutsourceSalaries() {
     setSalStartDate("");
     setSalEndDate("");
     setSalDeductions("");
+    setSalAdjustment("");
   };
 
   const openPaymentModal = (record = null) => {
@@ -437,6 +473,7 @@ export default function ScreenOutsourceSalaries() {
     setPayTime(new Date().toTimeString().substring(0, 5));
     setPayIsPartial(false);
     setPayCustomPercentage("");
+    setPayAttachment(null);
     setShowPaymentModal(true);
   };
 
@@ -445,6 +482,121 @@ export default function ScreenOutsourceSalaries() {
     setSelectedSalaryRecord(null);
     setPayAmount("");
     setPayNotes("");
+    setPayAttachment(null);
+  };
+
+  // 💡 طباعة تقرير الدفعات المعروضة
+  const handlePrintReport = () => {
+    const printWindow = window.open("", "_blank");
+    printWindow.document.write(`
+      <html dir="rtl">
+        <head>
+          <title>تقرير الدفعات</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 20px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+            th, td { border: 1px solid #ddd; padding: 8px; text-align: right; font-size: 12px; }
+            th { background-color: #f3f4f6; }
+            .header { text-align: center; margin-bottom: 30px; }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h2>تقرير دفعات المتعاونين الخارجيين</h2>
+            <p>الفترة: ${filterMonth === "all" ? "الكل" : filterMonth}</p>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>المرجع</th>
+                <th>رقم الراتب</th>
+                <th>المبلغ (ر.س)</th>
+                <th>طريقة الدفع</th>
+                <th>التاريخ</th>
+                <th>ملاحظات</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${filteredPayments
+                .map(
+                  (txn) => `
+                <tr>
+                  <td>${txn.id.slice(-6)}</td>
+                  <td>${txn.salaryRecordId?.slice(-6) || "—"}</td>
+                  <td>${txn.amount.toLocaleString()}</td>
+                  <td>${txn.paymentMethod === "cash" ? "نقدي" : txn.paymentMethod === "bank" ? "بنكي" : "تحويل"}</td>
+                  <td>${txn.paymentDate}</td>
+                  <td>${txn.notes || "—"}</td>
+                </tr>
+              `,
+                )
+                .join("")}
+            </tbody>
+          </table>
+          <script>
+            window.print();
+          </script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+  };
+
+  // 💡 طباعة سند صرف نقدي
+  const handlePrintCashReceipt = () => {
+    if (!selectedSalaryRecord || !payAmount) return;
+    const printWindow = window.open("", "_blank");
+    printWindow.document.write(`
+      <html dir="rtl">
+        <head>
+          <title>سند صرف نقدي</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 40px; line-height: 1.6; }
+            .receipt-box { border: 2px solid #333; padding: 20px; border-radius: 10px; max-width: 600px; margin: auto; }
+            .header { text-align: center; border-bottom: 2px solid #ccc; padding-bottom: 10px; margin-bottom: 20px; }
+            .row { display: flex; justify-content: space-between; margin-bottom: 15px; font-size: 14px; }
+            .label { font-weight: bold; color: #555; }
+            .value { font-weight: bold; font-size: 16px; border-bottom: 1px border-dotted #999; flex: 1; margin-right: 10px; }
+            .signatures { display: flex; justify-content: space-between; margin-top: 50px; text-align: center; }
+            .sig-line { border-top: 1px solid #333; width: 150px; margin-top: 40px; }
+          </style>
+        </head>
+        <body>
+          <div class="receipt-box">
+            <div class="header">
+              <h2>سند صرف نقدي / مستحقات متعاون</h2>
+              <p>تاريخ السند: ${payDate}</p>
+            </div>
+            <div class="row">
+              <span class="label">اصرفوا للأستاذ/ة:</span>
+              <span class="value">${selectedSalaryRecord.employeeName}</span>
+            </div>
+            <div class="row">
+              <span class="label">مبلغ وقدره:</span>
+              <span class="value">${parseFloat(payAmount).toLocaleString()} ريال سعودي</span>
+            </div>
+            <div class="row">
+              <span class="label">وذلك عبارة عن:</span>
+              <span class="value">مستحقات الفترة (${selectedSalaryRecord.period}) ${payNotes ? `- ${payNotes}` : ""}</span>
+            </div>
+            <div class="signatures">
+              <div>
+                <span>المحاسب/المدير</span>
+                <div class="sig-line"></div>
+              </div>
+              <div>
+                <span>توقيع المستلم (المقر بما فيه)</span>
+                <div class="sig-line"></div>
+              </div>
+            </div>
+          </div>
+          <script>
+            window.print();
+          </script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
   };
 
   if (isPersonsLoading) {
@@ -469,7 +621,7 @@ export default function ScreenOutsourceSalaries() {
       </div>
 
       {/* Summary Bar */}
-      <div className="flex items-center gap-5 px-4 py-2 bg-white border border-gray-200 rounded-lg shadow-sm">
+      <div className="flex items-center gap-5 px-4 py-2 bg-white border border-gray-200 rounded-lg shadow-sm overflow-x-auto">
         {[
           {
             label: "إجمالي المتعاونين",
@@ -502,7 +654,7 @@ export default function ScreenOutsourceSalaries() {
             isCount: false,
           },
         ].map((item, idx) => (
-          <div key={item.label} className="flex items-center gap-3">
+          <div key={item.label} className="flex items-center gap-3 shrink-0">
             {idx > 0 && <div className="w-px h-6 bg-gray-200" />}
             <div>
               <div className="text-gray-500 font-bold" style={{ fontSize: 10 }}>
@@ -553,7 +705,7 @@ export default function ScreenOutsourceSalaries() {
       </div>
 
       {/* Toolbar */}
-      <div className="flex items-center gap-2 bg-white p-2 border-x border-gray-200">
+      <div className="flex items-center gap-2 bg-white p-2 border-x border-gray-200 flex-wrap">
         {activeTab === "employees" && (
           <button
             onClick={() => setShowAddEmployeeModal(true)}
@@ -572,14 +724,22 @@ export default function ScreenOutsourceSalaries() {
           </button>
         )}
 
-        {/* 💡 الزر الجديد لإضافة دفعة من تاب الدفعات مباشرة */}
         {activeTab === "payments" && (
-          <button
-            onClick={() => openPaymentModal(null)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-emerald-600 text-white font-bold text-[11px] shadow-sm hover:bg-emerald-700"
-          >
-            <Plus className="w-3.5 h-3.5" /> <span>إضافة دفعة جديدة</span>
-          </button>
+          <>
+            <button
+              onClick={() => openPaymentModal(null)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-emerald-600 text-white font-bold text-[11px] shadow-sm hover:bg-emerald-700"
+            >
+              <Plus className="w-3.5 h-3.5" /> <span>إضافة دفعة جديدة</span>
+            </button>
+            <button
+              onClick={handlePrintReport}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-white border border-gray-300 text-gray-700 font-bold text-[11px] shadow-sm hover:bg-gray-50"
+            >
+              <Printer className="w-3.5 h-3.5" />{" "}
+              <span>طباعة تقرير الدفعات</span>
+            </button>
+          </>
         )}
 
         <div className="flex-1" />
@@ -626,7 +786,7 @@ export default function ScreenOutsourceSalaries() {
       {/* ========================================================= */}
       {/* 1. Employees Tab */}
       {activeTab === "employees" && (
-        <div className="bg-white border border-gray-200 rounded-b-lg overflow-hidden shadow-sm">
+        <div className="bg-white border border-gray-200 rounded-b-lg overflow-hidden shadow-sm overflow-x-auto">
           <table className="w-full text-right text-[11px]">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
@@ -640,7 +800,10 @@ export default function ScreenOutsourceSalaries() {
                   "الحالة",
                   "إجراءات",
                 ].map((th) => (
-                  <th key={th} className="px-4 py-3 font-bold text-gray-600">
+                  <th
+                    key={th}
+                    className="px-4 py-3 font-bold text-gray-600 whitespace-nowrap"
+                  >
                     {th}
                   </th>
                 ))}
@@ -662,25 +825,25 @@ export default function ScreenOutsourceSalaries() {
                     key={emp.id}
                     className={`border-b border-gray-100 hover:bg-blue-50/30 ${i % 2 === 0 ? "bg-white" : "bg-slate-50/50"}`}
                   >
-                    <td className="px-4 py-3 font-mono text-gray-500">
+                    <td className="px-4 py-3 font-mono text-gray-500 whitespace-nowrap">
                       {emp.personCode || emp.id.slice(-5)}
                     </td>
-                    <td className="px-4 py-3 font-bold text-gray-800">
+                    <td className="px-4 py-3 font-bold text-gray-800 whitespace-nowrap">
                       {maskName(emp.name)}
                     </td>
                     <td className="px-4 py-3 text-gray-600">{emp.jobTitle}</td>
-                    <td className="px-4 py-3 font-mono text-gray-600">
+                    <td className="px-4 py-3 font-mono text-gray-600 whitespace-nowrap">
                       {emp.phone}
                     </td>
-                    <td className="px-4 py-3 font-mono font-bold text-blue-700">
+                    <td className="px-4 py-3 font-mono font-bold text-blue-700 whitespace-nowrap">
                       {maskAmount(emp.monthlySalary.toLocaleString())} ر.س
                     </td>
-                    <td className="px-4 py-3 font-mono text-gray-500">
+                    <td className="px-4 py-3 font-mono text-gray-500 whitespace-nowrap">
                       {emp.joinDate}
                     </td>
                     <td className="px-4 py-3">
                       <span
-                        className={`px-2 py-1 rounded-md text-[10px] font-bold ${emp.status === "active" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}
+                        className={`px-2 py-1 rounded-md text-[10px] font-bold whitespace-nowrap ${emp.status === "active" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}
                       >
                         {emp.status === "active" ? "نشط" : "غير نشط"}
                       </span>
@@ -717,7 +880,7 @@ export default function ScreenOutsourceSalaries() {
       {/* ========================================================= */}
       {/* 2. Salaries Tab */}
       {activeTab === "salaries" && (
-        <div className="bg-white border border-gray-200 rounded-b-lg overflow-hidden shadow-sm">
+        <div className="bg-white border border-gray-200 rounded-b-lg overflow-hidden shadow-sm overflow-x-auto">
           <table className="w-full text-right text-[11px]">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
@@ -726,16 +889,18 @@ export default function ScreenOutsourceSalaries() {
                   "الموظف",
                   "الفترة",
                   "الأيام",
-                  "راتب اليوم",
-                  "الإجمالي",
-                  "الخصم",
+                  "الراتب الأساسي",
+                  "تسوية/تقريب",
                   "الصافي",
                   "المدفوع",
                   "المتبقي",
                   "الحالة",
                   "إجراء",
                 ].map((th) => (
-                  <th key={th} className="px-3 py-3 font-bold text-gray-600">
+                  <th
+                    key={th}
+                    className="px-3 py-3 font-bold text-gray-600 whitespace-nowrap"
+                  >
                     {th}
                   </th>
                 ))}
@@ -744,14 +909,14 @@ export default function ScreenOutsourceSalaries() {
             <tbody>
               {isSalariesLoading ? (
                 <tr>
-                  <td colSpan="12" className="text-center py-6">
+                  <td colSpan="11" className="text-center py-6">
                     <Loader2 className="w-5 h-5 animate-spin mx-auto text-blue-500" />
                   </td>
                 </tr>
               ) : filteredSalaries.length === 0 ? (
                 <tr>
                   <td
-                    colSpan="12"
+                    colSpan="11"
                     className="text-center py-8 text-gray-400 font-bold"
                   >
                     لا توجد رواتب مسجلة
@@ -763,39 +928,51 @@ export default function ScreenOutsourceSalaries() {
                     key={sal.id}
                     className={`border-b border-gray-100 hover:bg-blue-50/30 ${i % 2 === 0 ? "bg-white" : "bg-slate-50/50"}`}
                   >
-                    <td className="px-3 py-2.5 font-mono text-gray-500">
+                    <td className="px-3 py-2.5 font-mono text-gray-500 whitespace-nowrap">
                       {sal.id.slice(-6)}
                     </td>
-                    <td className="px-3 py-2.5 font-bold text-gray-800">
+                    <td className="px-3 py-2.5 font-bold text-gray-800 whitespace-nowrap">
                       {maskName(sal.employeeName)}
                     </td>
-                    <td className="px-3 py-2.5 text-gray-600 font-mono">
+                    <td className="px-3 py-2.5 text-gray-600 font-mono whitespace-nowrap">
                       <div className="font-bold">{sal.period}</div>
                     </td>
                     <td className="px-3 py-2.5 font-bold text-center">
                       {sal.daysCount}
                     </td>
-                    <td className="px-3 py-2.5 font-mono text-gray-600">
-                      {maskAmount(sal.dailyRate.toFixed(2))}
-                    </td>
-                    <td className="px-3 py-2.5 font-mono font-bold">
+                    <td className="px-3 py-2.5 font-mono font-bold whitespace-nowrap">
                       {maskAmount(sal.grossAmount.toLocaleString())}
                     </td>
-                    <td className="px-3 py-2.5 font-mono text-red-500">
-                      {sal.deductions > 0 ? `-${sal.deductions}` : "—"}
+                    <td className="px-3 py-2.5 font-mono text-gray-600 whitespace-nowrap text-[10px]">
+                      {sal.deductions > 0 ? (
+                        <span className="text-red-500 block">
+                          خصم: {sal.deductions}
+                        </span>
+                      ) : null}
+                      {sal.roundedAmount -
+                        (sal.grossAmount - sal.deductions) !==
+                      0 ? (
+                        <span className="text-blue-500 block">
+                          تسوية:{" "}
+                          {(
+                            sal.roundedAmount -
+                            (sal.grossAmount - sal.deductions)
+                          ).toFixed(2)}
+                        </span>
+                      ) : null}
                     </td>
-                    <td className="px-3 py-2.5 font-mono font-black text-blue-800">
+                    <td className="px-3 py-2.5 font-mono font-black text-blue-800 whitespace-nowrap">
                       {maskAmount(sal.roundedAmount.toLocaleString())}
                     </td>
-                    <td className="px-3 py-2.5 font-mono font-bold text-green-600">
+                    <td className="px-3 py-2.5 font-mono font-bold text-green-600 whitespace-nowrap">
                       {maskAmount(sal.paidAmount.toLocaleString())}
                     </td>
-                    <td className="px-3 py-2.5 font-mono font-bold text-orange-600">
+                    <td className="px-3 py-2.5 font-mono font-bold text-orange-600 whitespace-nowrap">
                       {sal.remainingAmount > 0
                         ? maskAmount(sal.remainingAmount.toLocaleString())
                         : "—"}
                     </td>
-                    <td className="px-3 py-2.5">
+                    <td className="px-3 py-2.5 whitespace-nowrap">
                       <span
                         className={`px-2 py-1 rounded text-[10px] font-bold ${sal.status === "paid" ? "bg-green-100 text-green-700" : sal.status === "partial" ? "bg-amber-100 text-amber-700" : "bg-red-100 text-red-700"}`}
                       >
@@ -806,15 +983,44 @@ export default function ScreenOutsourceSalaries() {
                             : "لم يُدفع"}
                       </span>
                     </td>
-                    <td className="px-3 py-2.5">
-                      {sal.status !== "paid" && (
+                    <td className="px-3 py-2.5 whitespace-nowrap">
+                      <div className="flex items-center gap-1.5">
+                        {sal.status !== "paid" && (
+                          <button
+                            onClick={() => openPaymentModal(sal)}
+                            className="px-2 py-1 bg-emerald-100 text-emerald-700 border border-emerald-200 hover:bg-emerald-600 hover:text-white rounded text-[10px] font-bold transition-colors"
+                          >
+                            دفع
+                          </button>
+                        )}
                         <button
-                          onClick={() => openPaymentModal(sal)}
-                          className="px-2 py-1 bg-emerald-100 text-emerald-700 border border-emerald-200 hover:bg-emerald-600 hover:text-white rounded text-[10px] font-bold transition-colors"
+                          onClick={() => {
+                            setDetailsRecord({ type: "salary", data: sal });
+                            setShowDetailsModal(true);
+                          }}
+                          className="p-1.5 rounded hover:bg-blue-100 text-blue-600 transition-colors border border-transparent hover:border-blue-200"
+                          title="عرض التفاصيل"
                         >
-                          دفع
+                          <Eye className="w-4 h-4" />
                         </button>
-                      )}
+                        <button
+                          onClick={() => {
+                            if (
+                              window.confirm("تأكيد حذف/تراجع عن سجل الراتب؟")
+                            )
+                              deleteSalaryMutation.mutate(sal.id);
+                          }}
+                          disabled={sal.paidAmount > 0}
+                          className="p-1.5 rounded text-red-400 hover:bg-red-100 hover:text-red-600 transition-colors border border-transparent hover:border-red-200 disabled:opacity-30 disabled:cursor-not-allowed"
+                          title={
+                            sal.paidAmount > 0
+                              ? "لا يمكن الحذف لتواجد دفعات"
+                              : "حذف السجل"
+                          }
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -827,7 +1033,7 @@ export default function ScreenOutsourceSalaries() {
       {/* ========================================================= */}
       {/* 3. Payments Tab */}
       {activeTab === "payments" && (
-        <div className="bg-white border border-gray-200 rounded-b-lg overflow-hidden shadow-sm">
+        <div className="bg-white border border-gray-200 rounded-b-lg overflow-hidden shadow-sm overflow-x-auto">
           <table className="w-full text-right text-[11px]">
             <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
@@ -837,12 +1043,14 @@ export default function ScreenOutsourceSalaries() {
                   "المبلغ",
                   "طريقة الدفع",
                   "التاريخ",
-                  "الوقت",
-                  "العملة",
-                  "نوع الدفعة",
                   "ملاحظات",
+                  "مرفق",
+                  "إجراءات",
                 ].map((th) => (
-                  <th key={th} className="px-4 py-3 font-bold text-gray-600">
+                  <th
+                    key={th}
+                    className="px-4 py-3 font-bold text-gray-600 whitespace-nowrap"
+                  >
                     {th}
                   </th>
                 ))}
@@ -851,59 +1059,85 @@ export default function ScreenOutsourceSalaries() {
             <tbody>
               {isPaymentsLoading ? (
                 <tr>
-                  <td colSpan="9" className="text-center py-6">
+                  <td colSpan="8" className="text-center py-6">
                     <Loader2 className="w-5 h-5 animate-spin mx-auto text-blue-500" />
                   </td>
                 </tr>
-              ) : paymentTransactions.length === 0 ? (
+              ) : filteredPayments.length === 0 ? (
                 <tr>
                   <td
-                    colSpan="9"
+                    colSpan="8"
                     className="text-center py-8 text-gray-400 font-bold"
                   >
                     لا توجد دفعات مسجلة
                   </td>
                 </tr>
               ) : (
-                paymentTransactions.map((txn, i) => (
+                filteredPayments.map((txn, i) => (
                   <tr
                     key={txn.id}
                     className={`border-b border-gray-100 hover:bg-blue-50/30 ${i % 2 === 0 ? "bg-white" : "bg-slate-50/50"}`}
                   >
-                    <td className="px-4 py-3 font-mono text-gray-500">
+                    <td className="px-4 py-3 font-mono text-gray-500 whitespace-nowrap">
                       {txn.id.slice(-6)}
                     </td>
-                    <td className="px-4 py-3 font-mono text-blue-600 font-bold">
+                    <td className="px-4 py-3 font-mono text-blue-600 font-bold whitespace-nowrap">
                       {txn.salaryRecordId?.slice(-6) || "—"}
                     </td>
-                    <td className="px-4 py-3 font-mono font-black text-green-700">
+                    <td className="px-4 py-3 font-mono font-black text-green-700 whitespace-nowrap">
                       {maskAmount(txn.amount.toLocaleString())}
                     </td>
-                    <td className="px-4 py-3 font-bold text-gray-700">
+                    <td className="px-4 py-3 font-bold text-gray-700 whitespace-nowrap">
                       {txn.paymentMethod === "cash"
                         ? "نقدي"
                         : txn.paymentMethod === "bank"
                           ? "بنكي"
                           : "تحويل"}
                     </td>
-                    <td className="px-4 py-3 font-mono text-gray-600">
+                    <td className="px-4 py-3 font-mono text-gray-600 whitespace-nowrap">
                       {txn.paymentDate}
                     </td>
-                    <td className="px-4 py-3 font-mono text-gray-500">
-                      {txn.paymentTime}
-                    </td>
-                    <td className="px-4 py-3 font-bold text-gray-600">
-                      {txn.currency}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={`px-2 py-1 rounded text-[10px] font-bold ${txn.isPartial ? "bg-amber-100 text-amber-700" : "bg-green-100 text-green-700"}`}
-                      >
-                        {txn.isPartial ? "دفعة جزئية" : "سداد كامل"}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 text-gray-500">
+                    <td className="px-4 py-3 text-gray-500 max-w-[150px] truncate">
                       {txn.notes || "—"}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      {txn.receiptUrl ? (
+                        <button className="text-blue-500 hover:underline text-[10px] flex items-center gap-1 font-bold">
+                          <Paperclip className="w-3 h-3" /> عرض المرفق
+                        </button>
+                      ) : (
+                        <span className="text-[10px] text-gray-400">
+                          لا يوجد
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => {
+                            setDetailsRecord({ type: "payment", data: txn });
+                            setShowDetailsModal(true);
+                          }}
+                          className="p-1.5 rounded hover:bg-blue-100 text-blue-600 transition-colors"
+                          title="عرض التفاصيل"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (
+                              window.confirm(
+                                "تأكيد التراجع عن هذه الدفعة؟ (سيعود الراتب لحالته السابقة)",
+                              )
+                            )
+                              deletePaymentMutation.mutate(txn.id);
+                          }}
+                          className="p-1.5 rounded hover:bg-red-100 text-red-600 transition-colors"
+                          title="تراجع / الغاء הדفع"
+                        >
+                          <Undo2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -915,6 +1149,167 @@ export default function ScreenOutsourceSalaries() {
 
       {/* ========================================================= */}
       {/* 💡 Modals */}
+
+      {/* Modal: عرض تفاصيل السجل/الدفعة */}
+      {showDetailsModal && detailsRecord && (
+        <div
+          className="fixed inset-0 bg-black/60 flex items-center justify-center z-[110] p-4 animate-in fade-in"
+          dir="rtl"
+        >
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden flex flex-col">
+            <div className="bg-slate-800 px-5 py-4 flex items-center justify-between text-white shrink-0">
+              <h3 className="font-bold text-sm flex items-center gap-2">
+                <FileText className="w-4 h-4 text-blue-400" />
+                {detailsRecord.type === "salary"
+                  ? "تفاصيل الراتب المستحق"
+                  : "تفاصيل الدفعة المالية"}
+              </h3>
+              <button
+                onClick={() => {
+                  setShowDetailsModal(false);
+                  setDetailsRecord(null);
+                }}
+                className="hover:bg-white/20 p-1.5 rounded-md transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              {detailsRecord.type === "salary" ? (
+                <>
+                  <div className="flex justify-between border-b pb-2">
+                    <span className="text-gray-500 font-bold text-xs">
+                      رقم المرجع
+                    </span>{" "}
+                    <span className="font-mono text-sm">
+                      {detailsRecord.data.id.slice(-6)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between border-b pb-2">
+                    <span className="text-gray-500 font-bold text-xs">
+                      الموظف
+                    </span>{" "}
+                    <span className="font-bold text-sm">
+                      {detailsRecord.data.employeeName}
+                    </span>
+                  </div>
+                  <div className="flex justify-between border-b pb-2">
+                    <span className="text-gray-500 font-bold text-xs">
+                      الفترة
+                    </span>{" "}
+                    <span className="font-mono text-sm">
+                      {detailsRecord.data.period}
+                    </span>
+                  </div>
+                  <div className="flex justify-between border-b pb-2">
+                    <span className="text-gray-500 font-bold text-xs">
+                      الإجمالي (قبل الخصم)
+                    </span>{" "}
+                    <span className="font-mono text-sm">
+                      {detailsRecord.data.grossAmount} ر.س
+                    </span>
+                  </div>
+                  <div className="flex justify-between border-b pb-2">
+                    <span className="text-gray-500 font-bold text-xs">
+                      خصومات
+                    </span>{" "}
+                    <span className="font-mono text-sm text-red-500">
+                      {detailsRecord.data.deductions} ر.س
+                    </span>
+                  </div>
+                  <div className="flex justify-between border-b pb-2">
+                    <span className="text-gray-500 font-bold text-xs">
+                      الصافي المعتمد
+                    </span>{" "}
+                    <span className="font-mono text-sm font-bold text-blue-600">
+                      {detailsRecord.data.roundedAmount} ر.س
+                    </span>
+                  </div>
+                  <div className="flex justify-between border-b pb-2">
+                    <span className="text-gray-500 font-bold text-xs">
+                      إجمالي المدفوع
+                    </span>{" "}
+                    <span className="font-mono text-sm text-green-600">
+                      {detailsRecord.data.paidAmount} ر.س
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500 font-bold text-xs">
+                      المتبقي
+                    </span>{" "}
+                    <span className="font-mono text-sm text-orange-600">
+                      {detailsRecord.data.remainingAmount} ر.س
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex justify-between border-b pb-2">
+                    <span className="text-gray-500 font-bold text-xs">
+                      رقم الدفعة
+                    </span>{" "}
+                    <span className="font-mono text-sm">
+                      {detailsRecord.data.id.slice(-6)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between border-b pb-2">
+                    <span className="text-gray-500 font-bold text-xs">
+                      مرتبطة براتب رقم
+                    </span>{" "}
+                    <span className="font-mono text-sm text-blue-600">
+                      {detailsRecord.data.salaryRecordId?.slice(-6)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between border-b pb-2">
+                    <span className="text-gray-500 font-bold text-xs">
+                      المبلغ
+                    </span>{" "}
+                    <span className="font-mono text-sm font-bold text-green-600">
+                      {detailsRecord.data.amount} ر.س
+                    </span>
+                  </div>
+                  <div className="flex justify-between border-b pb-2">
+                    <span className="text-gray-500 font-bold text-xs">
+                      الطريقة
+                    </span>{" "}
+                    <span className="font-bold text-sm">
+                      {detailsRecord.data.paymentMethod}
+                    </span>
+                  </div>
+                  <div className="flex justify-between border-b pb-2">
+                    <span className="text-gray-500 font-bold text-xs">
+                      التاريخ والوقت
+                    </span>{" "}
+                    <span className="font-mono text-sm">
+                      {detailsRecord.data.paymentDate} -{" "}
+                      {detailsRecord.data.paymentTime}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500 font-bold text-xs">
+                      ملاحظات
+                    </span>{" "}
+                    <span className="text-sm">
+                      {detailsRecord.data.notes || "—"}
+                    </span>
+                  </div>
+                </>
+              )}
+            </div>
+            <div className="p-4 bg-gray-50 border-t flex justify-end shrink-0">
+              <button
+                onClick={() => {
+                  setShowDetailsModal(false);
+                  setDetailsRecord(null);
+                }}
+                className="px-5 py-2 bg-white border rounded-lg text-xs font-bold text-gray-600"
+              >
+                إغلاق
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal: Payment (صرف المستحقات الذكي) */}
       {showPaymentModal && (
@@ -1095,6 +1490,33 @@ export default function ScreenOutsourceSalaries() {
                       placeholder="رقم الحوالة، اسم المستلم..."
                     />
                   </div>
+
+                  {/* 💡 إرفاق صورة حوالة أو مستند */}
+                  <div className="pt-2">
+                    <label className="flex items-center justify-center gap-2 w-full p-3 border-2 border-dashed border-gray-300 rounded-xl cursor-pointer hover:bg-gray-50 text-xs font-bold text-gray-600 transition-colors">
+                      <Upload className="w-4 h-4" />
+                      {payAttachment
+                        ? payAttachment.name
+                        : "إرفاق صورة الحوالة أو سند الدفع (اختياري)"}
+                      <input
+                        type="file"
+                        className="hidden"
+                        onChange={(e) => setPayAttachment(e.target.files[0])}
+                        accept="image/*,application/pdf"
+                      />
+                    </label>
+                  </div>
+
+                  {/* 💡 طباعة سند للموظف عند الدفع النقدي */}
+                  {payMethod === "cash" && payAmount > 0 && (
+                    <button
+                      onClick={handlePrintCashReceipt}
+                      className="w-full flex items-center justify-center gap-2 p-2 bg-gray-100 text-gray-700 rounded-lg text-xs font-bold hover:bg-gray-200 border border-gray-300 transition-colors"
+                    >
+                      <Printer className="w-4 h-4" /> طباعة سند صرف نقدي لتوقيع
+                      الموظف
+                    </button>
+                  )}
                 </>
               )}
             </div>
@@ -1456,7 +1878,7 @@ export default function ScreenOutsourceSalaries() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-gray-700 mb-1.5">
-                    خصومات يدوية (ر.س)
+                    خصومات (ر.س)
                   </label>
                   <input
                     type="number"
@@ -1468,18 +1890,15 @@ export default function ScreenOutsourceSalaries() {
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-gray-700 mb-1.5">
-                    تقريب المبلغ
+                    تسوية إضافية (موجب للزيادة، سالب للخصم)
                   </label>
-                  <select
-                    value={salRounding}
-                    onChange={(e) => setSalRounding(e.target.value)}
-                    className="w-full border p-2.5 rounded-lg text-sm font-bold outline-none focus:border-emerald-500 bg-white"
-                  >
-                    <option value="none">بدون تقريب (دقيق)</option>
-                    <option value="10">لأقرب 10 ريال</option>
-                    <option value="50">لأقرب 50 ريال</option>
-                    <option value="100">لأقرب 100 ريال</option>
-                  </select>
+                  <input
+                    type="number"
+                    value={salAdjustment}
+                    onChange={(e) => setSalAdjustment(e.target.value)}
+                    className="w-full border p-2.5 rounded-lg text-sm font-mono outline-none focus:border-emerald-500 bg-white"
+                    placeholder="مثال: +50 أو -20"
+                  />
                 </div>
               </div>
 
@@ -1487,11 +1906,17 @@ export default function ScreenOutsourceSalaries() {
                 <div className="bg-emerald-50 border-2 border-emerald-500 p-4 rounded-xl flex items-center justify-between">
                   <div>
                     <div className="text-emerald-900 font-black text-sm">
-                      صافي الراتب المستحق (بعد التقريب)
+                      صافي الراتب المستحق (النهائي)
                     </div>
                     {salDeductions > 0 && (
                       <div className="text-[10px] text-red-600 mt-0.5">
                         تم خصم {salDeductions} ر.س
+                      </div>
+                    )}
+                    {salaryCalculation.adjustment !== 0 && (
+                      <div className="text-[10px] text-blue-600 mt-0.5">
+                        تسوية: {salaryCalculation.adjustment > 0 ? "+" : ""}
+                        {salaryCalculation.adjustment} ر.س
                       </div>
                     )}
                   </div>
@@ -1521,177 +1946,6 @@ export default function ScreenOutsourceSalaries() {
                   <CheckCircle2 className="w-4 h-4" />
                 )}
                 اعتماد الراتب كمديونية
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal: تسجيل دفعة (Payment) */}
-      {showPaymentModal && selectedSalaryRecord && (
-        <div
-          className="fixed inset-0 bg-black/60 flex items-center justify-center z-[100] p-4 animate-in fade-in"
-          dir="rtl"
-        >
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh]">
-            <div className="bg-blue-700 px-5 py-4 flex items-center justify-between text-white shrink-0">
-              <div>
-                <h3 className="font-bold text-sm flex items-center gap-2">
-                  <Banknote className="w-4 h-4 text-blue-300" /> صرف وتسديد راتب
-                </h3>
-                <span className="text-[10px] text-blue-200 mt-1 block">
-                  لصالح: {selectedSalaryRecord.employeeName} | فترة:{" "}
-                  {selectedSalaryRecord.period}
-                </span>
-              </div>
-              <button
-                onClick={closePaymentModal}
-                className="hover:bg-white/20 p-1.5 rounded-md transition-colors"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="p-6 space-y-5 overflow-y-auto custom-scrollbar-slim flex-1">
-              <div className="bg-orange-50 border border-orange-200 p-4 rounded-xl flex items-center justify-between">
-                <span className="text-orange-800 text-xs font-bold">
-                  المتبقي من الراتب (المستحق):
-                </span>
-                <span className="font-mono text-xl font-black text-orange-600">
-                  {selectedSalaryRecord.remainingAmount.toLocaleString()} ر.س
-                </span>
-              </div>
-
-              <div className="bg-gray-50 border border-gray-200 p-4 rounded-xl space-y-4">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    className="accent-blue-600 w-4 h-4"
-                    checked={payIsPartial}
-                    onChange={(e) => {
-                      setPayIsPartial(e.target.checked);
-                      if (!e.target.checked)
-                        setPayAmount(
-                          String(selectedSalaryRecord.remainingAmount),
-                        );
-                      else
-                        setPayAmount(
-                          String(
-                            Math.round(
-                              selectedSalaryRecord.remainingAmount * 0.5,
-                            ),
-                          ),
-                        );
-                    }}
-                  />
-                  <span className="text-sm font-bold text-gray-800">
-                    صرف دفعة جزئية (سلفة أو مقطوع)
-                  </span>
-                </label>
-
-                {payIsPartial && (
-                  <div className="space-y-3 pt-2 border-t border-gray-200">
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="number"
-                        value={payCustomPercentage}
-                        placeholder="نسبة..."
-                        onChange={(e) => {
-                          setPayCustomPercentage(e.target.value);
-                          const p = parseFloat(e.target.value) || 0;
-                          if (p > 0 && p <= 100)
-                            setPayAmount(
-                              String(
-                                Math.round(
-                                  selectedSalaryRecord.remainingAmount *
-                                    (p / 100),
-                                ),
-                              ),
-                            );
-                        }}
-                        className="w-20 border p-2 rounded-lg text-sm font-mono outline-none focus:border-blue-500 text-center"
-                      />
-                      <span className="font-bold text-gray-500">
-                        % من المتبقي
-                      </span>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-gray-700 mb-2">
-                  المبلغ الفعلي للصرف (ر.س) *
-                </label>
-                <input
-                  type="number"
-                  value={payAmount}
-                  onChange={(e) => setPayAmount(e.target.value)}
-                  disabled={!payIsPartial}
-                  className="w-full border border-gray-300 p-3 rounded-xl text-lg font-mono font-bold text-blue-700 focus:border-blue-500 outline-none disabled:bg-gray-100"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-2">
-                    طريقة الدفع
-                  </label>
-                  <select
-                    value={payMethod}
-                    onChange={(e) => setPayMethod(e.target.value)}
-                    className="w-full border border-gray-300 p-2.5 rounded-lg text-sm font-bold outline-none focus:border-blue-500 bg-white"
-                  >
-                    <option value="bank">تحويل بنكي</option>
-                    <option value="cash">نقدي (كاش)</option>
-                    <option value="transfer">ويسترن يونيون / حوالة</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-gray-700 mb-2">
-                    تاريخ الصرف
-                  </label>
-                  <input
-                    type="date"
-                    value={payDate}
-                    onChange={(e) => setPayDate(e.target.value)}
-                    className="w-full border border-gray-300 p-2.5 rounded-lg text-sm font-bold outline-none focus:border-blue-500 bg-white"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-gray-700 mb-2">
-                  المرجع / ملاحظات
-                </label>
-                <input
-                  type="text"
-                  value={payNotes}
-                  onChange={(e) => setPayNotes(e.target.value)}
-                  className="w-full border border-gray-300 p-2.5 rounded-lg text-sm outline-none focus:border-blue-500"
-                  placeholder="رقم الحوالة، اسم المستلم..."
-                />
-              </div>
-            </div>
-
-            <div className="p-4 bg-gray-50 border-t flex justify-end gap-2 shrink-0">
-              <button
-                onClick={closePaymentModal}
-                className="px-5 py-2 bg-white border rounded-lg text-xs font-bold text-gray-600"
-              >
-                إلغاء
-              </button>
-              <button
-                onClick={handlePayment}
-                disabled={paySalaryMutation.isPending}
-                className="px-8 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold shadow-md hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2"
-              >
-                {paySalaryMutation.isPending ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Save className="w-4 h-4" />
-                )}
-                تأكيد الدفع
               </button>
             </div>
           </div>

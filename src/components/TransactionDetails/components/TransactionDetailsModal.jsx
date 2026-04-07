@@ -23,6 +23,29 @@ import {
   Check,
   Circle,
   ArrowLeftRight,
+  FileEdit,
+  Image,
+  MessageCircle,
+  Map,
+  AlertCircle,
+  FolderCog,
+  UploadCloud,
+  Building,
+  Bug,
+  CheckCircle,
+  ChevronDown,
+  ShieldCheck,
+  ClipboardList,
+  HardHat,
+  Car,
+  Wind,
+  Zap,
+  Pickaxe,
+  Briefcase,
+  FileCheck,
+  Landmark,
+  PenLine,
+  EyeOff
 } from "lucide-react";
 import { useAuth } from "../../../context/AuthContext";
 
@@ -52,6 +75,7 @@ import { AgentsTab } from "./tabs/AgentsTab";
 import { RemoteTab } from "./tabs/RemoteTab";
 import { CoopOfficeTab } from "./tabs/CoopOfficeTab";
 import { TasksTab } from "./tabs/TasksTab";
+import { CommentsTab } from "./tabs/CommentsTab";
 
 // 💡 3. استيراد النوافذ المنبثقة الفرعية (Modals)
 import {
@@ -73,6 +97,20 @@ export const TransactionDetailsModal = ({
 }) => {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState("basic");
+
+  // حالات فتح/إغلاق المجموعات في الشريط الجانبي
+  const [openSidebarGroups, setOpenSidebarGroups] = useState({
+    main: true,
+    engineering: true,
+    documents: true,
+    financial: true,
+    others: false,
+  });
+
+  const toggleSidebarGroup = (group) => {
+    setOpenSidebarGroups((prev) => ({ ...prev, [group]: !prev[group] }));
+  };
+
   const backendUrl = api.defaults.baseURL.replace("/api", "");
 
   const { user } = useAuth();
@@ -331,13 +369,11 @@ export const TransactionDetailsModal = ({
         mapsLink: tx.mapsLink || tx.notes?.refs?.mapsLink || "",
       });
 
-      // 💡 التعديل هنا: سحب بيانات الرفع بقوة من قاعدة البيانات الأساسية
       const existingStatusData = tx.notes?.transactionStatusData || {};
 
       setStatusForm({
         currentStatus:
           existingStatusData.currentStatus || "عند المهندس للدراسة",
-        // إعطاء الأولوية لبيانات الإنشاء ثم البحث في الملاحظات القديمة
         serviceNumber:
           tx.serviceNo ||
           tx.requestNo ||
@@ -494,19 +530,24 @@ export const TransactionDetailsModal = ({
   };
 
   const saveBasicEdits = () => {
+    let parsedPlots = [];
+    if (Array.isArray(editFormData.plots)) {
+      parsedPlots = editFormData.plots;
+    } else if (typeof editFormData.plots === "string") {
+      // التقسيم باستخدام الفاصلة الإنجليزية والعربية
+      parsedPlots = editFormData.plots.split(/[,،]/).map((s) => s.trim()).filter(Boolean);
+    }
     const updatedNotes = {
       ...(tx.notes || {}),
       refs: {
         ...((tx.notes || {}).refs || {}),
-        plots: editFormData.plots
-          ? editFormData.plots.split(",").map((s) => s.trim())
-          : [],
+        plots: parsedPlots,
         plan: editFormData.plan,
         area: editFormData.area,
         mapsLink: editFormData.mapsLink,
       },
     };
-    updateTxMutation.mutate({ ...editFormData, notes: updatedNotes });
+    updateTxMutation.mutate({ ...editFormData, plots: parsedPlots, notes: updatedNotes });
   };
 
   const calculateDays = (targetDate, isApprovalRelated) => {
@@ -1026,26 +1067,51 @@ export const TransactionDetailsModal = ({
     return (
       <button
         onClick={() => setActiveTab(id)}
-        className={`flex items-center gap-3 px-4 py-3.5 relative transition-all duration-200 text-right group ${
+        className={`flex items-center gap-3 px-6 py-2.5 relative transition-all duration-200 text-right group w-full ${
           isActive
-            ? "font-black bg-slate-50"
-            : "text-slate-500 font-bold hover:bg-slate-50/50 hover:text-slate-800"
+            ? "font-black bg-blue-50/80"
+            : "text-slate-600 font-bold hover:bg-slate-50 hover:text-slate-900"
         }`}
         style={{
-          fontSize: "13px",
+          fontSize: "12px",
           color: isActive ? activeColor : undefined,
         }}
       >
         <div
-          className={`absolute right-0 top-0 bottom-0 w-[4px] transition-all duration-300 ${isActive ? "opacity-100" : "opacity-0"}`}
+          className={`absolute right-0 top-0 bottom-0 w-[3px] transition-all duration-300 ${isActive ? "opacity-100" : "opacity-0"}`}
           style={{ backgroundColor: activeColor }}
         />
         <Icon
-          className={`w-[18px] h-[18px] shrink-0 transition-transform ${isActive ? "scale-110" : "group-hover:scale-110"}`}
+          className={`w-[16px] h-[16px] shrink-0 transition-transform ${isActive ? "scale-110" : "group-hover:scale-110"}`}
           strokeWidth={isActive ? 2.5 : 2}
         />
         <span className="truncate">{label}</span>
       </button>
+    );
+  };
+
+  const renderSidebarGroup = (title, groupId, icon, children) => {
+    const isOpen = openSidebarGroups[groupId];
+    return (
+      <div className="mb-1">
+        <button
+          onClick={() => toggleSidebarGroup(groupId)}
+          className="flex items-center justify-between w-full px-4 py-2.5 bg-slate-100/50 hover:bg-slate-100 transition-colors border-y border-slate-200/60"
+        >
+          <div className="flex items-center gap-2 text-slate-700 font-black text-[11px] tracking-wide">
+            {icon}
+            <span>{title}</span>
+          </div>
+          <ChevronDown
+            className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`}
+          />
+        </button>
+        <div
+          className={`overflow-hidden transition-all duration-300 ${isOpen ? "max-h-[1000px] opacity-100" : "max-h-0 opacity-0"}`}
+        >
+          <div className="py-1 bg-white">{children}</div>
+        </div>
+      </div>
     );
   };
 
@@ -1124,7 +1190,7 @@ export const TransactionDetailsModal = ({
 
       {/* --- Main Modal Container --- */}
       <div
-        className="bg-white rounded-2xl flex flex-col overflow-hidden shadow-2xl relative w-[95vw] max-w-[1400px] h-[95vh]"
+        className="bg-white rounded-2xl flex flex-col overflow-hidden shadow-2xl relative w-[98vw] max-w-[1600px] h-[95vh]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -1133,8 +1199,12 @@ export const TransactionDetailsModal = ({
             <span className="text-[var(--wms-accent-blue)] bg-blue-100 border border-blue-200 px-3 py-1 rounded-lg font-mono text-[14px] font-black">
               {tx.ref || tx.id?.slice(-6)}
             </span>
-            <span className="text-[var(--wms-text)] text-[16px] font-black">
-              تفاصيل المعاملة: {safeText(tx.client || tx.owner)}
+            <span className="text-[var(--wms-text)] text-[16px] font-black flex items-center gap-2">
+              <User className="w-5 h-5 text-gray-400" />
+              {safeText(tx.client || tx.owner)}
+            </span>
+            <span className="text-gray-400 text-sm font-bold border-r border-gray-300 pr-4">
+              {tx.type}
             </span>
             {isFrozen && (
               <span className="px-3 py-1 rounded-full bg-slate-200 text-slate-700 text-[11px] font-bold flex items-center gap-1.5">
@@ -1176,70 +1246,253 @@ export const TransactionDetailsModal = ({
         </div>
 
         {/* Pipeline Strip */}
-        <div className="flex items-center gap-1 px-4 py-2 border-b border-[var(--wms-border)] bg-[var(--wms-surface-2)] shrink-0">
-          {["التحصيل", "التكاليف التشغيلية", "التسوية", "توزيع الأرباح"].map(
-            (step, i, arr) => (
-              <React.Fragment key={step}>
-                <div
-                  className={`flex items-center gap-1.5 px-2 py-1 rounded text-[11px] font-bold ${i === 0 ? "text-green-600 bg-green-50" : "text-gray-500 hover:bg-gray-100 cursor-pointer"}`}
-                >
-                  {i === 0 ? (
-                    <Check className="w-3.5 h-3.5" />
-                  ) : (
-                    <Circle className="w-3 h-3" />
-                  )}{" "}
-                  <span>{step}</span>
-                </div>
-                {i < arr.length - 1 && (
-                  <ArrowLeftRight className="w-3 h-3 text-gray-300 mx-1" />
-                )}
-              </React.Fragment>
-            ),
-          )}
+        <div className="flex items-center gap-1 px-4 py-2 border-b border-[var(--wms-border)] bg-[var(--wms-surface-2)] shrink-0 overflow-x-auto custom-scrollbar-slim">
+          {[
+            "إنشاء الطلب",
+            "الدراسات الفنية",
+            "الإدارة المالية",
+            "التحصيل والتسوية",
+            "الاعتماد والإغلاق",
+          ].map((step, i, arr) => (
+            <React.Fragment key={step}>
+              <div
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold whitespace-nowrap ${i === 0 ? "text-green-700 bg-green-100 border border-green-200" : "text-gray-500 bg-white border border-gray-200 hover:bg-gray-50"}`}
+              >
+                {i === 0 ? (
+                  <Check className="w-3.5 h-3.5" />
+                ) : (
+                  <Circle className="w-3 h-3" />
+                )}{" "}
+                <span>{step}</span>
+              </div>
+              {i < arr.length - 1 && (
+                <ArrowLeftRight className="w-3 h-3 text-gray-300 mx-1 shrink-0" />
+              )}
+            </React.Fragment>
+          ))}
         </div>
 
         {/* Layout Wrapper for Sidebar and Content */}
-        <div className="flex flex-1 overflow-hidden">
-          {/* 💡 Sidebar Tabs (Right in RTL) */}
-          <div className="w-[240px] shrink-0 bg-white border-l border-gray-200 overflow-y-auto custom-scrollbar-slim py-2 flex flex-col z-10 shadow-[2px_0_8px_-4px_rgba(0,0,0,0.1)]">
-            {renderTabButton("basic", "البيانات الأساسية", FileText, "#2563eb")}
-            {renderTabButton("status", "حالة المعاملة", History, "#ea580c")}
-            {renderTabButton(
+        <div className="flex flex-1 overflow-hidden bg-slate-50/30">
+          {/* 💡 Sidebar Tabs (Right in RTL) - Updated Layout */}
+          <div className="w-[280px] shrink-0 bg-white border-l border-gray-200 overflow-y-auto custom-scrollbar-slim pb-10 flex flex-col z-10 shadow-[2px_0_15px_-5px_rgba(0,0,0,0.1)]">
+            {/* المجموعة الرئيسية */}
+            {renderSidebarGroup(
+              "البيانات وسير العمل",
+              "main",
+              <Briefcase className="w-4 h-4 text-blue-500" />,
+              <>
+                {renderTabButton(
+                  "basic",
+                  "البيانات الأساسية",
+                  FileText,
+                  "#2563eb",
+                )}
+                {renderTabButton(
+                  "status",
+                  "حالة المعاملة والتوجيهات",
+                  History,
+                  "#ea580c",
+                )}
+                {renderTabButton(
+                  "tasks",
+                  "مهام المعاملة (الداخلية)",
+                  CalendarDays,
+                  "#4f46e5",
+                )}
+                {renderTabButton("remote", "العمل عن بعد", Monitor, "#059669")}
+                {renderTabButton(
+                  "attachments",
+                  "المرفقات الأساسية",
+                  Paperclip,
+                  "#64748b",
+                )}
+                {renderTabButton("comments", "التعليقات", MessageCircle, "#f97316")}
+                {renderTabButton("logs", "سجل الأحداث", Activity, "#475569")}
+              </>,
+            )}
+
+            {/* مجموعة الإدارة المالية */}
+            {renderSidebarGroup(
+              "الإدارة المالية والتسويات",
               "financial",
-              "المحرك المالي",
-              Calculator,
-              "#2563eb",
+              <Landmark className="w-4 h-4 text-emerald-600" />,
+              <>
+                {renderTabButton(
+                  "financial",
+                  "المحرك المالي",
+                  Calculator,
+                  "#059669",
+                )}
+                {renderTabButton(
+                  "brokers",
+                  "حساب الوسطاء",
+                  Handshake,
+                  "#0891b2",
+                )}
+                {renderTabButton(
+                  "coop_office",
+                  "المكاتب المتعاونة",
+                  Building2,
+                  "#0284c7",
+                )}
+                {renderTabButton("agents", "حساب المعقبين", User, "#7c3aed")}
+                {renderTabButton(
+                  "payments",
+                  "دفعات العميل",
+                  Banknote,
+                  "#16a34a",
+                )}
+                {renderTabButton(
+                  "dates",
+                  "مواعيد التحصيل",
+                  CalendarDays,
+                  "#d946ef",
+                )}
+                {renderTabButton(
+                  "settlement",
+                  "التسوية الشاملة",
+                  Scale,
+                  "#2563eb",
+                )}
+                {renderTabButton(
+                  "profits",
+                  "توزيع الأرباح",
+                  PieChart,
+                  "#8b5cf6",
+                )}
+              </>,
             )}
-            {renderTabButton("brokers", "الوسطاء", Handshake, "#2563eb")}
-            {renderTabButton(
-              "coop_office",
-              "المكتب المتعاون",
-              Building2,
-              "#0891b2",
+
+            {/* مجموعة الدراسات الهندسية الفنية */}
+            {renderSidebarGroup(
+              "الدراسات الهندسية الفنية",
+              "engineering",
+              <HardHat className="w-4 h-4 text-amber-500" />,
+              <>
+                {renderTabButton(
+                  "arch_study",
+                  "الدراسات المعمارية",
+                  Building,
+                  "#d97706",
+                )}
+                {renderTabButton(
+                  "struct_study",
+                  "الدراسات الإنشائية",
+                  Pickaxe,
+                  "#ea580c",
+                )}
+                {renderTabButton("soil_test", "فحص التربة", Map, "#b45309")}
+                {renderTabButton(
+                  "traffic_study",
+                  "الدراسات المرورية",
+                  Car,
+                  "#dc2626",
+                )}
+                {renderTabButton(
+                  "parking",
+                  "مواقف السيارات",
+                  Archive,
+                  "#475569",
+                )}
+                {renderTabButton(
+                  "mech_study",
+                  "الدراسات الميكانيكية",
+                  Wind,
+                  "#0284c7",
+                )}
+                {renderTabButton(
+                  "elec_study",
+                  "الدراسات الكهربائية",
+                  Zap,
+                  "#eab308",
+                )}
+                {renderTabButton(
+                  "safety",
+                  "الأمن والسلامة",
+                  ShieldCheck,
+                  "#16a34a",
+                )}
+              </>,
             )}
-            {renderTabButton("agents", "المعقبون", User, "#7c3aed")}
-            {renderTabButton("remote", "العمل عن بعد", Monitor, "#059669")}
-            {renderTabButton("tasks", "مهام المعاملة", CalendarDays, "#4f46e5")}
-            {renderTabButton("payments", "الدفعات", Banknote, "#22c55e")}
-            {renderTabButton("settlement", "التسوية", Scale, "#2563eb")}
-            {renderTabButton("profits", "توزيع الأرباح", PieChart, "#a855f7")}
-            {renderTabButton("attachments", "المرفقات", Paperclip, "#2563eb")}
-            {renderTabButton(
-              "dates",
-              "مواعيد التحصيل",
-              CalendarDays,
-              "#a855f7",
+
+            {/* مجموعة التعهدات والمستندات */}
+            {renderSidebarGroup(
+              "مستندات وتعهدات",
+              "documents",
+              <FileCheck className="w-4 h-4 text-indigo-500" />,
+              <>
+                {renderTabButton(
+                  "owner_pledge",
+                  "تعهدات المالك",
+                  FileText,
+                  "#4f46e5",
+                )}
+                {renderTabButton(
+                  "designer_pledge",
+                  "تعهدات المكتب المصمم",
+                  PenLine,
+                  "#6366f1",
+                )}
+                {renderTabButton(
+                  "supervisor_pledge",
+                  "تعهدات المكتب المشرف",
+                  ClipboardList,
+                  "#8b5cf6",
+                )}
+                {renderTabButton(
+                  "insurance",
+                  "وثيقة التأمين",
+                  ShieldCheck,
+                  "#14b8a6",
+                )}
+                {renderTabButton(
+                  "tech_report",
+                  "التقرير الفني",
+                  FileEdit,
+                  "#f59e0b",
+                )}
+                {renderTabButton(
+                  "official_archive",
+                  "الأرشيف الرسمي",
+                  FolderCog,
+                  "#64748b",
+                )}
+                {renderTabButton(
+                  "owner_attachments",
+                  "مرفقات من المالك",
+                  Paperclip,
+                  "#3b82f6",
+                )}
+              </>,
             )}
-            {renderTabButton("logs", "سجل الأحداث", Activity, "#475569")}
+
+            {/* التبويبات الفردية المتبقية (خارج المجموعات) */}
+            <div className="mt-4 border-t border-slate-200 pt-2">
+              {renderTabButton(
+                "supervision",
+                "الإشراف الهندسي",
+                EyeOff,
+                "#ef4444",
+              )}
+              {renderTabButton(
+                "execution",
+                "التنفيذ والمقاولات",
+                Building2,
+                "#f97316",
+              )}
+            </div>
           </div>
 
           {/* 💡 Dynamic Content Area (Left in RTL) */}
-          <div className="flex-1 overflow-y-auto custom-scrollbar-slim bg-slate-50/50 relative p-6">
-            <div className="max-w-6xl mx-auto">
+          <div className="flex-1 overflow-y-auto custom-scrollbar-slim relative">
+            <div className="p-6 max-w-7xl mx-auto min-h-full">
+              {/* المكونات الأساسية المتوفرة حالياً */}
               {activeTab === "basic" && <BasicTab {...tabContext} />}
               {activeTab === "status" && <StatusTab {...tabContext} />}
               {activeTab === "financial" && <FinancialTab {...tabContext} />}
               {activeTab === "brokers" && <BrokersTab {...tabContext} />}
+              {activeTab === "comments" && <CommentsTab {...tabContext} />}
               {activeTab === "coop_office" && <CoopOfficeTab {...tabContext} />}
               {activeTab === "agents" && <AgentsTab {...tabContext} />}
               {activeTab === "remote" && <RemoteTab {...tabContext} />}
@@ -1252,6 +1505,37 @@ export const TransactionDetailsModal = ({
               )}
               {activeTab === "dates" && <DatesTab {...tabContext} />}
               {activeTab === "logs" && <LogsTab {...tabContext} />}
+
+              {/* عناصر نائبة (Placeholders) للتبويبات الجديدة الفارغة */}
+              {![
+                "basic",
+                "status",
+                "financial",
+                "brokers",
+                "coop_office",
+                "agents",
+                "remote",
+                "tasks",
+                "payments",
+                "settlement",
+                "profits",
+                "attachments",
+                "dates",
+                "comments",
+                "logs",
+              ].includes(activeTab) && (
+                <div className="flex flex-col items-center justify-center h-full min-h-[400px] text-slate-400 bg-white rounded-2xl border border-slate-200 border-dashed">
+                  <FolderCog className="w-16 h-16 mb-4 opacity-20 text-slate-500" />
+                  <h3 className="text-xl font-bold text-slate-600 mb-2">
+                    جاري استكمال التبويب
+                  </h3>
+                  <p className="text-sm font-semibold max-w-sm text-center">
+                    سيتم برمجة وربط التبويب
+                    <span className="text-blue-500 mx-1">({activeTab})</span>
+                    قريباً ليحتوي على الحقول المخصصة له.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         </div>

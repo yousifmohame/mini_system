@@ -25,7 +25,7 @@ import {
   AlertCircle,
   ToggleLeft, // 👈 أيقونة التجميد
   ToggleRight, // 👈 أيقونة التنشيط
-  AlertTriangle
+  AlertTriangle,
 } from "lucide-react";
 import { toast } from "sonner";
 import AccessControl from "../../components/AccessControl";
@@ -515,10 +515,13 @@ const ClientsLog = ({ onOpenDetails, onEditClient }) => {
   };
 
   return (
-    <div className="flex-1 overflow-y-auto bg-slate-50 p-4 md:p-6" dir="rtl">
-      <div className="flex flex-col gap-4">
+    <div
+      className="flex-1 overflow-hidden bg-slate-50 flex flex-col h-full"
+      dir="rtl"
+    >
+      <div className="flex flex-col gap-4 p-4 md:p-6 flex-1 h-full overflow-hidden">
         {/* 1. الإحصائيات (لم تتغير) */}
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3 shrink-0">
           <div className="p-3 bg-blue-50 rounded-lg shadow-sm border-2 border-blue-500 flex flex-col justify-center">
             <div className="text-[10px] text-slate-500 mb-1 font-bold">
               إجمالي العملاء
@@ -606,8 +609,8 @@ const ClientsLog = ({ onOpenDetails, onEditClient }) => {
         </div>
 
         {/* 2. شريط الفلترة */}
-        <div className="bg-white rounded-lg p-4 shadow-sm border border-slate-200">
-          <div className="flex items-center gap-3 mb-3 flex-wrap">
+        <div className="bg-white rounded-lg p-4 shadow-sm border border-slate-200 shrink-0">
+          <div className="flex items-center gap-3 flex-wrap">
             <div className="relative flex-1 min-w-[200px] max-w-[300px]">
               <Search className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <input
@@ -653,25 +656,25 @@ const ClientsLog = ({ onOpenDetails, onEditClient }) => {
           </div>
         </div>
 
-        {/* 3. الجدول الرئيسي */}
-        <div className="bg-white rounded-lg shadow-sm border border-slate-200 flex flex-col">
-          <div className="overflow-auto custom-scrollbar">
+        {/* 3. الجدول الرئيسي (مُعدل ليحتوي على سكرول داخلي مع تثبيت الرأس) */}
+        <div className="bg-white rounded-lg shadow-sm border border-slate-200 flex flex-col flex-1 overflow-hidden">
+          <div className="flex-1 overflow-auto custom-scrollbar relative">
             <table className="w-full text-right border-collapse min-w-[1200px]">
-              <thead className="sticky top-0 z-10">
-                <tr className="bg-slate-800 border-b border-slate-700 text-white">
-                  <th className="p-3 text-center text-[11px] font-bold border-l border-slate-700 whitespace-nowrap">
+              <thead className="sticky top-0 z-20">
+                <tr className="bg-slate-800 border-b border-slate-700 text-white shadow-sm">
+                  <th className="p-3 text-center text-[11px] font-bold border-l border-slate-700 whitespace-nowrap bg-slate-800">
                     #
                   </th>
-                  <th className="p-3 text-right text-[11px] font-bold border-l border-slate-700 whitespace-nowrap">
+                  <th className="p-3 text-right text-[11px] font-bold border-l border-slate-700 whitespace-nowrap bg-slate-800">
                     كود العميل
                   </th>
-                  <th className="p-3 text-center text-[11px] font-bold border-l border-slate-700 whitespace-nowrap">
+                  <th className="p-3 text-center text-[11px] font-bold border-l border-slate-700 whitespace-nowrap bg-slate-800">
                     النوع
                   </th>
-                  <th className="p-3 text-right text-[11px] font-bold border-l border-slate-700 whitespace-nowrap">
+                  <th className="p-3 text-right text-[11px] font-bold border-l border-slate-700 whitespace-nowrap bg-slate-800">
                     الاسم الرباعي / الجهة
                   </th>
-                  <th className="p-3 text-right text-[11px] font-bold border-l border-slate-700 whitespace-nowrap">
+                  <th className="p-3 text-right text-[11px] font-bold border-l border-slate-700 whitespace-nowrap bg-slate-800">
                     <AccessControl
                       code="CLIENT_TABLE_COL_ID"
                       name="عمود رقم الهوية"
@@ -682,7 +685,7 @@ const ClientsLog = ({ onOpenDetails, onEditClient }) => {
                       رقم الهوية / السجل
                     </AccessControl>
                   </th>
-                  <th className="p-3 text-right text-[11px] font-bold border-l border-slate-700 whitespace-nowrap">
+                  <th className="p-3 text-right text-[11px] font-bold border-l border-slate-700 whitespace-nowrap bg-slate-800">
                     <AccessControl
                       code="CLIENT_TABLE_COL_PHONE"
                       name="عمود الجوال"
@@ -693,28 +696,28 @@ const ClientsLog = ({ onOpenDetails, onEditClient }) => {
                       الجوال
                     </AccessControl>
                   </th>
-                  <th className="p-3 text-right text-[11px] font-bold border-l border-slate-700 whitespace-nowrap">
+                  <th className="p-3 text-right text-[11px] font-bold border-l border-slate-700 whitespace-nowrap bg-slate-800">
                     المدينة
                   </th>
-                  <th className="p-3 text-center text-[11px] font-bold border-l border-slate-700 whitespace-nowrap">
+                  <th className="p-3 text-center text-[11px] font-bold border-l border-slate-700 whitespace-nowrap bg-slate-800">
                     التقييم
                   </th>
-                  <th className="p-3 text-center text-[11px] font-bold border-l border-slate-700 whitespace-nowrap">
+                  <th className="p-3 text-center text-[11px] font-bold border-l border-slate-700 whitespace-nowrap bg-slate-800">
                     الحالة
                   </th>
-                  <th className="p-3 text-center text-[11px] font-bold border-l border-slate-700 whitespace-nowrap">
+                  <th className="p-3 text-center text-[11px] font-bold border-l border-slate-700 whitespace-nowrap bg-slate-800">
                     الممثل
                   </th>
-                  <th className="p-3 text-center text-[11px] font-bold border-l border-slate-700 whitespace-nowrap">
+                  <th className="p-3 text-center text-[11px] font-bold border-l border-slate-700 whitespace-nowrap bg-slate-800">
                     الوثائق
                   </th>
-                  <th className="p-3 text-center text-[11px] font-bold border-l border-slate-700 whitespace-nowrap">
+                  <th className="p-3 text-center text-[11px] font-bold border-l border-slate-700 whitespace-nowrap bg-slate-800">
                     المعاملات
                   </th>
-                  <th className="p-3 text-center text-[11px] font-bold border-l border-slate-700 whitespace-nowrap">
+                  <th className="p-3 text-center text-[11px] font-bold border-l border-slate-700 whitespace-nowrap bg-slate-800">
                     تاريخ الإضافة
                   </th>
-                  <th className="p-3 text-center text-[11px] font-bold whitespace-nowrap w-32">
+                  <th className="p-3 text-center text-[11px] font-bold whitespace-nowrap w-32 bg-slate-800">
                     إجراءات
                   </th>
                 </tr>
@@ -749,19 +752,18 @@ const ClientsLog = ({ onOpenDetails, onEditClient }) => {
                       client.completionPercentage < 40 ||
                       !client.idNumber ||
                       client.idNumber.startsWith("TEMP");
-                    const isFrozen = !client.isActive; // 👈 التحقق من التجميد
+                    const isFrozen = !client.isActive;
 
                     return (
                       <tr
                         key={client.id}
                         onClick={() => handleRowClick(client)}
-                        // 👈 تلوين الصف بالرمادي إذا كان مجمداً، أو بالبرتقالي إذا كان غير مكتمل
                         className={`cursor-pointer transition-colors border-b group ${
                           isFrozen
-                            ? "bg-slate-100 hover:bg-slate-200 border-slate-300 opacity-70" // صف مجمد
+                            ? "bg-slate-100 hover:bg-slate-200 border-slate-300 opacity-70"
                             : isIncomplete
-                              ? "bg-orange-500/50 hover:bg-orange-100 border-orange-200" // صف غير مكتمل
-                              : "odd:bg-white even:bg-slate-50 hover:bg-blue-50/60 border-slate-200" // صف عادي
+                              ? "bg-orange-500/50 hover:bg-orange-100 border-orange-200"
+                              : "odd:bg-white even:bg-slate-50 hover:bg-blue-50/60 border-slate-200"
                         }`}
                       >
                         <td className="p-2.5 text-center text-[11px] text-slate-500 font-mono border-l border-slate-200">
@@ -857,7 +859,6 @@ const ClientsLog = ({ onOpenDetails, onEditClient }) => {
                           </span>
                         </td>
 
-                        {/* 👈 حالة العميل */}
                         <td className="p-2.5 text-center border-l border-slate-200">
                           <span
                             className={`px-2 py-0.5 rounded text-[10px] font-bold ${!isFrozen ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"}`}
@@ -891,10 +892,8 @@ const ClientsLog = ({ onOpenDetails, onEditClient }) => {
                           {formatDate(client.createdAt)}
                         </td>
 
-                        {/* أزرار الإجراءات */}
                         <td className="p-2.5">
                           <div className="flex gap-1.5 justify-center opacity-40 group-hover:opacity-100 transition-opacity">
-                            {/* 👈 زر التجميد/التنشيط السريع في الجدول */}
                             <AccessControl
                               code="CLIENT_ACTION_TOGGLE_STATUS"
                               name="تجميد/تنشيط العميل"
@@ -997,7 +996,7 @@ const ClientsLog = ({ onOpenDetails, onEditClient }) => {
 
           {/* 4. شريط الترقيم السفلي */}
           {!isLoading && filteredClients.length > 0 && (
-            <div className="bg-slate-50 p-3 flex justify-between items-center border-t border-slate-200">
+            <div className="bg-slate-50 p-3 flex justify-between items-center border-t border-slate-200 shrink-0">
               <div className="text-[11px] font-bold text-slate-500">
                 إظهار {(currentPage - 1) * itemsPerPage + 1} إلى{" "}
                 {Math.min(currentPage * itemsPerPage, filteredClients.length)}{" "}

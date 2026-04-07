@@ -19,6 +19,7 @@ import {
   Loader2,
   AlertTriangle,
   Copy,
+  MessageCircle
 } from "lucide-react";
 
 // ============================================================================
@@ -454,6 +455,7 @@ export const CreateTransactionModal = ({ isOpen, onClose, refetchTable }) => {
 
     receivedAttachments: [],
     customAttachments: [],
+    comments: [""], // 👈 2. مصفوفة التعليقات المبدئية
   };
 
   const [formData, setFormData] = useState(initialForm);
@@ -535,6 +537,15 @@ export const CreateTransactionModal = ({ isOpen, onClose, refetchTable }) => {
     setFormData((p) => ({ ...p, customAttachments: newAtt }));
   };
 
+  // 👈 3. دوال التعامل مع التعليقات
+  const addCommentRow = () => setFormData((p) => ({ ...p, comments: [...p.comments, ""] }));
+  const removeCommentRow = (idx) => setFormData((p) => ({ ...p, comments: p.comments.filter((_, i) => i !== idx) }));
+  const updateComment = (idx, val) => {
+    const newComments = [...formData.comments];
+    newComments[idx] = val;
+    setFormData((p) => ({ ...p, comments: newComments }));
+  };
+
   const createMutation = useMutation({
     mutationFn: async (payload) => api.post("/private-transactions", payload),
     onSuccess: () => {
@@ -591,6 +602,14 @@ export const CreateTransactionModal = ({ isOpen, onClose, refetchTable }) => {
       ...formData.customAttachments.filter((a) => a.trim() !== ""),
     ];
 
+    // 👈 4. تصفية التعليقات الصالحة وتنسيقها لتُرسل كـ Notes
+    const validComments = formData.comments.filter(c => c.trim() !== "").map(text => ({
+       id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+       text: text,
+       user: currentUser || "المنشئ",
+       date: new Date().toISOString()
+    }));
+
     const payload = {
       ...formData,
       ownerName: finalOwnerName,
@@ -615,6 +634,7 @@ export const CreateTransactionModal = ({ isOpen, onClose, refetchTable }) => {
           netAmount: netAmount,
           taxAmount: taxAmount,
         },
+        transactionComments: validComments
       },
     };
 
@@ -688,6 +708,44 @@ export const CreateTransactionModal = ({ isOpen, onClose, refetchTable }) => {
               className="w-full border border-gray-300 rounded-lg px-4 py-2.5 text-sm font-bold focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all"
               placeholder="مثال: فيلا الياسمين - مشروع أبو محمد..."
             />
+          </section>
+
+          {/* 👈 6. قسم التعليقات المبدئية (جديد) */}
+          <section className="bg-orange-50/50 p-5 rounded-xl border border-orange-200 shadow-sm">
+            <div className="flex items-center justify-between mb-4 border-b border-orange-100 pb-3">
+              <h3 className="text-sm font-black text-orange-800 flex items-center gap-2">
+                <MessageCircle className="w-4 h-4" /> تعليقات وتوجيهات على المعاملة (فري تكست)
+              </h3>
+              <button
+                onClick={addCommentRow}
+                className="bg-white text-orange-600 border border-orange-200 hover:bg-orange-100 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-colors"
+              >
+                <Plus size={14} /> إضافة تعليق آخر
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              {formData.comments.map((comment, idx) => (
+                <div key={idx} className="flex items-start gap-2">
+                  <textarea
+                    value={comment}
+                    onChange={(e) => updateComment(idx, e.target.value)}
+                    placeholder={`اكتب التعليق أو التوجيه رقم ${idx + 1} هنا...`}
+                    className="flex-1 border border-orange-200 rounded-lg px-3 py-2.5 text-sm font-bold focus:border-orange-500 focus:ring-2 focus:ring-orange-100 outline-none bg-white min-h-[60px] resize-none"
+                  />
+                  {formData.comments.length > 1 && (
+                    <button
+                      onClick={() => removeCommentRow(idx)}
+                      className="text-red-400 hover:text-red-600 p-2.5 bg-white border border-red-100 rounded-lg shadow-sm"
+                      title="حذف التعليق"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+            <p className="text-[10px] text-orange-600 font-bold mt-2">ملاحظة: ستظهر هذه التعليقات في تبويب "التعليقات" داخل ملف المعاملة.</p>
           </section>
 
           {/* 2. بيانات المُلّاك (متعدد) */}
