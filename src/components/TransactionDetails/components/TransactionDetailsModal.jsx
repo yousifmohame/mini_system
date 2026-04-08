@@ -45,7 +45,7 @@ import {
   FileCheck,
   Landmark,
   PenLine,
-  EyeOff
+  EyeOff,
 } from "lucide-react";
 import { useAuth } from "../../../context/AuthContext";
 
@@ -334,6 +334,23 @@ export const TransactionDetailsModal = ({
       const currentClient = clients.find(
         (c) => (c.name?.ar || c.name) === safeText(tx.client),
       );
+
+      // 💡 استخراج الملاك الإضافيين ليكونوا جاهزين في فورم التعديل
+      let additionalOwners = [];
+      if (
+        tx.detailedOwnersList &&
+        Array.isArray(tx.detailedOwnersList) &&
+        tx.detailedOwnersList.length > 1
+      ) {
+        // نستثني المالك الرئيسي، ونأخذ الباقين
+        additionalOwners = tx.detailedOwnersList
+          .filter((o) => !o.isPrimary)
+          .map((o) => ({
+            clientId: o.clientId || "",
+            ownerName: o.ownerName,
+          }));
+      }
+
       setEditFormData({
         year: new Date(tx.created || tx.date).getFullYear().toString(),
         month: (new Date(tx.created || tx.date).getMonth() + 1)
@@ -341,6 +358,9 @@ export const TransactionDetailsModal = ({
           .padStart(2, "0"),
         clientId: currentClient?.id || "",
         clientName: safeText(tx.client || tx.owner),
+
+        additionalOwners: additionalOwners, // 👈 تم الإضافة هنا
+
         district: tx.district || "",
         districtId: "",
         sector: tx.sector || "",
@@ -529,25 +549,39 @@ export const TransactionDetailsModal = ({
     }
   };
 
-  const saveBasicEdits = () => {
+  const saveBasicEdits = (passedData) => {
+    // استخدم البيانات الممررة أو الـ State كاحتياط
+    const dataToSave = passedData || editFormData;
+
     let parsedPlots = [];
-    if (Array.isArray(editFormData.plots)) {
-      parsedPlots = editFormData.plots;
-    } else if (typeof editFormData.plots === "string") {
-      // التقسيم باستخدام الفاصلة الإنجليزية والعربية
-      parsedPlots = editFormData.plots.split(/[,،]/).map((s) => s.trim()).filter(Boolean);
+    if (Array.isArray(dataToSave.plots)) {
+      parsedPlots = dataToSave.plots;
+    } else if (typeof dataToSave.plots === "string") {
+      parsedPlots = dataToSave.plots
+        .split(/[,،]/)
+        .map((s) => s.trim())
+        .filter(Boolean);
     }
+
     const updatedNotes = {
       ...(tx.notes || {}),
+      // 💡 وضع قائمة الملاك داخل النوتس لإرسالها للباك إند
+      detailedOwnersList:
+        dataToSave.detailedOwnersList || tx.notes?.detailedOwnersList || [],
       refs: {
         ...((tx.notes || {}).refs || {}),
         plots: parsedPlots,
-        plan: editFormData.plan,
-        area: editFormData.area,
-        mapsLink: editFormData.mapsLink,
+        plan: dataToSave.plan,
+        area: dataToSave.area,
+        mapsLink: dataToSave.mapsLink,
       },
     };
-    updateTxMutation.mutate({ ...editFormData, plots: parsedPlots, notes: updatedNotes });
+
+    updateTxMutation.mutate({
+      ...dataToSave,
+      plots: parsedPlots,
+      notes: updatedNotes,
+    });
   };
 
   const calculateDays = (targetDate, isApprovalRelated) => {
@@ -1307,7 +1341,12 @@ export const TransactionDetailsModal = ({
                   Paperclip,
                   "#64748b",
                 )}
-                {renderTabButton("comments", "التعليقات", MessageCircle, "#f97316")}
+                {renderTabButton(
+                  "comments",
+                  "التعليقات",
+                  MessageCircle,
+                  "#f97316",
+                )}
                 {renderTabButton("logs", "سجل الأحداث", Activity, "#475569")}
               </>,
             )}

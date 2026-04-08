@@ -216,6 +216,13 @@ const Sidebar = () => {
               code="SCR_CLIENTS_ALL"
               moduleName="الرئيسية"
             />
+            <NavItem
+              screenId="SpeedLinks"
+              title="العملاء"
+              icon={Users}
+              code="SCR_SpeedLinks"
+              moduleName="الروابط السريعة"
+            />
           </div>
         )}
 

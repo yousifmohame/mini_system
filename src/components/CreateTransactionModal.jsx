@@ -19,7 +19,7 @@ import {
   Loader2,
   AlertTriangle,
   Copy,
-  MessageCircle
+  MessageCircle,
 } from "lucide-react";
 
 // ============================================================================
@@ -538,8 +538,13 @@ export const CreateTransactionModal = ({ isOpen, onClose, refetchTable }) => {
   };
 
   // 👈 3. دوال التعامل مع التعليقات
-  const addCommentRow = () => setFormData((p) => ({ ...p, comments: [...p.comments, ""] }));
-  const removeCommentRow = (idx) => setFormData((p) => ({ ...p, comments: p.comments.filter((_, i) => i !== idx) }));
+  const addCommentRow = () =>
+    setFormData((p) => ({ ...p, comments: [...p.comments, ""] }));
+  const removeCommentRow = (idx) =>
+    setFormData((p) => ({
+      ...p,
+      comments: p.comments.filter((_, i) => i !== idx),
+    }));
   const updateComment = (idx, val) => {
     const newComments = [...formData.comments];
     newComments[idx] = val;
@@ -567,24 +572,46 @@ export const CreateTransactionModal = ({ isOpen, onClose, refetchTable }) => {
       ? formData.owners[0].newClient.type
       : undefined;
 
-    // 💡 تجميع أسماء الملاك وهوياتهم
+    // 💡 مصفوفة جديدة لحفظ بيانات الشركاء (الملاك) بشكل مفصل
+    let detailedOwners = [];
+
     for (let i = 0; i < formData.owners.length; i++) {
       let o = formData.owners[i];
-      if (o.isNewClient) {
+
+      // 💡 المالك الرئيسي جديد
+      if (i === 0 && o.isNewClient) {
         let name =
           o.newClient.type.includes("شركة") || o.newClient.type.includes("جهة")
             ? o.newClient.companyName
             : `${o.newClient.first} ${o.newClient.last}`;
-        if (!name.trim())
-          return toast.error(`يرجى إكمال اسم المالك رقم ${i + 1}`);
+
+        if (!name.trim()) return toast.error("يرجى إكمال اسم المالك الرئيسي");
+
         finalNames.push(name.trim());
         if (o.newClient.idNumber) finalIds.push(o.newClient.idNumber);
-      } else {
-        if (!o.clientId && !o.ownerName)
-          return toast.error(
-            `الرجاء اختيار المالك رقم ${i + 1} أو إنشاء مالك جديد`,
-          );
+
+        // إضافة للمصفوفة المفصلة
+        detailedOwners.push({
+          clientId: null, // سيتكفل الباك إند بإنشائه وتعيين ה-ID له
+          ownerName: name.trim(),
+          idNumber: o.newClient.idNumber || "",
+          isPrimary: true,
+        });
+      }
+      // 💡 مالك مسجل (سواء كان الرئيسي أو شريك إضافي)
+      else {
+        if (!o.clientId || !o.ownerName)
+          return toast.error(`الرجاء اختيار المالك رقم ${i + 1} من القائمة`);
+
         finalNames.push(o.ownerName);
+
+        // إضافة للمصفوفة المفصلة
+        detailedOwners.push({
+          clientId: o.clientId, // يجب أن يمتلك ID حقيقي
+          ownerName: o.ownerName,
+          idNumber: "",
+          isPrimary: i === 0,
+        });
       }
     }
 
@@ -602,13 +629,15 @@ export const CreateTransactionModal = ({ isOpen, onClose, refetchTable }) => {
       ...formData.customAttachments.filter((a) => a.trim() !== ""),
     ];
 
-    // 👈 4. تصفية التعليقات الصالحة وتنسيقها لتُرسل كـ Notes
-    const validComments = formData.comments.filter(c => c.trim() !== "").map(text => ({
-       id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
-       text: text,
-       user: currentUser || "المنشئ",
-       date: new Date().toISOString()
-    }));
+    // تصفية التعليقات الصالحة
+    const validComments = formData.comments
+      .filter((c) => c.trim() !== "")
+      .map((text) => ({
+        id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+        text: text,
+        user: currentUser || "المنشئ",
+        date: new Date().toISOString(),
+      }));
 
     const payload = {
       ...formData,
@@ -619,7 +648,7 @@ export const CreateTransactionModal = ({ isOpen, onClose, refetchTable }) => {
       plots: validPlots,
       receivedAttachmentsList: validAttachments,
       source: formData.externalSource,
-      district: formData.districtName, // إرسال الاسم النصي للحي
+      district: formData.districtName,
       brokerId: formData.brokerId || undefined,
       totalFees: formData.isFeeDelayed ? 0 : parseNumber(formData.totalFees),
       firstPayment: formData.isFeeDelayed
@@ -634,7 +663,9 @@ export const CreateTransactionModal = ({ isOpen, onClose, refetchTable }) => {
           netAmount: netAmount,
           taxAmount: taxAmount,
         },
-        transactionComments: validComments
+        transactionComments: validComments,
+        // 💡 👈 إرسال مصفوفة الملاك المفصلة للباك إند
+        detailedOwnersList: detailedOwners,
       },
     };
 
@@ -714,7 +745,8 @@ export const CreateTransactionModal = ({ isOpen, onClose, refetchTable }) => {
           <section className="bg-orange-50/50 p-5 rounded-xl border border-orange-200 shadow-sm">
             <div className="flex items-center justify-between mb-4 border-b border-orange-100 pb-3">
               <h3 className="text-sm font-black text-orange-800 flex items-center gap-2">
-                <MessageCircle className="w-4 h-4" /> تعليقات وتوجيهات على المعاملة (فري تكست)
+                <MessageCircle className="w-4 h-4" /> تعليقات وتوجيهات على
+                المعاملة (فري تكست)
               </h3>
               <button
                 onClick={addCommentRow}
@@ -745,7 +777,10 @@ export const CreateTransactionModal = ({ isOpen, onClose, refetchTable }) => {
                 </div>
               ))}
             </div>
-            <p className="text-[10px] text-orange-600 font-bold mt-2">ملاحظة: ستظهر هذه التعليقات في تبويب "التعليقات" داخل ملف المعاملة.</p>
+            <p className="text-[10px] text-orange-600 font-bold mt-2">
+              ملاحظة: ستظهر هذه التعليقات في تبويب "التعليقات" داخل ملف
+              المعاملة.
+            </p>
           </section>
 
           {/* 2. بيانات المُلّاك (متعدد) */}
@@ -758,7 +793,7 @@ export const CreateTransactionModal = ({ isOpen, onClose, refetchTable }) => {
                 onClick={addOwner}
                 className="bg-blue-50 text-blue-700 hover:bg-blue-100 px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 transition-colors"
               >
-                <Plus size={14} /> إضافة مالك آخر
+                <Plus size={14} /> إضافة شريك آخر
               </button>
             </div>
 
@@ -766,58 +801,67 @@ export const CreateTransactionModal = ({ isOpen, onClose, refetchTable }) => {
               {formData.owners.map((owner, index) => (
                 <div
                   key={index}
-                  className="p-4 bg-gray-50 border border-gray-200 rounded-xl relative"
+                  className={`p-4 bg-gray-50 border rounded-xl relative ${index === 0 ? "border-blue-200" : "border-gray-200"}`}
                 >
                   {index > 0 && (
                     <button
                       onClick={() => removeOwner(index)}
-                      className="absolute top-3 left-3 text-red-400 hover:text-red-600 bg-white border border-red-100 p-1.5 rounded-lg shadow-sm"
+                      className="absolute top-3 left-3 text-red-400 hover:text-red-600 bg-white border border-red-100 p-1.5 rounded-lg shadow-sm z-10"
                     >
                       <Trash2 size={14} />
                     </button>
                   )}
 
-                  <div className="flex gap-4 mb-4">
-                    <label
-                      className={`flex items-center gap-2 px-4 py-2 rounded-lg border-2 cursor-pointer transition-colors ${!owner.isNewClient ? "border-blue-600 bg-blue-50" : "border-gray-200 bg-white hover:bg-gray-50"}`}
-                    >
-                      <input
-                        type="radio"
-                        name={`clientMode-${index}`}
-                        className="accent-blue-600"
-                        checked={!owner.isNewClient}
-                        onChange={() =>
-                          updateOwner(index, "isNewClient", false)
-                        }
-                      />
-                      <span className="text-xs font-bold text-gray-800">
-                        اختيار مالك مسجل مسبقاً
+                  {/* 💡 خيارات المالك الجديد تظهر للمالك الرئيسي فقط */}
+                  {index === 0 ? (
+                    <div className="flex gap-4 mb-4">
+                      <label
+                        className={`flex items-center gap-2 px-4 py-2 rounded-lg border-2 cursor-pointer transition-colors ${!owner.isNewClient ? "border-blue-600 bg-blue-50" : "border-gray-200 bg-white hover:bg-gray-50"}`}
+                      >
+                        <input
+                          type="radio"
+                          name={`clientMode-${index}`}
+                          className="accent-blue-600"
+                          checked={!owner.isNewClient}
+                          onChange={() =>
+                            updateOwner(index, "isNewClient", false)
+                          }
+                        />
+                        <span className="text-xs font-bold text-gray-800">
+                          اختيار مالك مسجل مسبقاً
+                        </span>
+                      </label>
+                      <label
+                        className={`flex items-center gap-2 px-4 py-2 rounded-lg border-2 cursor-pointer transition-colors ${owner.isNewClient ? "border-green-600 bg-green-50" : "border-gray-200 bg-white hover:bg-gray-50"}`}
+                      >
+                        <input
+                          type="radio"
+                          name={`clientMode-${index}`}
+                          className="accent-green-600"
+                          checked={owner.isNewClient}
+                          onChange={() => {
+                            updateOwner(index, "isNewClient", true);
+                            updateOwner(index, "clientId", "");
+                            updateOwner(index, "ownerName", "");
+                          }}
+                        />
+                        <span className="text-xs font-bold text-gray-800">
+                          إنشاء مالك جديد (سريع)
+                        </span>
+                      </label>
+                    </div>
+                  ) : (
+                    <div className="mb-4">
+                      <span className="text-[10px] font-bold text-slate-500 bg-slate-200 px-3 py-1 rounded-md">
+                        شريك إضافي (يجب اختياره من قائمة العملاء المسجلين)
                       </span>
-                    </label>
-                    <label
-                      className={`flex items-center gap-2 px-4 py-2 rounded-lg border-2 cursor-pointer transition-colors ${owner.isNewClient ? "border-green-600 bg-green-50" : "border-gray-200 bg-white hover:bg-gray-50"}`}
-                    >
-                      <input
-                        type="radio"
-                        name={`clientMode-${index}`}
-                        className="accent-green-600"
-                        checked={owner.isNewClient}
-                        onChange={() => {
-                          updateOwner(index, "isNewClient", true);
-                          updateOwner(index, "clientId", "");
-                          updateOwner(index, "ownerName", "");
-                        }}
-                      />
-                      <span className="text-xs font-bold text-gray-800">
-                        إنشاء مالك جديد (سريع)
-                      </span>
-                    </label>
-                  </div>
+                    </div>
+                  )}
 
-                  {!owner.isNewClient ? (
+                  {!owner.isNewClient || index > 0 ? (
                     <div className="w-full md:w-1/2">
                       <label className="block text-xs font-bold text-gray-600 mb-1.5">
-                        ابحث عن المالك {index + 1} *
+                        ابحث عن المالك {index === 0 ? "الرئيسي" : "الإضافي"} *
                       </label>
                       <SearchableSelect
                         options={clientsOptions}

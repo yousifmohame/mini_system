@@ -36,6 +36,7 @@ import OutsourceSalariesPage from "./pages/OutsourceSalariesPage";
 import ScreenPersonStatement from "./pages/ScreenPersonStatement";
 import {ScreenQuickEntry} from "./pages/ScreenQuickEntry";
 import ClientsScreenWrapper from "./pages/Clients/ClientsScreenWrapper";
+import QuickLinksScreen from "./pages/QuickLinksScreen";
 
 // --- Icons & Context ---
 import { Wrench } from "lucide-react";
@@ -125,7 +126,8 @@ const AppContent = () => {
     "PAYMENTSـAUTO",
     "PERSON_SETTLEMENTS",
     "EXPERESS",
-    "CLIENTS"
+    "CLIENTS",
+    "SCR_SpeedLinks"
   ];
   const isImplemented = implementedScreens.includes(activeScreenId);
 
@@ -355,6 +357,14 @@ const AppContent = () => {
               }
             >
               <ClientsScreenWrapper />
+            </div>
+
+            <div
+              className={
+                activeScreenId === "SCR_SpeedLinks" ? "block h-full" : "hidden"
+              }
+            >
+              <QuickLinksScreen />
             </div>
 
             {/* --- شاشة Fallback لأي كود غير مبرمج --- */}

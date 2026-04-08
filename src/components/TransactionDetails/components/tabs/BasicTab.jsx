@@ -21,6 +21,8 @@ import {
   Building,
   Plus,
   Paperclip,
+  Trash2, // 👈 أيقونة الحذف للملاك الإضافيين
+  Users, // 👈 أيقونة تعدد الملاك
 } from "lucide-react";
 import { SearchableSelect } from "../TransactionSharedUI";
 
@@ -44,7 +46,7 @@ export const BasicTab = ({
   persons,
   formatDateTime,
   safeText,
-  backendUrl, // لتكوين مسارات الصور بشكل صحيح
+  backendUrl,
   currentUser,
 }) => {
   // حساب أيام الإنشاء وأيام التعديل
@@ -59,7 +61,6 @@ export const BasicTab = ({
     (today - updatedDate) / (1000 * 60 * 60 * 24),
   );
 
-  // محاكاة لحالة التأخير (مبدئياً لحين الربط مع شاشة الإعدادات)
   const delayStatus =
     daysSinceUpdate > 7
       ? "متأخرة"
@@ -89,11 +90,9 @@ export const BasicTab = ({
     setEditFormData((prev) => ({ ...prev, [field]: value }));
   };
 
-  // معالجة اختيار صورة الموقع أثناء التعديل
   const handleSiteImageChange = (e) => {
     const file = e.target.files[0];
     if (file) {
-      // 💡 يتم حفظ الملف في Form Data ليتم رفعه لاحقاً في saveBasicEdits
       setEditFormData((prev) => ({ ...prev, newSiteImage: file }));
       const reader = new FileReader();
       reader.onloadend = () => {
@@ -103,8 +102,34 @@ export const BasicTab = ({
     }
   };
 
-  // تحضير مصفوفة القطع الرأسية
-  // 💡 تحضير مصفوفة القطع بشكل آمن (يدعم المصفوفات والنصوص)
+  // 💡 دوال التعامل مع المصفوفة المتعددة للملاك أثناء التعديل
+  const addOwnerRow = () => {
+    setEditFormData((prev) => {
+      const currentOwners = prev.additionalOwners || [];
+      return {
+        ...prev,
+        additionalOwners: [...currentOwners, { clientId: "", ownerName: "" }],
+      };
+    });
+  };
+
+  const removeOwnerRow = (index) => {
+    setEditFormData((prev) => {
+      const newOwners = [...prev.additionalOwners];
+      newOwners.splice(index, 1);
+      return { ...prev, additionalOwners: newOwners };
+    });
+  };
+
+  const updateAdditionalOwner = (index, val, opt) => {
+    setEditFormData((prev) => {
+      const newOwners = [...prev.additionalOwners];
+      newOwners[index] = { clientId: val, ownerName: opt.label };
+      return { ...prev, additionalOwners: newOwners };
+    });
+  };
+
+  // 💡 تحضير مصفوفة القطع بشكل آمن
   let plotsArray = [];
   const sourcePlots = isEditingBasic
     ? editFormData.plots
@@ -115,12 +140,16 @@ export const BasicTab = ({
   if (Array.isArray(sourcePlots)) {
     plotsArray = sourcePlots;
   } else if (typeof sourcePlots === "string") {
-    // التقسيم يدعم الفاصلة الإنجليزية (,) والعربية (،)
     plotsArray = sourcePlots
       .split(/[,،]/)
       .map((s) => s.trim())
       .filter(Boolean);
   }
+
+  // 💡 تحضير الملاك للعرض
+  const displayOwners = tx.ownerNames
+    ? tx.ownerNames.split(" و ")
+    : [tx.client || tx.owner];
 
   return (
     <div className="space-y-6 animate-in fade-in pb-20 relative min-h-screen">
@@ -130,7 +159,27 @@ export const BasicTab = ({
           <FileText className="w-5 h-5 text-blue-600" /> البيانات الرئيسية
         </h3>
         <button
-          onClick={() => setIsEditingBasic(!isEditingBasic)}
+          onClick={() => {
+            if (!isEditingBasic) {
+              // عند فتح التعديل، نهيئ مصفوفة additionalOwners إذا كان هناك ملاك متعددين
+              const existingNames = tx.ownerNames
+                ? tx.ownerNames.split(" و ")
+                : [];
+              if (existingNames.length > 1) {
+                const additional = existingNames.slice(1).map((name) => ({
+                  clientId: "", // للاسف الداتا القديمة لا تحفظ ID لكل الملاك، نعرض الاسم فقط
+                  ownerName: name.trim(),
+                }));
+                setEditFormData((prev) => ({
+                  ...prev,
+                  additionalOwners: additional,
+                }));
+              } else {
+                setEditFormData((prev) => ({ ...prev, additionalOwners: [] }));
+              }
+            }
+            setIsEditingBasic(!isEditingBasic);
+          }}
           className={`flex items-center gap-1.5 px-4 py-2 border rounded-lg text-xs font-bold shadow-sm transition-colors ${
             isEditingBasic
               ? "bg-red-50 text-red-600 border-red-200 hover:bg-red-100"
@@ -219,54 +268,115 @@ export const BasicTab = ({
         </div>
       </div>
 
-      {/* 💡 معلومات العميل الأساسية */}
+      {/* 💡 معلومات العميل الأساسية (يدعم تعدد الملاك) */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        {/* المالك وتفاصيله */}
         <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm col-span-1 md:col-span-2 flex flex-col">
-          <div className="text-gray-500 text-[11px] font-bold mb-3 flex items-center justify-between">
-            <span>اسم المالك / الجهة</span>
-            {tx.client && (
+          <div className="text-blue-800 text-[12px] font-black mb-4 flex items-center justify-between border-b border-gray-100 pb-2">
+            <span className="flex items-center gap-2">
+              <Users className="w-4 h-4" /> المُلّاك / أصحاب المعاملة
+            </span>
+            {!isEditingBasic && tx.clientObj && (
               <span
-                className={`px-2 py-0.5 text-[9px] rounded font-bold ${tx.client.type?.includes("شرك") ? "bg-purple-100 text-purple-700" : "bg-emerald-100 text-emerald-700"}`}
+                className={`px-2 py-0.5 text-[9px] rounded font-bold ${tx.clientObj.type?.includes("شرك") ? "bg-purple-100 text-purple-700" : "bg-emerald-100 text-emerald-700"}`}
               >
-                {tx.client.type || "فرد"}
+                {tx.clientObj.type || "فرد"}
               </span>
             )}
           </div>
+
           {isEditingBasic ? (
-            <SearchableSelect
-              options={clientsOptions}
-              value={editFormData.clientId}
-              placeholder={editFormData.clientName || "ابحث بالاسم..."}
-              onChange={(val, opt) =>
-                setEditFormData({
-                  ...editFormData,
-                  clientId: val,
-                  clientName: opt.label,
-                  client: opt.label,
-                })
-              }
-            />
+            <div className="space-y-4">
+              {/* المالك الرئيسي */}
+              <div className="bg-slate-50 border border-slate-200 p-3 rounded-xl relative">
+                <span className="absolute -top-2.5 right-3 bg-blue-100 text-blue-800 text-[9px] font-black px-2 py-0.5 rounded border border-blue-200">
+                  المالك الرئيسي *
+                </span>
+                <SearchableSelect
+                  options={clientsOptions}
+                  value={editFormData.clientId}
+                  placeholder={
+                    editFormData.clientName ||
+                    displayOwners[0] ||
+                    "ابحث بالاسم..."
+                  }
+                  onChange={(val, opt) =>
+                    setEditFormData({
+                      ...editFormData,
+                      clientId: val,
+                      clientName: opt.label,
+                      client: opt.label,
+                    })
+                  }
+                />
+              </div>
+
+              {/* الملاك الإضافيين */}
+              {(editFormData.additionalOwners || []).map((owner, idx) => (
+                <div
+                  key={idx}
+                  className="bg-slate-50 border border-slate-200 p-3 rounded-xl relative animate-in slide-in-from-top-2 flex gap-2 items-center"
+                >
+                  <span className="absolute -top-2.5 right-3 bg-slate-200 text-slate-700 text-[9px] font-black px-2 py-0.5 rounded border border-slate-300">
+                    شريك إضافي
+                  </span>
+                  <div className="flex-1">
+                    <SearchableSelect
+                      options={clientsOptions}
+                      value={owner.clientId}
+                      placeholder={owner.ownerName || "ابحث عن الشريك..."}
+                      onChange={(val, opt) =>
+                        updateAdditionalOwner(idx, val, opt)
+                      }
+                    />
+                  </div>
+                  <button
+                    onClick={() => removeOwnerRow(idx)}
+                    className="p-2.5 text-red-500 bg-red-50 hover:bg-red-100 hover:text-red-700 rounded-lg transition-colors border border-red-100 mt-1"
+                    title="إزالة الشريك"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+
+              <button
+                onClick={addOwnerRow}
+                className="w-full py-2 bg-white border border-dashed border-blue-300 text-blue-600 rounded-xl hover:bg-blue-50 text-xs font-bold transition-colors flex items-center justify-center gap-1.5"
+              >
+                <Plus className="w-4 h-4" /> إضافة شريك / مالك آخر
+              </button>
+            </div>
           ) : (
-            <div className="text-lg font-black text-gray-800 mb-3">
-              {safeText(
-                tx.client?.name?.ar || tx.client?.name || tx.client || tx.owner,
-              )}
+            <div className="space-y-2 mb-3">
+              {displayOwners.map((ownerName, idx) => (
+                <div
+                  key={idx}
+                  className="text-base font-black text-gray-800 flex items-center gap-2"
+                >
+                  <span
+                    className={`w-2 h-2 rounded-full ${idx === 0 ? "bg-blue-500" : "bg-slate-300"}`}
+                  ></span>
+                  {safeText(ownerName)}
+                  {idx === 0 && displayOwners.length > 1 && (
+                    <span className="text-[9px] text-blue-600 bg-blue-50 px-1.5 rounded">
+                      رئيسي
+                    </span>
+                  )}
+                </div>
+              ))}
             </div>
           )}
 
-          {/* تفاصيل المالك الإضافية (رقم الهوية/الموحد، التصنيف، المعاملات) */}
-          {!isEditingBasic && tx.client && (
+          {/* تفاصيل المالك الإضافية (تظهر للمالك الرئيسي فقط) */}
+          {!isEditingBasic && tx.clientObj && (
             <div className="mt-auto grid grid-cols-3 gap-2 border-t border-gray-100 pt-3">
               <div>
-                <div className="text-[9px] text-gray-400 font-bold mb-1">
-                  {tx.client.type?.includes("شرك")
-                    ? "الرقم الموحد"
-                    : "رقم الهوية"}
+                <div className="text-[9px] text-gray-400 font-bold mb-1 flex items-center gap-1">
+                  <CreditCard className="w-3 h-3" /> الهوية
                 </div>
-                <div className="text-xs font-mono font-bold text-slate-700">
-                  {tx.client.idNumber ||
-                    tx.client.identification?.idNumber ||
+                <div className="text-[11px] font-mono font-bold text-slate-700 truncate">
+                  {tx.clientObj.idNumber ||
+                    tx.clientObj.identification?.idNumber ||
                     "—"}
                 </div>
               </div>
@@ -275,15 +385,17 @@ export const BasicTab = ({
                   فئة التصنيف
                 </div>
                 <div className="text-xs font-black text-amber-600">
-                  {tx.client.grade ? `الفئة ${tx.client.grade}` : "غير مصنف"}
+                  {tx.clientObj.grade
+                    ? `الفئة ${tx.clientObj.grade}`
+                    : "غير مصنف"}
                 </div>
               </div>
               <div>
                 <div className="text-[9px] text-gray-400 font-bold mb-1">
-                  المعاملات النشطة
+                  معاملات العميل
                 </div>
                 <div className="text-xs font-mono font-black text-blue-600">
-                  {tx.client._count?.transactions || 1}
+                  {tx.clientObj._count?.transactions || 1}
                 </div>
               </div>
             </div>
@@ -680,7 +792,6 @@ export const BasicTab = ({
                       </div>
                       <div className="w-12 h-12 bg-gray-100 ml-2 rounded p-1 flex items-center justify-center border border-gray-200">
                         <QrCode className="w-full h-full text-gray-500 opacity-50" />{" "}
-                        {/* مجرد شكل مبدئي، يمكنك دمج مكتبة QR لاحقاً */}
                       </div>
                     </div>
                   ) : (
@@ -933,14 +1044,57 @@ export const BasicTab = ({
         </div>
       </div>
 
-      {/* 💡 زر الحفظ العائم (يظهر فقط في وضع التعديل) */}
+      {/* 💡 زر الحفظ العائم */}
       {isEditingBasic && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 animate-in slide-in-from-bottom-5">
           <button
             onClick={() => {
-              // 💡 تجهيز الداتا للحفظ (تذكر أن ترفع الملفات إذا وجدت في الكنترولر أو تحولها لـ base64)
-              // لتسهيل الأمر برمجياً ندمج الملاحظات الجديدة مع الداتا
-              saveBasicEdits();
+              // 1. تجميع الملاك الإضافيين
+              let finalNames = [editFormData.clientName];
+
+              let detailedOwners = [
+                {
+                  clientId: editFormData.clientId,
+                  ownerName: editFormData.clientName,
+                  isPrimary: true,
+                },
+              ];
+
+              if (
+                editFormData.additionalOwners &&
+                editFormData.additionalOwners.length > 0
+              ) {
+                const additionalValid = editFormData.additionalOwners.filter(
+                  (o) => o.ownerName && o.ownerName.trim() !== "",
+                );
+
+                finalNames = [
+                  ...finalNames,
+                  ...additionalValid.map((o) => o.ownerName),
+                ];
+
+                additionalValid.forEach((o) => {
+                  detailedOwners.push({
+                    clientId: o.clientId,
+                    ownerName: o.ownerName,
+                    isPrimary: false,
+                  });
+                });
+              }
+              const finalOwnerNamesString = finalNames.join(" و ");
+
+              // 💡 2. بناء كائن البيانات المحدث ليتم إرساله فوراً
+              const updatedData = {
+                ...editFormData,
+                ownerNames: finalOwnerNamesString,
+                detailedOwnersList: detailedOwners,
+              };
+
+              // 💡 3. تحديث الستيت
+              setEditFormData(updatedData);
+
+              // 💡 4. إرسال البيانات المحدثة للمكون الأب لتخزينها
+              saveBasicEdits(updatedData);
             }}
             disabled={updateTxMutation.isPending}
             className="px-8 py-3.5 bg-blue-600 text-white rounded-full text-base font-black shadow-[0_8px_30px_rgb(37,99,235,0.4)] hover:bg-blue-700 hover:scale-105 disabled:opacity-50 disabled:hover:scale-100 transition-all flex items-center gap-3"
