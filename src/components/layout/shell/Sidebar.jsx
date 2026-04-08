@@ -218,7 +218,7 @@ const Sidebar = () => {
             />
             <NavItem
               screenId="SpeedLinks"
-              title="العملاء"
+              title="الروابط السريعة"
               icon={Users}
               code="SCR_SpeedLinks"
               moduleName="الروابط السريعة"

@@ -127,7 +127,7 @@ const AppContent = () => {
     "PERSON_SETTLEMENTS",
     "EXPERESS",
     "CLIENTS",
-    "SCR_SpeedLinks"
+    "SpeedLinks"
   ];
   const isImplemented = implementedScreens.includes(activeScreenId);
 
@@ -361,7 +361,7 @@ const AppContent = () => {
 
             <div
               className={
-                activeScreenId === "SCR_SpeedLinks" ? "block h-full" : "hidden"
+                activeScreenId === "SpeedLinks" ? "block h-full" : "hidden"
               }
             >
               <QuickLinksScreen />
