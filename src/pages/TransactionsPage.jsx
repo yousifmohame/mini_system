@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "../api/axios";
 import { useAppStore } from "../stores/useAppStore";
@@ -18,8 +18,6 @@ import {
   RefreshCw,
   Square,
   Pin,
-  ArrowRight,
-  ArrowLeft,
   Loader2,
   ChevronDown,
   Lock,
@@ -33,7 +31,7 @@ import {
 } from "lucide-react";
 
 // =========================================================================
-// مكون إدارة مصادر المعاملات (Modal) المحدث
+// مكون إدارة مصادر المعاملات (Modal)
 // =========================================================================
 const ManageSourcesModal = ({ isOpen, onClose, availableEntities = [] }) => {
   const queryClient = useQueryClient();
@@ -246,6 +244,9 @@ const TransactionsPage = () => {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isManageSourcesOpen, setIsManageSourcesOpen] = useState(false);
 
+  // 💡 1. إعداد حالة التمرير اللانهائي
+  const [visibleCount, setVisibleCount] = useState(50);
+
   const {
     data: transactionsData = [],
     isLoading,
@@ -259,7 +260,6 @@ const TransactionsPage = () => {
     },
   });
 
-  // 💡 جلب المكاتب التعاونية
   const { data: coopOffices = [] } = useQuery({
     queryKey: ["coop-offices-list"],
     queryFn: async () => {
@@ -268,7 +268,6 @@ const TransactionsPage = () => {
     },
   });
 
-  // 💡 جلب الأشخاص
   const { data: persons = [] } = useQuery({
     queryKey: ["persons-list"],
     queryFn: async () => {
@@ -285,14 +284,12 @@ const TransactionsPage = () => {
     },
   });
 
-  // 💡 دمج الأشخاص والمكاتب معاً لتمريرهم لنافذة المصادر
   const availableEntities = useMemo(() => {
     const offices = coopOffices.map((o) => o.name).filter(Boolean);
     const people = persons.map((p) => p.name).filter(Boolean);
     return Array.from(new Set([...offices, ...people])).sort();
   }, [coopOffices, persons]);
 
-  // 💡 استخراج العملاء الفعليين من المعاملات لفلتر العملاء
   const uniqueClients = useMemo(() => {
     const clients = transactionsData
       .map((tx) => tx.client || tx.owner)
@@ -314,14 +311,12 @@ const TransactionsPage = () => {
     return ["الكل", ...new Set(statuses)].sort();
   }, [transactionsData]);
 
-  // 1. تحديد المصادر الرئيسية (الأزرار الظاهرة)
   const mainFilters = useMemo(() => {
     const base = ["الكل"];
     const custom = dbSources.map((s) => s.name);
     return Array.from(new Set([...base, ...custom]));
   }, [dbSources]);
 
-  // 2. تحديد المصادر الديناميكية (للقائمة المنسدلة الجانبية)
   const dynamicSources = useMemo(() => {
     const sourcesSet = new Set();
     transactionsData.forEach((tx) => {
@@ -334,12 +329,22 @@ const TransactionsPage = () => {
     return Array.from(sourcesSet).sort();
   }, [transactionsData, mainFilters]);
 
-  // تطبيق الفلترة
+  // 💡 2. إعادة تعيين العداد عند تغيير أي فلتر
+  useEffect(() => {
+    setVisibleCount(50);
+  }, [
+    searchQuery,
+    activeSourceFilter,
+    activeClientFilter,
+    activeStatusFilter,
+    activeSector,
+    advFilters,
+  ]);
+
   const filteredTransactions = useMemo(() => {
     return transactionsData.filter((tx) => {
       const internalName = tx.internalName || tx.notes?.internalName || "";
       const txClientName = tx.client || tx.owner || "";
-      // 💡 قراءة الحالة بشكل ذكي من جميع الأماكن المحتملة التي قد يحفظها الباك إند
       const sysStat =
         tx.status ||
         tx.transactionStatus ||
@@ -390,6 +395,22 @@ const TransactionsPage = () => {
     activeSector,
     advFilters,
   ]);
+
+  // 💡 3. استخراج العناصر المرئية فقط
+  const visibleTransactions = useMemo(() => {
+    return filteredTransactions.slice(0, visibleCount);
+  }, [filteredTransactions, visibleCount]);
+
+  // 💡 4. دالة التقاط التمرير (Scroll) لزيادة العناصر
+  const handleScroll = (e) => {
+    const { scrollTop, clientHeight, scrollHeight } = e.target;
+    // إذا وصل لقبل النهاية بـ 100 بكسل، حمّل 50 عنصر إضافي
+    if (scrollHeight - scrollTop <= clientHeight + 100) {
+      if (visibleCount < filteredTransactions.length) {
+        setVisibleCount((prev) => prev + 50);
+      }
+    }
+  };
 
   const totals = useMemo(() => {
     return filteredTransactions.reduce(
@@ -521,7 +542,6 @@ const TransactionsPage = () => {
             />
           </div>
 
-          {/* 💡 فلتر العملاء المخصص */}
           <div className="relative flex items-center">
             <Users className="absolute right-2 w-3.5 h-3.5 text-blue-500 pointer-events-none" />
             <select
@@ -538,7 +558,6 @@ const TransactionsPage = () => {
             <ChevronDown className="absolute left-2 w-3 h-3 text-gray-400 pointer-events-none" />
           </div>
 
-          {/* 💡 فلتر حالة المعاملة */}
           <div className="relative flex items-center">
             <Activity className="absolute right-2 w-3.5 h-3.5 text-amber-500 pointer-events-none" />
             <select
@@ -574,7 +593,6 @@ const TransactionsPage = () => {
 
           <div className="flex-1"></div>
 
-          {/* ملخص المبالغ العلوية */}
           <div className="hidden lg:flex items-center gap-3 text-[11px] bg-white border border-gray-100 px-3 py-1.5 rounded-md shadow-sm">
             <span className="text-gray-500">
               الإجمالي:{" "}
@@ -688,7 +706,6 @@ const TransactionsPage = () => {
           </div>
         )}
 
-        {/* 🚀 شريط ملخص مصادر المعاملات (الأزرار الديناميكية) 🚀 */}
         <div className="shrink-0 bg-white border border-gray-200 rounded-md py-1.5 px-2 flex items-center shadow-sm">
           <span className="text-gray-400 text-[10px] font-bold ml-3">
             المصدر (مكتب/شخص):
@@ -744,7 +761,6 @@ const TransactionsPage = () => {
             )}
           </div>
 
-          {/* زر لوحة تحكم إدارة المصادر */}
           <AccessControl
             code="TXN_MANAGE_SOURCES"
             name="إدارة المصادر"
@@ -762,9 +778,12 @@ const TransactionsPage = () => {
           </AccessControl>
         </div>
 
-        {/* الجدول الرئيسي */}
+        {/* الجدول الرئيسي 💡 إضافة التمرير هنا */}
         <div className="bg-white border border-gray-200 rounded-lg overflow-hidden flex-1 flex flex-col focus:outline-none shadow-sm">
-          <div className="flex-1 overflow-auto custom-scrollbar-slim relative min-h-0">
+          <div
+            className="flex-1 overflow-auto custom-scrollbar-slim relative min-h-0"
+            onScroll={handleScroll} // 👈 التقاط حركة السكرول
+          >
             <table className="w-full border-collapse text-[12px] min-w-[1300px]">
               <thead className="sticky top-0 z-30">
                 <tr className="h-[36px] bg-gray-50 border-b border-gray-200">
@@ -874,169 +893,188 @@ const TransactionsPage = () => {
                       </span>
                     </td>
                   </tr>
-                ) : filteredTransactions.length > 0 ? (
-                  filteredTransactions.map((tx) => {
-                    const internalName =
-                      tx.internalName || tx.notes?.internalName || "—";
-                    const total =
-                      parseFloat(tx.totalPrice || tx.totalFees) || 0;
-                    const paid =
-                      parseFloat(tx.collectionAmount || tx.paidAmount) || 0;
-                    const remaining =
-                      parseFloat(tx.remainingAmount) ||
-                      (total > 0 ? total - paid : 0);
-                    const percent =
-                      total > 0
-                        ? Math.min(100, Math.round((paid / total) * 100))
-                        : 0;
-                    const progressColor =
-                      percent === 100
-                        ? "bg-green-500"
-                        : percent > 0
-                          ? "bg-amber-400"
-                          : "bg-red-500";
+                ) : visibleTransactions.length > 0 ? (
+                  <>
+                    {/* 💡 رسم البيانات المرئية فقط */}
+                    {visibleTransactions.map((tx) => {
+                      const internalName =
+                        tx.internalName || tx.notes?.internalName || "—";
+                      const total =
+                        parseFloat(tx.totalPrice || tx.totalFees) || 0;
+                      const paid =
+                        parseFloat(tx.collectionAmount || tx.paidAmount) || 0;
+                      const remaining =
+                        parseFloat(tx.remainingAmount) ||
+                        (total > 0 ? total - paid : 0);
+                      const percent =
+                        total > 0
+                          ? Math.min(100, Math.round((paid / total) * 100))
+                          : 0;
+                      const progressColor =
+                        percent === 100
+                          ? "bg-green-500"
+                          : percent > 0
+                            ? "bg-amber-400"
+                            : "bg-red-500";
 
-                    return (
-                      <tr
-                        key={tx.id}
-                        onClick={() => handleRowClick(tx)}
-                        className="cursor-pointer transition-colors border-b border-gray-100 hover:bg-blue-50/50 group"
-                      >
-                        <td className="text-center border-l border-gray-100 py-2">
-                          <Square className="w-3.5 h-3.5 inline text-gray-300" />
-                        </td>
-                        <td className="px-2 border-l border-gray-100 py-2">
-                          <span className="font-mono text-[11.5px] font-bold text-blue-600 group-hover:underline">
-                            {tx.ref || tx.id}
-                          </span>
-                        </td>
-                        <td className="px-2 border-l border-gray-100 font-bold text-gray-600 text-[10px] py-2">
-                          {internalName}
-                        </td>
-                        <td className="px-2 border-l border-gray-100 font-bold text-gray-700 py-2">
-                          {tx.client || tx.owner}
-                        </td>
-                        <td className="px-2 border-l border-gray-100 text-gray-500 py-2">
-                          {tx.district}
-                        </td>
-                        <td className="px-2 border-l border-gray-100 text-gray-500 py-2">
-                          {tx.sector}
-                        </td>
-                        <td className="px-2 border-l border-gray-100 font-bold text-gray-600 py-2">
-                          {tx.type}
-                        </td>
-                        <td className="px-2 border-l border-gray-100 py-2">
-                          <span className="text-[10px] font-bold text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-100 whitespace-nowrap">
-                            {tx.sourceName || tx.source || "مباشر"}
-                          </span>
-                        </td>
+                      return (
+                        <tr
+                          key={tx.id}
+                          onClick={() => handleRowClick(tx)}
+                          className="cursor-pointer transition-colors border-b border-gray-100 hover:bg-blue-50/50 group"
+                        >
+                          <td className="text-center border-l border-gray-100 py-2">
+                            <Square className="w-3.5 h-3.5 inline text-gray-300" />
+                          </td>
+                          <td className="px-2 border-l border-gray-100 py-2">
+                            <span className="font-mono text-[11.5px] font-bold text-blue-600 group-hover:underline">
+                              {tx.ref || tx.id}
+                            </span>
+                          </td>
+                          <td className="px-2 border-l border-gray-100 font-bold text-gray-600 text-[10px] py-2">
+                            {internalName}
+                          </td>
+                          <td className="px-2 border-l border-gray-100 font-bold text-gray-700 py-2">
+                            {tx.client || tx.owner}
+                          </td>
+                          <td className="px-2 border-l border-gray-100 text-gray-500 py-2">
+                            {tx.district}
+                          </td>
+                          <td className="px-2 border-l border-gray-100 text-gray-500 py-2">
+                            {tx.sector}
+                          </td>
+                          <td className="px-2 border-l border-gray-100 font-bold text-gray-600 py-2">
+                            {tx.type}
+                          </td>
+                          <td className="px-2 border-l border-gray-100 py-2">
+                            <span className="text-[10px] font-bold text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded border border-purple-100 whitespace-nowrap">
+                              {tx.sourceName || tx.source || "مباشر"}
+                            </span>
+                          </td>
 
-                        {hasTotalAccess && (
-                          <td className="px-2 border-l border-gray-100 font-mono font-bold text-gray-800 py-2">
-                            {(
-                              tx.totalPrice ||
-                              tx.totalFees ||
-                              0
-                            ).toLocaleString()}
-                          </td>
-                        )}
-                        {hasPaidAccess && (
-                          <td className="px-2 border-l border-gray-100 font-mono font-bold text-green-600 py-2">
-                            {(
-                              tx.collectionAmount ||
-                              tx.paidAmount ||
-                              0
-                            ).toLocaleString()}
-                          </td>
-                        )}
-                        {hasRemainingAccess && (
-                          <td className="px-2 border-l border-gray-100 font-mono font-bold text-red-600 py-2">
-                            {(tx.remainingAmount || 0).toLocaleString()}
-                          </td>
-                        )}
+                          {hasTotalAccess && (
+                            <td className="px-2 border-l border-gray-100 font-mono font-bold text-gray-800 py-2">
+                              {(
+                                tx.totalPrice ||
+                                tx.totalFees ||
+                                0
+                              ).toLocaleString()}
+                            </td>
+                          )}
+                          {hasPaidAccess && (
+                            <td className="px-2 border-l border-gray-100 font-mono font-bold text-green-600 py-2">
+                              {(
+                                tx.collectionAmount ||
+                                tx.paidAmount ||
+                                0
+                              ).toLocaleString()}
+                            </td>
+                          )}
+                          {hasRemainingAccess && (
+                            <td className="px-2 border-l border-gray-100 font-mono font-bold text-red-600 py-2">
+                              {(tx.remainingAmount || 0).toLocaleString()}
+                            </td>
+                          )}
 
-                        {hasCollStatusAccess && (
-                          <td className="px-2 border-l border-gray-100 align-middle py-1.5">
-                            <AccessControl
-                              code="TXN_COL_STATUS"
-                              name="رؤية حالة التحصيل"
-                              moduleName="إدارة المعاملات"
-                              fallback={
-                                <span className="inline-flex items-center gap-1 text-[9px] font-bold text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">
-                                  <Lock className="w-2 h-2" /> محمي
-                                </span>
-                              }
-                            >
-                              <div className="flex flex-col gap-1 w-full max-w-[100px]">
-                                <div className="w-full bg-gray-200 rounded-full h-1.5 overflow-hidden border border-gray-300/50">
-                                  <div
-                                    className={`h-full ${progressColor} transition-all duration-500`}
-                                    style={{ width: `${percent}%` }}
-                                  ></div>
+                          {hasCollStatusAccess && (
+                            <td className="px-2 border-l border-gray-100 align-middle py-1.5">
+                              <AccessControl
+                                code="TXN_COL_STATUS"
+                                name="رؤية حالة التحصيل"
+                                moduleName="إدارة المعاملات"
+                                fallback={
+                                  <span className="inline-flex items-center gap-1 text-[9px] font-bold text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded">
+                                    <Lock className="w-2 h-2" /> محمي
+                                  </span>
+                                }
+                              >
+                                <div className="flex flex-col gap-1 w-full max-w-[100px]">
+                                  <div className="w-full bg-gray-200 rounded-full h-1.5 overflow-hidden border border-gray-300/50">
+                                    <div
+                                      className={`h-full ${progressColor} transition-all duration-500`}
+                                      style={{ width: `${percent}%` }}
+                                    ></div>
+                                  </div>
+                                  <div className="flex flex-col text-[9.5px] font-mono leading-tight">
+                                    <div className="flex justify-between">
+                                      <span className="text-gray-500">
+                                        النسبة:
+                                      </span>
+                                      <span className="font-bold text-gray-800">
+                                        {percent}%
+                                      </span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                      <span className="text-gray-500">
+                                        محصل:
+                                      </span>
+                                      <span className="font-bold text-green-600">
+                                        {paid.toLocaleString()}
+                                      </span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                      <span className="text-gray-500">
+                                        متبقي:
+                                      </span>
+                                      <span className="font-bold text-red-500">
+                                        {remaining.toLocaleString()}
+                                      </span>
+                                    </div>
+                                  </div>
                                 </div>
-                                <div className="flex flex-col text-[9.5px] font-mono leading-tight">
-                                  <div className="flex justify-between">
-                                    <span className="text-gray-500">
-                                      النسبة:
-                                    </span>
-                                    <span className="font-bold text-gray-800">
-                                      {percent}%
-                                    </span>
-                                  </div>
-                                  <div className="flex justify-between">
-                                    <span className="text-gray-500">محصل:</span>
-                                    <span className="font-bold text-green-600">
-                                      {paid.toLocaleString()}
-                                    </span>
-                                  </div>
-                                  <div className="flex justify-between">
-                                    <span className="text-gray-500">
-                                      متبقي:
-                                    </span>
-                                    <span className="font-bold text-red-500">
-                                      {remaining.toLocaleString()}
-                                    </span>
-                                  </div>
-                                </div>
-                              </div>
-                            </AccessControl>
-                          </td>
-                        )}
+                              </AccessControl>
+                            </td>
+                          )}
 
-                        <td className="px-2 border-l border-gray-100 py-2">
-                          <span
-                            className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold border whitespace-nowrap ${
-                              (tx.status ||
-                                tx.notes?.transactionStatusData
-                                  ?.currentStatus ||
-                                "مسجلة") === "تم الاعتماد"
-                                ? "bg-green-50 text-green-700 border-green-200"
-                                : (tx.status ||
-                                      tx.notes?.transactionStatusData
-                                        ?.currentStatus ||
-                                      "مسجلة") === "ملاحظات من الجهات"
-                                  ? "bg-orange-50 text-orange-700 border-orange-200"
+                          <td className="px-2 border-l border-gray-100 py-2">
+                            <span
+                              className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-bold border whitespace-nowrap ${
+                                (tx.status ||
+                                  tx.notes?.transactionStatusData
+                                    ?.currentStatus ||
+                                  "مسجلة") === "تم الاعتماد"
+                                  ? "bg-green-50 text-green-700 border-green-200"
                                   : (tx.status ||
                                         tx.notes?.transactionStatusData
                                           ?.currentStatus ||
-                                        "مسجلة") === "تم الرفع"
-                                    ? "bg-blue-50 text-blue-700 border-blue-200"
-                                    : "bg-gray-100 text-gray-600 border-gray-200"
-                            }`}
-                          >
-                            {tx.status ||
-                              tx.transactionStatus ||
-                              tx.notes?.transactionStatusData?.currentStatus ||
-                              tx.notes?.status ||
-                              "مسجلة"}
-                          </span>
-                        </td>
-                        <td className="px-2 border-l border-gray-100 font-mono text-[10px] text-gray-400 py-2">
-                          {tx.created || tx.date}
+                                        "مسجلة") === "ملاحظات من الجهات"
+                                    ? "bg-orange-50 text-orange-700 border-orange-200"
+                                    : (tx.status ||
+                                          tx.notes?.transactionStatusData
+                                            ?.currentStatus ||
+                                          "مسجلة") === "تم الرفع"
+                                      ? "bg-blue-50 text-blue-700 border-blue-200"
+                                      : "bg-gray-100 text-gray-600 border-gray-200"
+                              }`}
+                            >
+                              {tx.status ||
+                                tx.transactionStatus ||
+                                tx.notes?.transactionStatusData
+                                  ?.currentStatus ||
+                                tx.notes?.status ||
+                                "مسجلة"}
+                            </span>
+                          </td>
+                          <td className="px-2 border-l border-gray-100 font-mono text-[10px] text-gray-400 py-2">
+                            {tx.created || tx.date}
+                          </td>
+                        </tr>
+                      );
+                    })}
+
+                    {/* 💡 مؤشر تحميل عند التمرير إن وُجد المزيد */}
+                    {visibleCount < filteredTransactions.length && (
+                      <tr>
+                        <td
+                          colSpan={totalVisibleColumns}
+                          className="text-center py-4 text-[10px] font-bold text-gray-400 bg-gray-50/50"
+                        >
+                          قم بالتمرير للأسفل لتحميل المزيد... (معروض{" "}
+                          {visibleCount} من {filteredTransactions.length})
                         </td>
                       </tr>
-                    );
-                  })
+                    )}
+                  </>
                 ) : (
                   <tr>
                     <td
@@ -1055,7 +1093,7 @@ const TransactionsPage = () => {
                     colSpan="8"
                     className="px-4 font-bold text-[12px] text-gray-700 text-left border-l border-gray-200"
                   >
-                    مجموع المعاملات المعروضة ({filteredTransactions.length})
+                    مجموع المعاملات ({filteredTransactions.length})
                   </td>
                   {hasTotalAccess && (
                     <td className="px-2 font-mono font-bold text-[12.5px] text-blue-700 border-l border-gray-200">
@@ -1086,20 +1124,10 @@ const TransactionsPage = () => {
 
           <div className="flex items-center justify-between px-3 py-1.5 border-t border-gray-200 shrink-0 text-[11px] bg-white">
             <span className="text-gray-500 font-semibold">
-              عرض {filteredTransactions.length > 0 ? 1 : 0}-
-              {filteredTransactions.length} من أصل {filteredTransactions.length}
+              يتم عرض {Math.min(visibleCount, filteredTransactions.length)} من
+              أصل {filteredTransactions.length} نتيجة (استخدم التمرير للأسفل
+              لعرض المزيد)
             </span>
-            <div className="flex items-center gap-1">
-              <button className="p-1 rounded hover:bg-gray-100 text-gray-400 transition-colors">
-                <ArrowRight className="w-4 h-4" />
-              </button>
-              <span className="px-2.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-100 text-center min-w-[24px] font-bold">
-                1
-              </span>
-              <button className="p-1 rounded hover:bg-gray-100 text-gray-400 transition-colors">
-                <ArrowLeft className="w-4 h-4" />
-              </button>
-            </div>
           </div>
         </div>
       </div>
