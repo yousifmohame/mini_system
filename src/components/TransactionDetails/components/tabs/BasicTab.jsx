@@ -1,4 +1,7 @@
 import React, { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import api from "../../../../api/axios";
+import { toast } from "sonner";
 import {
   FileText,
   Edit3,
@@ -21,8 +24,10 @@ import {
   Building,
   Plus,
   Paperclip,
-  Trash2, // 👈 أيقونة الحذف للملاك الإضافيين
-  Users, // 👈 أيقونة تعدد الملاك
+  Trash2,
+  Users,
+  Layers,
+  CheckCircle,
 } from "lucide-react";
 import { SearchableSelect } from "../TransactionSharedUI";
 
@@ -49,6 +54,44 @@ export const BasicTab = ({
   backendUrl,
   currentUser,
 }) => {
+  const queryClient = useQueryClient();
+
+  // 🚀 1. جلب قائمة المخططات من الباك إند
+  const { data: plansData = [] } = useQuery({
+    queryKey: ["riyadh-plans"],
+    queryFn: async () => (await api.get("/riyadh-streets/plans")).data,
+  });
+
+  // تحويل المخططات لتناسب المكون SearchableSelect
+  const plansOptions = plansData.map((p) => ({
+    value: p.planNumber,
+    label: p.planNumber,
+    id: p.id,
+  }));
+
+  // 🚀 2. حالة المودال الصغير للإضافة السريعة للمخطط
+  const [isQuickAddPlanOpen, setIsQuickAddPlanOpen] = useState(false);
+  const [newPlanName, setNewPlanName] = useState("");
+
+  const quickAddPlanMutation = useMutation({
+    mutationFn: async (planNumber) => {
+      return await api.post("/riyadh-streets/plans", {
+        planNumber,
+        status: "معتمد",
+        isWithout: false,
+      });
+    },
+    onSuccess: (res) => {
+      toast.success("تم تسجيل المخطط الجديد بنجاح");
+      queryClient.invalidateQueries(["riyadh-plans"]);
+      // تعيين المخطط الجديد فوراً في فورم المعاملة
+      setEditFormData((prev) => ({ ...prev, plan: res.data.planNumber }));
+      setNewPlanName("");
+      setIsQuickAddPlanOpen(false);
+    },
+    onError: () => toast.error("فشل إضافة المخطط، قد يكون مكرراً"),
+  });
+
   // حساب أيام الإنشاء وأيام التعديل
   const createdDate = new Date(tx.createdAt);
   const updatedDate = new Date(tx.updatedAt || tx.createdAt);
@@ -161,13 +204,12 @@ export const BasicTab = ({
         <button
           onClick={() => {
             if (!isEditingBasic) {
-              // عند فتح التعديل، نهيئ مصفوفة additionalOwners إذا كان هناك ملاك متعددين
               const existingNames = tx.ownerNames
                 ? tx.ownerNames.split(" و ")
                 : [];
               if (existingNames.length > 1) {
                 const additional = existingNames.slice(1).map((name) => ({
-                  clientId: "", // للاسف الداتا القديمة لا تحفظ ID لكل الملاك، نعرض الاسم فقط
+                  clientId: "",
                   ownerName: name.trim(),
                 }));
                 setEditFormData((prev) => ({
@@ -197,7 +239,6 @@ export const BasicTab = ({
 
       {/* 💡 الشريط العلوي: منشئ المعاملة وتفاصيل الوقت والتأخير */}
       <div className="flex flex-col lg:flex-row gap-4">
-        {/* منشئ المعاملة والتواريخ */}
         <div className="flex-1 bg-gradient-to-l from-blue-50/80 to-white border border-blue-100 p-4 rounded-2xl flex flex-wrap items-center gap-6 shadow-sm">
           <div className="flex items-center gap-3 pr-6 border-l border-blue-100">
             <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 shadow-inner">
@@ -254,7 +295,6 @@ export const BasicTab = ({
           </div>
         </div>
 
-        {/* حالة تأخير المعاملة */}
         <div
           className={`shrink-0 w-full lg:w-48 p-4 rounded-2xl border flex flex-col items-center justify-center text-center shadow-sm ${delayColor}`}
         >
@@ -286,7 +326,6 @@ export const BasicTab = ({
 
           {isEditingBasic ? (
             <div className="space-y-4">
-              {/* المالك الرئيسي */}
               <div className="bg-slate-50 border border-slate-200 p-3 rounded-xl relative">
                 <span className="absolute -top-2.5 right-3 bg-blue-100 text-blue-800 text-[9px] font-black px-2 py-0.5 rounded border border-blue-200">
                   المالك الرئيسي *
@@ -310,7 +349,6 @@ export const BasicTab = ({
                 />
               </div>
 
-              {/* الملاك الإضافيين */}
               {(editFormData.additionalOwners || []).map((owner, idx) => (
                 <div
                   key={idx}
@@ -367,7 +405,6 @@ export const BasicTab = ({
             </div>
           )}
 
-          {/* تفاصيل المالك الإضافية (تظهر للمالك الرئيسي فقط) */}
           {!isEditingBasic && tx.clientObj && (
             <div className="mt-auto grid grid-cols-3 gap-2 border-t border-gray-100 pt-3">
               <div>
@@ -402,7 +439,6 @@ export const BasicTab = ({
           )}
         </div>
 
-        {/* رقم المعاملة */}
         <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex flex-col justify-center">
           <div className="text-gray-500 text-[11px] font-bold mb-2">
             رقم المعاملة (النظام)
@@ -439,7 +475,6 @@ export const BasicTab = ({
           )}
         </div>
 
-        {/* نوع المعاملة */}
         <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex flex-col justify-center">
           <div className="text-gray-500 text-[11px] font-bold mb-2">
             نوع المعاملة
@@ -511,7 +546,6 @@ export const BasicTab = ({
           )}
         </div>
 
-        {/* الملاحظات العامة الحرة */}
         <div className="bg-amber-50/30 p-5 rounded-2xl border border-amber-200 shadow-sm flex flex-col">
           <div className="flex items-center justify-between mb-3">
             <label className="text-[11px] font-bold text-amber-800 flex items-center gap-2">
@@ -592,7 +626,7 @@ export const BasicTab = ({
         </div>
       </div>
 
-      {/* 💡 بيانات الموقع / الأرض والمساحة (النسخة الشاملة) */}
+      {/* 💡 بيانات الموقع / الأرض والمساحة */}
       <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
         <div className="bg-emerald-50/50 px-5 py-4 border-b border-gray-100 flex items-center gap-2">
           <MapPinned className="w-5 h-5 text-emerald-600" />
@@ -602,25 +636,39 @@ export const BasicTab = ({
         </div>
 
         <div className="p-6 grid grid-cols-1 lg:grid-cols-12 gap-8">
-          {/* العمود الأيمن (البيانات النصية) */}
           <div className="col-span-1 lg:col-span-8 space-y-6">
-            {/* الصف الأول: المخطط، الحي، المحاور */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* 🚀 حقل رقم المخطط المطور */}
               <div className="space-y-1.5">
                 <label className="text-gray-500 text-[10px] font-bold block">
                   رقم المخطط
                 </label>
                 {isEditingBasic ? (
-                  <input
-                    type="text"
-                    value={editFormData.plan}
-                    onChange={(e) => handleEditChange("plan", e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg p-2.5 text-sm font-mono font-bold outline-none focus:border-emerald-500 bg-gray-50"
-                    placeholder="مثال: 3020/أ"
-                  />
+                  <div className="flex gap-1.5">
+                    <div className="flex-1">
+                      <SearchableSelect
+                        options={plansOptions}
+                        value={editFormData.plan}
+                        placeholder={editFormData.plan || "اختر المخطط..."}
+                        onChange={(val) =>
+                          setEditFormData((p) => ({ ...p, plan: val }))
+                        }
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setIsQuickAddPlanOpen(true)}
+                      className="p-2.5 bg-blue-50 text-blue-600 rounded-lg border border-blue-100 hover:bg-blue-600 hover:text-white transition-all"
+                      title="إضافة مخطط جديد للسجل"
+                    >
+                      <Plus size={18} />
+                    </button>
+                  </div>
                 ) : (
-                  <div className="font-bold text-gray-800 font-mono text-base bg-gray-50 p-2.5 rounded-lg border border-gray-100">
-                    {tx.planNumber || tx.notes?.refs?.plan || "—"}
+                  <div className="font-bold text-gray-800 font-mono text-base bg-gray-50 p-2.5 rounded-lg border border-gray-100 flex items-center gap-2">
+                    <Layers size={14} className="text-blue-500" />
+                    {/* 🚀 تصحيح قراءة رقم المخطط ليظهر دائماً */}
+                    {tx.plan || tx.planNumber || tx.notes?.refs?.plan || "—"}
                   </div>
                 )}
               </div>
@@ -687,7 +735,6 @@ export const BasicTab = ({
               </div>
             </div>
 
-            {/* الصف الثاني: المساحة، واسم الشارع */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-1.5">
                 <label className="text-gray-500 text-[10px] font-bold block">
@@ -740,7 +787,6 @@ export const BasicTab = ({
               </div>
             </div>
 
-            {/* الصف الثالث: الروابط والـ QR Codes */}
             <div className="border-t border-gray-100 pt-5 mt-2">
               <label className="text-gray-500 text-[10px] font-bold mb-3 block">
                 خرائط وروابط الموقع
@@ -829,9 +875,7 @@ export const BasicTab = ({
             </div>
           </div>
 
-          {/* العمود الأيسر (أرقام القطع الرأسية + الصورة الجوية) */}
           <div className="col-span-1 lg:col-span-4 flex flex-col gap-4">
-            {/* أرقام القطع */}
             <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 flex-1">
               <div className="flex justify-between items-center mb-3 border-b border-gray-200 pb-2">
                 <label className="text-gray-600 text-[11px] font-black">
@@ -878,7 +922,6 @@ export const BasicTab = ({
               )}
             </div>
 
-            {/* الصورة الجوية */}
             <div className="bg-slate-800 border border-slate-700 rounded-xl p-4 flex flex-col items-center justify-center text-center group relative overflow-hidden min-h-[140px]">
               {siteImagePreview ? (
                 <>
@@ -929,9 +972,8 @@ export const BasicTab = ({
         </div>
       </div>
 
-      {/* 💡 المكاتب المشاركة (المشرف والمصمم) */}
+      {/* 💡 المكاتب المشاركة */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* المكتب المشرف */}
         <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex flex-col h-full">
           <div className="text-gray-800 text-sm font-black mb-4 flex items-center gap-2 border-b border-gray-100 pb-3">
             <Building2 className="w-4 h-4 text-purple-600" /> المكتب المشرف
@@ -987,7 +1029,6 @@ export const BasicTab = ({
           )}
         </div>
 
-        {/* المكتب المصمم (نفس الهيكلة) */}
         <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex flex-col h-full">
           <div className="text-gray-800 text-sm font-black mb-4 flex items-center gap-2 border-b border-gray-100 pb-3">
             <Building className="w-4 h-4 text-cyan-600" /> المكتب المصمم (تصميم
@@ -1044,14 +1085,58 @@ export const BasicTab = ({
         </div>
       </div>
 
+      {/* 🚀 3. النافذة المنبثقة للإضافة السريعة للمخطط */}
+      {isQuickAddPlanOpen && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[210] flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl p-6 border border-slate-200 animate-in zoom-in-95">
+            <div className="flex justify-between items-center mb-4">
+              <h4 className="font-black text-slate-800 flex items-center gap-2">
+                <Layers className="text-blue-600" size={20} /> إضافة مخطط جديد
+              </h4>
+              <button
+                onClick={() => setIsQuickAddPlanOpen(false)}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="space-y-4">
+              <div>
+                <label className="text-[11px] font-black text-slate-500 mb-1.5 block">
+                  رقم المخطط الجديد
+                </label>
+                <input
+                  type="text"
+                  value={newPlanName}
+                  onChange={(e) => setNewPlanName(e.target.value)}
+                  className="w-full border border-slate-300 rounded-xl px-4 py-3 text-sm font-black focus:border-blue-500 outline-none"
+                  placeholder="مثال: 1234 / أ / 2"
+                  autoFocus
+                />
+              </div>
+              <button
+                onClick={() => quickAddPlanMutation.mutate(newPlanName)}
+                disabled={!newPlanName || quickAddPlanMutation.isPending}
+                className="w-full py-3 bg-blue-600 text-white rounded-xl font-black flex items-center justify-center gap-2 hover:bg-blue-700 disabled:opacity-50 transition-all"
+              >
+                {quickAddPlanMutation.isPending ? (
+                  <Loader2 className="animate-spin" size={18} />
+                ) : (
+                  <CheckCircle size={18} />
+                )}
+                تأكيد الإضافة للسجل
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 💡 زر الحفظ العائم */}
       {isEditingBasic && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 animate-in slide-in-from-bottom-5">
           <button
             onClick={() => {
-              // 1. تجميع الملاك الإضافيين
               let finalNames = [editFormData.clientName];
-
               let detailedOwners = [
                 {
                   clientId: editFormData.clientId,
@@ -1067,12 +1152,10 @@ export const BasicTab = ({
                 const additionalValid = editFormData.additionalOwners.filter(
                   (o) => o.ownerName && o.ownerName.trim() !== "",
                 );
-
                 finalNames = [
                   ...finalNames,
                   ...additionalValid.map((o) => o.ownerName),
                 ];
-
                 additionalValid.forEach((o) => {
                   detailedOwners.push({
                     clientId: o.clientId,
@@ -1083,17 +1166,13 @@ export const BasicTab = ({
               }
               const finalOwnerNamesString = finalNames.join(" و ");
 
-              // 💡 2. بناء كائن البيانات المحدث ليتم إرساله فوراً
               const updatedData = {
                 ...editFormData,
                 ownerNames: finalOwnerNamesString,
                 detailedOwnersList: detailedOwners,
               };
 
-              // 💡 3. تحديث الستيت
               setEditFormData(updatedData);
-
-              // 💡 4. إرسال البيانات المحدثة للمكون الأب لتخزينها
               saveBasicEdits(updatedData);
             }}
             disabled={updateTxMutation.isPending}

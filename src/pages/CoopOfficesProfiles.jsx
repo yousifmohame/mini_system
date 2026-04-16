@@ -46,7 +46,9 @@ const CoopOfficesProfiles = () => {
     queryKey: ["coop-offices"],
     queryFn: async () => {
       const res = await api.get("/coop-offices");
-      return res.data?.data || [];
+      const allOffices = res.data?.data || [];
+      // 💡 التعديل هنا: تصفية البيانات لاستبعاد المكتب الرئيسي وعرض المكاتب المتعاونة فقط
+      return allOffices.filter(office => !office.isMainBranch);
     },
   });
 
