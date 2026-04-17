@@ -30,6 +30,7 @@ import {
   CheckCircle,
 } from "lucide-react";
 import { SearchableSelect } from "../TransactionSharedUI";
+import AccessControl from "../../../../components/AccessControl";
 
 // Helper: لتحويل الأرقام العربية إلى إنجليزية
 const toEnglishNumbers = (str) => {
@@ -201,40 +202,50 @@ export const BasicTab = ({
         <h3 className="font-bold text-gray-800 flex items-center gap-2">
           <FileText className="w-5 h-5 text-blue-600" /> البيانات الرئيسية
         </h3>
-        <button
-          onClick={() => {
-            if (!isEditingBasic) {
-              const existingNames = tx.ownerNames
-                ? tx.ownerNames.split(" و ")
-                : [];
-              if (existingNames.length > 1) {
-                const additional = existingNames.slice(1).map((name) => ({
-                  clientId: "",
-                  ownerName: name.trim(),
-                }));
-                setEditFormData((prev) => ({
-                  ...prev,
-                  additionalOwners: additional,
-                }));
-              } else {
-                setEditFormData((prev) => ({ ...prev, additionalOwners: [] }));
-              }
-            }
-            setIsEditingBasic(!isEditingBasic);
-          }}
-          className={`flex items-center gap-1.5 px-4 py-2 border rounded-lg text-xs font-bold shadow-sm transition-colors ${
-            isEditingBasic
-              ? "bg-red-50 text-red-600 border-red-200 hover:bg-red-100"
-              : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
-          }`}
+        <AccessControl
+          code="EDIT_TRANSACTION_42"
+          name="تعديل البيانات الأساسية للمعاملة"
+          moduleName="تفاصيل المعاملة"
+          tabName="البيانات الأساسية"
         >
-          {isEditingBasic ? (
-            <X className="w-3.5 h-3.5" />
-          ) : (
-            <Edit3 className="w-3.5 h-3.5" />
-          )}
-          {isEditingBasic ? "إلغاء التعديل" : "تعديل البيانات"}
-        </button>
+          <button
+            onClick={() => {
+              if (!isEditingBasic) {
+                const existingNames = tx.ownerNames
+                  ? tx.ownerNames.split(" و ")
+                  : [];
+                if (existingNames.length > 1) {
+                  const additional = existingNames.slice(1).map((name) => ({
+                    clientId: "",
+                    ownerName: name.trim(),
+                  }));
+                  setEditFormData((prev) => ({
+                    ...prev,
+                    additionalOwners: additional,
+                  }));
+                } else {
+                  setEditFormData((prev) => ({
+                    ...prev,
+                    additionalOwners: [],
+                  }));
+                }
+              }
+              setIsEditingBasic(!isEditingBasic);
+            }}
+            className={`flex items-center gap-1.5 px-4 py-2 border rounded-lg text-xs font-bold shadow-sm transition-colors ${
+              isEditingBasic
+                ? "bg-red-50 text-red-600 border-red-200 hover:bg-red-100"
+                : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
+            }`}
+          >
+            {isEditingBasic ? (
+              <X className="w-3.5 h-3.5" />
+            ) : (
+              <Edit3 className="w-3.5 h-3.5" />
+            )}
+            {isEditingBasic ? "إلغاء التعديل" : "تعديل البيانات"}
+          </button>
+        </AccessControl>
       </div>
 
       {/* 💡 الشريط العلوي: منشئ المعاملة وتفاصيل الوقت والتأخير */}
@@ -985,7 +996,8 @@ export const BasicTab = ({
               <select
                 value={
                   editFormData.supervisingOfficeId ||
-                  tx.notes?.refs?.supervisingOfficeId ||
+                  tx.supervisorOfficeId ||
+                  tx.requestData?.supervisorOffice ||
                   ""
                 }
                 onChange={(e) =>
@@ -1009,12 +1021,20 @@ export const BasicTab = ({
             </div>
           ) : (
             <div className="flex-1 flex flex-col justify-center">
-              {tx.notes?.refs?.supervisingOfficeId ? (
+              {tx.supervisorOfficeId || tx.requestData?.supervisorOffice ? (
                 <div className="bg-purple-50/50 border border-purple-100 rounded-xl p-4">
                   <div className="text-lg font-black text-purple-900 mb-1">
                     {offices.find(
-                      (o) => o.id === tx.notes.refs.supervisingOfficeId,
-                    )?.name || "مكتب غير معروف"}
+                      (o) =>
+                        o.id ===
+                          (tx.supervisorOfficeId ||
+                            tx.requestData?.supervisorOffice) ||
+                        o.name ===
+                          (tx.supervisorOfficeId ||
+                            tx.requestData?.supervisorOffice),
+                    )?.name ||
+                      tx.supervisorOfficeId ||
+                      tx.requestData?.supervisorOffice}
                   </div>
                   <div className="text-xs text-purple-600 font-bold">
                     جهة إشرافية معتمدة
@@ -1040,7 +1060,8 @@ export const BasicTab = ({
               <select
                 value={
                   editFormData.designingOfficeId ||
-                  tx.notes?.refs?.designingOfficeId ||
+                  tx.designerOfficeId ||
+                  tx.requestData?.designerOffice ||
                   ""
                 }
                 onChange={(e) =>
@@ -1064,12 +1085,20 @@ export const BasicTab = ({
             </div>
           ) : (
             <div className="flex-1 flex flex-col justify-center">
-              {tx.notes?.refs?.designingOfficeId ? (
+              {tx.designerOfficeId || tx.requestData?.designerOffice ? (
                 <div className="bg-cyan-50/50 border border-cyan-100 rounded-xl p-4">
                   <div className="text-lg font-black text-cyan-900 mb-1">
                     {offices.find(
-                      (o) => o.id === tx.notes.refs.designingOfficeId,
-                    )?.name || "مكتب غير معروف"}
+                      (o) =>
+                        o.id ===
+                          (tx.designerOfficeId ||
+                            tx.requestData?.designerOffice) ||
+                        o.name ===
+                          (tx.designerOfficeId ||
+                            tx.requestData?.designerOffice),
+                    )?.name ||
+                      tx.designerOfficeId ||
+                      tx.requestData?.designerOffice}
                   </div>
                   <div className="text-xs text-cyan-600 font-bold">
                     الجهة المسؤولة عن التصميم

@@ -14,7 +14,7 @@ import ServerSettings from "./components/ServerSettings";
 // --- Pages / Screens ---
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
-import TransactionsPage from "./pages/TransactionsPage"; // 👈 استيراد صفحة المعاملات الجديدة
+import TransactionsPage from "./pages/Transactions/TransactionContinu/TransactionsPage"; // 👈 استيراد صفحة المعاملات الجديدة
 import BrokerSettlementsPage from "./pages/BrokerSettlementsPage";
 import AgentSettlementsPage from "./pages/AgentSettlementsPage";
 import PartnerSettlementsPage from "./pages/PartnerSettlementsPage";
