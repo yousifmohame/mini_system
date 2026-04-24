@@ -1193,12 +1193,19 @@ export const BasicTab = ({
                   });
                 });
               }
+              
               const finalOwnerNamesString = finalNames.join(" و ");
 
+              // 🚀 التأكد من تضمين كافة الحقول (بما فيها generalNotes والروابط)
               const updatedData = {
-                ...editFormData,
+                ...editFormData, // ينقل generalNotes و mapsLink وغيرها
                 ownerNames: finalOwnerNamesString,
-                detailedOwnersList: detailedOwners,
+                notes: {
+                    ...editFormData.notes,
+                    detailedOwnersList: detailedOwners,
+                },
+                // تمرير اسم المستخدم الحالي ليحفظ في الباك إند
+                updatedBy: currentUser?.name || "مدير النظام" 
               };
 
               setEditFormData(updatedData);

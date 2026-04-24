@@ -1,16 +1,15 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getAllClients, deleteClient } from "../../api/clientApi";
-import api from "../../api/axios"; // 👈 استيراد api لتحديث حالة العميل
+import api from "../../api/axios";
 import {
   Search,
   RefreshCw,
   Copy,
   Eye,
   Plus,
-  Phone,
+  ArrowLeft,
   Mail,
-  MapPin,
   X,
   Loader2,
   Users,
@@ -18,14 +17,15 @@ import {
   Trash2,
   MessageCircle,
   FilterX,
-  ChevronRight,
-  ChevronLeft,
   Ban,
   Lock,
-  AlertCircle,
-  ToggleLeft, // 👈 أيقونة التجميد
-  ToggleRight, // 👈 أيقونة التنشيط
+  ToggleLeft,
+  ToggleRight,
   AlertTriangle,
+  CheckCircle2,
+  Building2,
+  FileWarning,
+  Globe,
 } from "lucide-react";
 import { toast } from "sonner";
 import AccessControl from "../../components/AccessControl";
@@ -65,7 +65,16 @@ const getRepresentative = (repData) => {
   return repData;
 };
 
-const ClientsLog = ({ onOpenDetails, onEditClient }) => {
+// دالة مساعدة للتحقق من اكتمال الملف
+const isProfileIncomplete = (client) => {
+  return (
+    client.completionPercentage < 40 ||
+    !client.idNumber ||
+    client.idNumber.startsWith("TEMP")
+  );
+};
+
+const ClientsLog = ({ onOpenDetails, onEditClient, onBack }) => {
   const queryClient = useQueryClient();
 
   const [searchTerm, setSearchTerm] = useState("");
@@ -78,11 +87,23 @@ const ClientsLog = ({ onOpenDetails, onEditClient }) => {
     expiry: "all",
   });
 
+  // حالة الفلتر السريع عبر بطاقات الإحصائيات (لم تعد تستخدم للفلترة المباشرة بنفس التاب بعد التعديل، لكن نحتفظ بها إن أردت العودة للفلترة المحلية لاحقاً)
+  const [activeStatFilter, setActiveStatFilter] = useState("all");
+
   const [selectedClient, setSelectedClient] = useState(null);
   const [isPanelOpen, setIsPanelOpen] = useState(false);
 
-  const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 15;
+  // حالة التمرير اللانهائي بدلاً من الصفحات
+  const [visibleCount, setVisibleCount] = useState(50);
+
+  // قراءة الفلتر من الرابط (إذا تم فتح الصفحة في تاب جديد مع تحديد الفلتر)
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const filterFromUrl = urlParams.get("filter");
+    if (filterFromUrl) {
+      setActiveStatFilter(filterFromUrl);
+    }
+  }, []);
 
   const {
     data: clients = [],
@@ -109,7 +130,6 @@ const ClientsLog = ({ onOpenDetails, onEditClient }) => {
     },
   });
 
-  // 👈 ميوتايشن جديد لتحديث حالة العميل (تجميد/تنشيط)
   const toggleStatusMutation = useMutation({
     mutationFn: async ({ id, isActive }) => {
       const res = await api.put(`/clients/${id}`, { isActive });
@@ -152,20 +172,57 @@ const ClientsLog = ({ onOpenDetails, onEditClient }) => {
         filters.status === "all" ||
         (filters.status === "active" ? client.isActive : !client.isActive);
 
+      // الفلتر من بطاقات الإحصائيات
+      let statMatch = true;
+      switch (activeStatFilter) {
+        case "active":
+          statMatch = client.isActive;
+          break;
+        case "blocked":
+          statMatch = !client.isActive;
+          break;
+        case "missingDocs":
+          statMatch = isProfileIncomplete(client);
+          break;
+        case "companies":
+          statMatch = client.type === "شركة" || client.type === "مؤسسة";
+          break;
+        case "foreigners":
+          statMatch = client.nationality !== "سعودي" && client.nationality;
+          break;
+        default:
+          statMatch = true;
+      }
+
       return (
-        searchMatch && matchType && matchCity && matchRating && matchStatus
+        searchMatch &&
+        matchType &&
+        matchCity &&
+        matchRating &&
+        matchStatus &&
+        statMatch
       );
     });
-  }, [clients, filters, searchTerm]);
+  }, [clients, filters, searchTerm, activeStatFilter]);
 
-  const totalPages = Math.max(
-    1,
-    Math.ceil(filteredClients.length / itemsPerPage),
-  );
-  const paginatedClients = useMemo(() => {
-    const start = (currentPage - 1) * itemsPerPage;
-    return filteredClients.slice(start, start + itemsPerPage);
-  }, [filteredClients, currentPage]);
+  // إعادة التمرير للبداية عند تغيير الفلاتر
+  useEffect(() => {
+    setVisibleCount(50);
+  }, [searchTerm, filters, activeStatFilter]);
+
+  const visibleClients = useMemo(() => {
+    return filteredClients.slice(0, visibleCount);
+  }, [filteredClients, visibleCount]);
+
+  // دالة التمرير اللانهائي
+  const handleScroll = (e) => {
+    const { scrollTop, clientHeight, scrollHeight } = e.target;
+    if (scrollHeight - scrollTop <= clientHeight + 100) {
+      if (visibleCount < filteredClients.length) {
+        setVisibleCount((prev) => prev + 50);
+      }
+    }
+  };
 
   const stats = useMemo(() => {
     return {
@@ -176,8 +233,7 @@ const ClientsLog = ({ onOpenDetails, onEditClient }) => {
       foreigners: clients.filter(
         (c) => c.nationality !== "سعودي" && c.nationality,
       ).length,
-      investors: 1,
-      missingDocs: 2,
+      missingDocs: clients.filter((c) => isProfileIncomplete(c)).length,
       expiringReps: 2,
       blocked: clients.filter((c) => !c.isActive).length,
       unreachable: 11,
@@ -205,7 +261,6 @@ const ClientsLog = ({ onOpenDetails, onEditClient }) => {
     }
   };
 
-  // 👈 دالة التجميد والتنشيط
   const handleToggleStatus = (e, client) => {
     e.stopPropagation();
     const action = client.isActive ? "تجميد" : "تنشيط";
@@ -227,7 +282,13 @@ const ClientsLog = ({ onOpenDetails, onEditClient }) => {
       expiry: "all",
     });
     setSearchTerm("");
-    setCurrentPage(1);
+
+    // إزالة الفلتر من الـ URL إن وجد
+    const newUrl = window.location.pathname;
+    window.history.pushState({}, "", newUrl);
+
+    setActiveStatFilter("all");
+    setVisibleCount(50);
   };
 
   const openWhatsApp = (phone) => {
@@ -253,12 +314,20 @@ const ClientsLog = ({ onOpenDetails, onEditClient }) => {
   };
 
   const getGradeBadge = (grade) => {
-    if (grade === "A" || grade === "أ")
-      return "bg-emerald-100 text-emerald-700";
-    if (grade === "B" || grade === "ب") return "bg-blue-100 text-blue-700";
-    if (grade === "C" || grade === "ج") return "bg-amber-100 text-amber-700";
-    if (grade === "D" || grade === "د") return "bg-red-100 text-red-700";
-    return "bg-slate-100 text-slate-500";
+    if (grade === "A" || grade === "أ") return "text-emerald-600";
+    if (grade === "B" || grade === "ب") return "text-blue-600";
+    if (grade === "C" || grade === "ج") return "text-amber-600";
+    if (grade === "D" || grade === "د") return "text-red-600";
+    return "text-slate-500";
+  };
+
+  // دالة فتح الإحصائيات في تاب جديد
+  const handleStatCardClick = (statId) => {
+    // قم بتغيير '/clients' بالمسار الصحيح لصفحة العملاء لديك في التطبيق
+    // الفكرة هنا هي فتح نفس الصفحة وتمرير الـ filter في الـ URL
+    const currentPath = window.location.pathname;
+    const newUrl = `${currentPath}?filter=${statId}`;
+    window.open(newUrl, "_blank");
   };
 
   const SidePanel = () => {
@@ -306,7 +375,7 @@ const ClientsLog = ({ onOpenDetails, onEditClient }) => {
                 {selectedClient.type || "غير محدد"}
               </span>
               <span
-                className={`px-2.5 py-1 rounded-md text-[11px] font-bold ${getGradeBadge(selectedClient.grade)}`}
+                className={`px-2.5 py-1 rounded-md text-[11px] font-bold bg-slate-50 border border-slate-200 ${getGradeBadge(selectedClient.grade)}`}
               >
                 تصنيف: {selectedClient.grade || "-"}
               </span>
@@ -486,7 +555,6 @@ const ClientsLog = ({ onOpenDetails, onEditClient }) => {
               </button>
             </AccessControl>
 
-            {/* 👈 زر تجميد/تنشيط الحساب من داخل اللوحة */}
             <AccessControl
               code="CLIENT_ACTION_TOGGLE_STATUS"
               name="تجميد وتنشيط العميل"
@@ -516,119 +584,109 @@ const ClientsLog = ({ onOpenDetails, onEditClient }) => {
 
   return (
     <div
-      className="flex-1 overflow-hidden bg-slate-50 flex flex-col h-full"
+      className="flex-1 bg-slate-50 flex flex-col h-full w-full overflow-hidden"
       dir="rtl"
     >
-      <div className="flex flex-col gap-4 p-4 md:p-6 flex-1 h-full overflow-hidden">
-        {/* 1. الإحصائيات (لم تتغير) */}
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3 shrink-0">
-          <div className="p-3 bg-blue-50 rounded-lg shadow-sm border-2 border-blue-500 flex flex-col justify-center">
-            <div className="text-[10px] text-slate-500 mb-1 font-bold">
-              إجمالي العملاء
-            </div>
-            <div className="text-2xl font-black text-blue-500 mb-1">
-              {stats.total}
-            </div>
-          </div>
-          <div className="p-3 bg-emerald-50 rounded-lg shadow-sm border-2 border-emerald-500 flex flex-col justify-center">
-            <div className="text-[10px] text-slate-500 mb-1 font-bold">نشط</div>
-            <div className="text-2xl font-black text-emerald-500 mb-1">
-              {stats.active}
-            </div>
-          </div>
-          <AccessControl
-            code="CLIENT_STAT_DEFAULTERS"
-            name="إحصائية المتعثرين"
-            moduleName="دليل العملاء"
-            tabName="الإحصائيات"
-            fallback={
-              <div className="p-3 bg-slate-100 rounded-lg border-2 border-slate-200 flex items-center justify-center text-xs text-slate-400">
-                <Lock className="w-4 h-4 mr-1" /> محمية
-              </div>
-            }
+      <div className="flex flex-col gap-3 p-2 flex-1 h-full overflow-hidden max-w-[100vw]">
+        {/* زر العودة */}
+        <div className="flex items-center">
+          <button
+            onClick={onBack}
+            className="p-2 bg-white border border-slate-200 shadow-sm hover:bg-slate-100 text-slate-700 rounded-lg transition-colors flex items-center gap-2 font-bold text-sm"
           >
-            <div className="p-3 bg-amber-50 rounded-lg shadow-sm border-2 border-amber-500 flex flex-col justify-center w-full">
-              <div className="text-[10px] text-slate-500 mb-1 font-bold">
-                متعثرين
-              </div>
-              <div className="text-2xl font-black text-amber-500 mb-1">1</div>
-            </div>
-          </AccessControl>
-          <div className="p-3 bg-red-50 rounded-lg shadow-sm border-2 border-red-500 flex flex-col justify-center">
-            <div className="text-[10px] text-slate-500 mb-1 font-bold">
-              وثائق ناقصة
-            </div>
-            <div className="text-2xl font-black text-red-500 mb-1">
-              {stats.missingDocs}
-            </div>
-          </div>
-          <div className="p-3 bg-purple-50 rounded-lg shadow-sm border-2 border-purple-500 flex flex-col justify-center">
-            <div className="text-[10px] text-slate-500 mb-1 font-bold">
-              شركات
-            </div>
-            <div className="text-2xl font-black text-purple-500 mb-1">
-              {stats.companies}
-            </div>
-          </div>
-          <div className="p-3 bg-orange-50 rounded-lg shadow-sm border-2 border-orange-500 flex flex-col justify-center">
-            <div className="text-[10px] text-slate-500 mb-1 font-bold">
-              تفويضات قاربت الانتهاء
-            </div>
-            <div className="text-2xl font-black text-orange-500">
-              {stats.expiringReps}
-            </div>
-          </div>
-          <AccessControl
-            code="CLIENT_STAT_BLOCKED"
-            name="إحصائية المحظورين"
-            moduleName="دليل العملاء"
-            tabName="الإحصائيات"
-            fallback={
-              <div className="p-3 bg-slate-100 rounded-lg border-2 border-slate-200 flex items-center justify-center text-xs text-slate-400">
-                <Lock className="w-4 h-4 mr-1" /> محمية
-              </div>
-            }
-          >
-            <div className="p-3 bg-rose-50 rounded-lg shadow-sm border-2 border-rose-500 flex flex-col justify-center w-full">
-              <div className="text-[10px] text-slate-500 mb-1 font-bold flex items-center gap-1">
-                <Ban className="w-3 h-3 text-rose-500" /> محظور
-              </div>
-              <div className="text-2xl font-black text-rose-600">
-                {stats.blocked}
-              </div>
-            </div>
-          </AccessControl>
-          <div className="p-3 bg-cyan-50 rounded-lg shadow-sm border-2 border-cyan-500 flex flex-col justify-center">
-            <div className="text-[10px] text-slate-500 mb-1 font-bold flex items-center gap-1">
-              <Phone className="w-3 h-3 text-cyan-600" /> تواصل غير محقق
-            </div>
-            <div className="text-2xl font-black text-cyan-600">
-              {stats.unreachable}
-            </div>
-          </div>
+            <ArrowLeft className="w-4 h-4" /> العودة للصفحة الرئيسية
+          </button>
         </div>
 
-        {/* 2. شريط الفلترة */}
-        <div className="bg-white rounded-lg p-4 shadow-sm border border-slate-200 shrink-0">
-          <div className="flex items-center gap-3 flex-wrap">
-            <div className="relative flex-1 min-w-[200px] max-w-[300px]">
-              <Search className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+        {/* 1. الإحصائيات (مصغرة ومكثفة كأزرار تفتح في تاب جديد) */}
+        <div className="grid grid-cols-3 md:grid-cols-6 lg:grid-cols-8 gap-2 shrink-0">
+          {[
+            {
+              id: "all",
+              title: "إجمالي العملاء",
+              count: stats.total,
+              icon: <Users className="w-3 h-3 opacity-50" />,
+              colorClass: "text-slate-700",
+            },
+            {
+              id: "active",
+              title: "نشط",
+              count: stats.active,
+              icon: <CheckCircle2 className="w-3 h-3 opacity-50" />,
+              colorClass: "text-emerald-600",
+            },
+            {
+              id: "blocked",
+              title: "مجمد / محظور",
+              count: stats.blocked,
+              icon: <Ban className="w-3 h-3 opacity-50" />,
+              colorClass: "text-rose-600",
+            },
+            {
+              id: "missingDocs",
+              title: "ناقص بيانات",
+              count: stats.missingDocs,
+              icon: <FileWarning className="w-3 h-3 opacity-50" />,
+              colorClass: "text-orange-600",
+            },
+            {
+              id: "companies",
+              title: "شركات / مؤسسات",
+              count: stats.companies,
+              icon: <Building2 className="w-3 h-3 opacity-50" />,
+              colorClass: "text-purple-600",
+            },
+            {
+              id: "foreigners",
+              title: "أجانب / مستثمر",
+              count: stats.foreigners,
+              icon: <Globe className="w-3 h-3 opacity-50" />,
+              colorClass: "text-blue-600",
+            },
+          ].map((stat) => (
+            <button
+              key={stat.id}
+              onClick={() => handleStatCardClick(stat.id)}
+              className={`p-1 rounded-lg border flex flex-col justify-center items-center text-center transition-all ${
+                activeStatFilter === stat.id
+                  ? "ring-2 ring-blue-500 bg-blue-50 border-blue-200" // لتوضيح إذا تم فتح التاب مع الفلتر
+                  : "bg-white border-slate-200 hover:bg-slate-50"
+              }`}
+              title="فتح في تبويب جديد"
+            >
+              <div className="flex justify-between items-center w-full  px-1">
+                <span className="text-[8px] text-slate-500 font-bold whitespace-nowrap">
+                  {stat.title}
+                </span>
+                {stat.icon}
+              </div>
+              <div className={`text-base font-black ${stat.colorClass}`}>
+                {stat.count}
+              </div>
+            </button>
+          ))}
+        </div>
+
+        {/* 2. شريط الفلترة المدمج */}
+        <div className="bg-white rounded-lg p-1 shadow-sm border border-slate-200 shrink-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="relative flex-1 min-w-[150px] max-w-[250px]">
+              <Search className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
               <input
                 type="text"
-                placeholder="بحث (كود/اسم/جوال)..."
+                placeholder="بحث سريع (كود/اسم/جوال)..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-3 pr-8 py-2 border border-slate-300 rounded-md text-xs font-medium outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-200 transition-all bg-slate-50 focus:bg-white"
+                className="w-full pl-2 pr-7 py-1.5 border border-slate-300 rounded-md text-xs font-medium outline-none focus:border-blue-500 bg-slate-50 focus:bg-white"
               />
             </div>
 
-            {/* فلتر الحالة الجديد */}
             <select
               value={filters.status}
               onChange={(e) =>
                 setFilters({ ...filters, status: e.target.value })
               }
-              className="p-2 border border-slate-300 rounded-md text-xs font-bold text-slate-700 outline-none focus:border-blue-500 bg-slate-50"
+              className="py-1.5 px-2 border border-slate-300 rounded-md text-xs font-bold text-slate-700 outline-none focus:border-blue-500 bg-slate-50"
             >
               <option value="all">كل الحالات</option>
               <option value="active">النشطين فقط</option>
@@ -638,43 +696,46 @@ const ClientsLog = ({ onOpenDetails, onEditClient }) => {
             <div className="flex-1 flex justify-end gap-2">
               <button
                 onClick={clearFilters}
-                className="p-2 text-slate-500 hover:bg-slate-100 rounded-md transition-colors border border-transparent"
+                className="p-1.5 text-slate-500 hover:bg-slate-100 rounded-md transition-colors"
                 title="مسح الفلاتر"
               >
                 <FilterX className="w-4 h-4" />
               </button>
               <button
                 onClick={() => refetch()}
-                className="px-4 py-2 bg-blue-600 text-white rounded-md text-xs font-bold cursor-pointer inline-flex items-center gap-1.5 shadow-sm hover:bg-blue-700 transition-all active:scale-95"
+                className="px-3 py-1.5 bg-blue-600 text-white rounded-md text-xs font-bold cursor-pointer inline-flex items-center gap-1.5 shadow-sm hover:bg-blue-700 transition-all active:scale-95"
               >
                 <RefreshCw
                   className={`w-3.5 h-3.5 ${isFetching ? "animate-spin" : ""}`}
-                />{" "}
+                />
                 تحديث
               </button>
             </div>
           </div>
         </div>
 
-        {/* 3. الجدول الرئيسي (مُعدل ليحتوي على سكرول داخلي مع تثبيت الرأس) */}
-        <div className="bg-white rounded-lg shadow-sm border border-slate-200 flex flex-col flex-1 overflow-hidden">
-          <div className="flex-1 overflow-auto custom-scrollbar relative">
-            <table className="w-full text-right border-collapse min-w-[1200px]">
+        {/* 3. الجدول الرئيسي */}
+        <div className="bg-white rounded-lg shadow-sm border border-slate-200 flex flex-col flex-1 overflow-hidden w-full">
+          <div
+            className="flex-1 overflow-auto custom-scrollbar relative"
+            onScroll={handleScroll}
+          >
+            <table className="w-full text-right border-collapse table-auto">
               <thead className="sticky top-0 z-20">
                 <tr className="bg-slate-800 border-b border-slate-700 text-white shadow-sm">
-                  <th className="p-3 text-center text-[11px] font-bold border-l border-slate-700 whitespace-nowrap bg-slate-800">
+                  <th className="p-1.5 px-2 text-center text-[10px] font-bold border-l border-slate-700 bg-slate-800 w-10">
                     #
                   </th>
-                  <th className="p-3 text-right text-[11px] font-bold border-l border-slate-700 whitespace-nowrap bg-slate-800">
+                  <th className="p-1.5 px-2 text-right text-[10px] font-bold border-l border-slate-700 bg-slate-800">
                     كود العميل
                   </th>
-                  <th className="p-3 text-center text-[11px] font-bold border-l border-slate-700 whitespace-nowrap bg-slate-800">
+                  <th className="p-1.5 px-2 text-center text-[10px] font-bold border-l border-slate-700 bg-slate-800">
                     النوع
                   </th>
-                  <th className="p-3 text-right text-[11px] font-bold border-l border-slate-700 whitespace-nowrap bg-slate-800">
-                    الاسم الرباعي / الجهة
+                  <th className="p-1.5 px-2 text-right text-[10px] font-bold border-l border-slate-700 bg-slate-800">
+                    الاسم / الجهة
                   </th>
-                  <th className="p-3 text-right text-[11px] font-bold border-l border-slate-700 whitespace-nowrap bg-slate-800">
+                  <th className="p-1.5 px-2 text-right text-[10px] font-bold border-l border-slate-700 bg-slate-800">
                     <AccessControl
                       code="CLIENT_TABLE_COL_ID"
                       name="عمود رقم الهوية"
@@ -682,10 +743,10 @@ const ClientsLog = ({ onOpenDetails, onEditClient }) => {
                       tabName="الجدول"
                       fallback="بيانات سرية"
                     >
-                      رقم الهوية / السجل
+                      رقم الهوية
                     </AccessControl>
                   </th>
-                  <th className="p-3 text-right text-[11px] font-bold border-l border-slate-700 whitespace-nowrap bg-slate-800">
+                  <th className="p-1.5 px-2 text-right text-[10px] font-bold border-l border-slate-700 bg-slate-800">
                     <AccessControl
                       code="CLIENT_TABLE_COL_PHONE"
                       name="عمود الجوال"
@@ -696,28 +757,31 @@ const ClientsLog = ({ onOpenDetails, onEditClient }) => {
                       الجوال
                     </AccessControl>
                   </th>
-                  <th className="p-3 text-right text-[11px] font-bold border-l border-slate-700 whitespace-nowrap bg-slate-800">
+                  <th className="p-1.5 px-2 text-right text-[10px] font-bold border-l border-slate-700 bg-slate-800">
                     المدينة
                   </th>
-                  <th className="p-3 text-center text-[11px] font-bold border-l border-slate-700 whitespace-nowrap bg-slate-800">
+                  <th className="p-1.5 px-2 text-center text-[10px] font-bold border-l border-slate-700 bg-slate-800">
                     التقييم
                   </th>
-                  <th className="p-3 text-center text-[11px] font-bold border-l border-slate-700 whitespace-nowrap bg-slate-800">
+                  <th className="p-1.5 px-2 text-center text-[10px] font-bold border-l border-slate-700 bg-slate-800">
+                    حالة الملف
+                  </th>
+                  <th className="p-1.5 px-2 text-center text-[10px] font-bold border-l border-slate-700 bg-slate-800">
                     الحالة
                   </th>
-                  <th className="p-3 text-center text-[11px] font-bold border-l border-slate-700 whitespace-nowrap bg-slate-800">
+                  <th className="p-1.5 px-2 text-center text-[10px] font-bold border-l border-slate-700 bg-slate-800">
                     الممثل
                   </th>
-                  <th className="p-3 text-center text-[11px] font-bold border-l border-slate-700 whitespace-nowrap bg-slate-800">
+                  <th className="p-1.5 px-2 text-center text-[10px] font-bold border-l border-slate-700 bg-slate-800">
                     الوثائق
                   </th>
-                  <th className="p-3 text-center text-[11px] font-bold border-l border-slate-700 whitespace-nowrap bg-slate-800">
-                    المعاملات
+                  <th className="p-1.5 px-2 text-center text-[10px] font-bold border-l border-slate-700 bg-slate-800">
+                    معاملات
                   </th>
-                  <th className="p-3 text-center text-[11px] font-bold border-l border-slate-700 whitespace-nowrap bg-slate-800">
+                  <th className="p-1.5 px-2 text-center text-[10px] font-bold border-l border-slate-700 bg-slate-800">
                     تاريخ الإضافة
                   </th>
-                  <th className="p-3 text-center text-[11px] font-bold whitespace-nowrap w-32 bg-slate-800">
+                  <th className="p-1.5 px-2 text-center text-[10px] font-bold bg-slate-800">
                     إجراءات
                   </th>
                 </tr>
@@ -725,33 +789,30 @@ const ClientsLog = ({ onOpenDetails, onEditClient }) => {
               <tbody>
                 {isLoading ? (
                   <tr>
-                    <td colSpan="14" className="p-16 text-center">
+                    <td colSpan="15" className="p-16 text-center">
                       <Loader2 className="w-8 h-8 animate-spin mx-auto text-blue-500 mb-3" />
-                      <span className="text-slate-500 font-bold">
-                        جاري تحميل سجلات العملاء...
+                      <span className="text-slate-500 font-bold text-xs">
+                        جاري التحميل...
                       </span>
                     </td>
                   </tr>
-                ) : paginatedClients.length === 0 ? (
+                ) : visibleClients.length === 0 ? (
                   <tr>
                     <td
-                      colSpan="14"
+                      colSpan="15"
                       className="p-16 text-center text-slate-500 bg-slate-50"
                     >
-                      <Users className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-                      <span className="font-bold">
+                      <Users className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+                      <span className="font-bold text-xs">
                         لا يوجد عملاء مطابقين لخيارات البحث
                       </span>
                     </td>
                   </tr>
                 ) : (
-                  paginatedClients.map((client, index) => {
+                  visibleClients.map((client, index) => {
                     const grade = client.grade || "ج";
                     const rep = getRepresentative(client.representative);
-                    const isIncomplete =
-                      client.completionPercentage < 40 ||
-                      !client.idNumber ||
-                      client.idNumber.startsWith("TEMP");
+                    const isIncomplete = isProfileIncomplete(client);
                     const isFrozen = !client.isActive;
 
                     return (
@@ -760,98 +821,93 @@ const ClientsLog = ({ onOpenDetails, onEditClient }) => {
                         onClick={() => handleRowClick(client)}
                         className={`cursor-pointer transition-colors border-b group ${
                           isFrozen
-                            ? "bg-slate-100 hover:bg-slate-200 border-slate-300 opacity-70"
-                            : isIncomplete
-                              ? "bg-orange-500/50 hover:bg-orange-100 border-orange-200"
-                              : "odd:bg-white even:bg-slate-50 hover:bg-blue-50/60 border-slate-200"
+                            ? "bg-slate-100 hover:bg-slate-200 opacity-70"
+                            : "odd:bg-white even:bg-slate-50 hover:bg-blue-50/60"
                         }`}
                       >
-                        <td className="p-2.5 text-center text-[11px] text-slate-500 font-mono border-l border-slate-200">
-                          {index + 1 + (currentPage - 1) * itemsPerPage}
+                        <td className="p-1.5 px-2 text-center text-[10px] text-slate-500 font-mono border-l border-slate-200">
+                          {index + 1}
                         </td>
-                        <td className="p-2.5 border-l border-slate-200">
-                          <span className="font-mono text-[11px] font-bold text-slate-800">
+                        <td className="p-1.5 px-2 border-l border-slate-200">
+                          <span className="font-mono text-[10px] font-bold text-slate-800">
                             {client.clientCode?.replace("CLT-", "") || "---"}
                           </span>
                         </td>
-                        <td className="p-2.5 text-center border-l border-slate-200">
+                        <td className="p-1.5 px-2 text-center border-l border-slate-200">
                           <span
-                            className={`px-2 py-1 rounded text-[10px] font-bold whitespace-nowrap ${getTypeBadge(client.type)}`}
+                            className={`px-1.5 py-0.5 rounded text-[9px] font-bold whitespace-nowrap ${getTypeBadge(client.type)}`}
                           >
-                            {client.type || "غير محدد"}
+                            {client.type || "-"}
                           </span>
                         </td>
-                        <td className="p-2.5 text-[11px] text-slate-800 font-bold border-l border-slate-200 group-hover:text-blue-700 transition-colors">
-                          <div className="flex items-center gap-1.5">
+                        <td className="p-1.5 px-2 text-[11px] font-bold border-l border-slate-200 group-hover:text-blue-700 transition-colors">
+                          <div className="flex items-center gap-1.5 truncate max-w-[180px]">
                             {isFrozen && (
-                              <Ban
-                                className="w-3.5 h-3.5 text-red-500"
-                                title="هذا الحساب مجمد"
-                              />
-                            )}
-                            {!isFrozen && isIncomplete && (
-                              <AlertCircle
-                                className="w-4 h-4 text-orange-600 animate-pulse"
-                                title="ملف غير مكتمل"
-                              />
+                              <Ban className="w-3.5 h-3.5 text-red-500 shrink-0" />
                             )}
                             <span
                               className={
-                                isFrozen ? "line-through text-slate-500" : ""
+                                isFrozen
+                                  ? "line-through text-slate-500"
+                                  : "text-slate-800"
                               }
                             >
                               {getFullName(client.name)}
                             </span>
                           </div>
                         </td>
-                        <td className="p-2.5 border-l border-slate-200">
+                        <td className="p-1.5 px-2 border-l border-slate-200">
                           <AccessControl
                             code="CLIENT_TABLE_COL_ID"
                             name="بيانات الهوية"
                             moduleName="دليل العملاء"
                             tabName="الجدول"
                             fallback={
-                              <span className="text-slate-300 text-xs tracking-widest">
+                              <span className="text-slate-300 text-xs">
                                 ***
                               </span>
                             }
                           >
-                            <span className="font-mono text-[11px] text-slate-600">
+                            <span className="font-mono text-[10px] text-slate-600">
                               {client.idNumber ||
                                 client.identification?.idNumber ||
                                 "---"}
                             </span>
                           </AccessControl>
                         </td>
-                        <td className="p-2.5 border-l border-slate-200">
+                        <td className="p-1.5 px-2 border-l border-slate-200">
                           <AccessControl
                             code="CLIENT_TABLE_COL_PHONE"
                             name="بيانات الجوال"
                             moduleName="دليل العملاء"
                             tabName="الجدول"
                             fallback={
-                              <span className="text-slate-300 text-xs tracking-widest">
+                              <span className="text-slate-300 text-xs">
                                 ***
                               </span>
                             }
                           >
                             <span
-                              className="font-mono text-[11px] text-slate-600"
+                              className="font-mono text-[10px] text-slate-600"
                               dir="ltr"
                             >
                               {client.mobile?.startsWith("غير متوفر") ||
                               client.mobile?.startsWith("TEMP")
-                                ? "غير متوفر"
+                                ? "-"
                                 : client.mobile ||
                                   client.contact?.mobile ||
-                                  "---"}
+                                  "-"}
                             </span>
                           </AccessControl>
                         </td>
-                        <td className="p-2.5 text-[11px] text-slate-600 border-l border-slate-200">
+
+                        {/* عمود المدينة */}
+                        <td className="p-1.5 px-2 text-[11px] text-slate-600 border-l border-slate-200">
                           {client.address?.city || "-"}
                         </td>
-                        <td className="p-2.5 text-center border-l border-slate-200">
+
+                        {/* عمود التقييم */}
+                        <td className="p-1.5 px-2 text-center border-l border-slate-200">
                           <span
                             className={`inline-block w-6 text-center py-0.5 rounded text-[11px] font-black ${getGradeBadge(grade)}`}
                           >
@@ -859,17 +915,34 @@ const ClientsLog = ({ onOpenDetails, onEditClient }) => {
                           </span>
                         </td>
 
-                        <td className="p-2.5 text-center border-l border-slate-200">
+                        {/* عمود حالة الملف */}
+                        <td className="p-1.5 px-2 text-center border-l border-slate-200">
+                          {isIncomplete ? (
+                            <span
+                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-orange-100 text-orange-700 border border-orange-200"
+                              title="ينقص رقم الهوية أو البيانات الأساسية"
+                            >
+                              <AlertTriangle className="w-3 h-3" /> ناقص بيانات
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-100">
+                              <CheckCircle2 className="w-3 h-3" /> مكتمل
+                            </span>
+                          )}
+                        </td>
+
+                        <td className="p-1.5 px-2 text-center border-l border-slate-200">
                           <span
-                            className={`px-2 py-0.5 rounded text-[10px] font-bold ${!isFrozen ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"}`}
+                            className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${!isFrozen ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"}`}
                           >
                             {!isFrozen ? "نشط" : "مجمد"}
                           </span>
                         </td>
 
-                        <td className="p-2.5 text-center border-l border-slate-200">
+                        {/* عمود الممثل */}
+                        <td className="p-1.5 px-2 text-center border-l border-slate-200">
                           {rep?.hasRepresentative ? (
-                            <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded text-[10px] font-bold whitespace-nowrap">
+                            <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded text-[9px] font-bold whitespace-nowrap">
                               له {rep.type || "مفوض"}
                             </span>
                           ) : (
@@ -878,34 +951,34 @@ const ClientsLog = ({ onOpenDetails, onEditClient }) => {
                             </span>
                           )}
                         </td>
-                        <td className="p-2.5 text-center border-l border-slate-200">
-                          <span className="px-2 py-0.5 bg-slate-200 text-slate-700 rounded text-[11px] font-bold font-mono">
+
+                        <td className="p-1.5 px-2 text-center border-l border-slate-200">
+                          <span className="text-[11px] font-black text-slate-800 font-mono">
                             {client._count?.attachments || 0}
                           </span>
                         </td>
-                        <td className="p-2.5 text-center border-l border-slate-200">
-                          <span className="text-[12px] font-black text-slate-800 font-mono">
+                        <td className="p-1.5 px-2 text-center border-l border-slate-200">
+                          <span className="text-[11px] font-black text-slate-800 font-mono">
                             {client._count?.transactions || 0}
                           </span>
                         </td>
-                        <td className="p-2.5 text-center text-[10px] text-slate-500 font-mono border-l border-slate-200">
+
+                        {/* عمود تاريخ الإضافة */}
+                        <td className="p-1.5 px-2 text-center text-[10px] text-slate-500 font-mono border-l border-slate-200">
                           {formatDate(client.createdAt)}
                         </td>
 
-                        <td className="p-2.5">
-                          <div className="flex gap-1.5 justify-center opacity-40 group-hover:opacity-100 transition-opacity">
+                        <td className="p-1.5 px-2">
+                          <div className="flex gap-1.5 justify-center opacity-30 group-hover:opacity-100 transition-opacity">
                             <AccessControl
                               code="CLIENT_ACTION_TOGGLE_STATUS"
-                              name="تجميد/تنشيط العميل"
+                              name="تجميد/تنشيط"
                               moduleName="دليل العملاء"
                               tabName="الجدول"
                             >
                               <button
                                 onClick={(e) => handleToggleStatus(e, client)}
-                                title={
-                                  isFrozen ? "تنشيط الحساب" : "تجميد الحساب"
-                                }
-                                className={`p-1.5 rounded transition-colors ${isFrozen ? "bg-amber-100 text-amber-600 hover:bg-amber-600 hover:text-white" : "bg-slate-200 text-slate-600 hover:bg-amber-500 hover:text-white"}`}
+                                className={`p-1 rounded transition-colors ${isFrozen ? "bg-amber-100 text-amber-600 hover:bg-amber-600 hover:text-white" : "bg-slate-200 text-slate-600 hover:bg-amber-500 hover:text-white"}`}
                               >
                                 {isFrozen ? (
                                   <ToggleRight className="w-3.5 h-3.5" />
@@ -914,10 +987,9 @@ const ClientsLog = ({ onOpenDetails, onEditClient }) => {
                                 )}
                               </button>
                             </AccessControl>
-
                             <AccessControl
                               code="CLIENT_ACTION_VIEW"
-                              name="عرض ملف العميل"
+                              name="عرض الملف"
                               moduleName="دليل العملاء"
                               tabName="الجدول"
                             >
@@ -927,29 +999,11 @@ const ClientsLog = ({ onOpenDetails, onEditClient }) => {
                                   if (onOpenDetails)
                                     onOpenDetails(client.id, client.clientCode);
                                 }}
-                                title="فتح الملف"
-                                className="p-1.5 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded transition-colors"
+                                className="p-1 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded transition-colors"
                               >
                                 <Eye className="w-3.5 h-3.5" />
                               </button>
                             </AccessControl>
-
-                            <AccessControl
-                              code="CLIENT_ACTION_CREATE_TRANS"
-                              name="إنشاء معاملة"
-                              moduleName="دليل العملاء"
-                              tabName="الجدول"
-                            >
-                              <button
-                                title="إنشاء معاملة"
-                                onClick={(e) => e.stopPropagation()}
-                                disabled={isFrozen}
-                                className="p-1.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-600 hover:text-white rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-                              >
-                                <Plus className="w-3.5 h-3.5" />
-                              </button>
-                            </AccessControl>
-
                             <AccessControl
                               code="CLIENT_ACTION_WHATSAPP"
                               name="مراسلة واتساب"
@@ -957,19 +1011,17 @@ const ClientsLog = ({ onOpenDetails, onEditClient }) => {
                               tabName="الجدول"
                             >
                               <button
-                                title="مراسلة واتساب"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   openWhatsApp(
                                     client.mobile || client.contact?.mobile,
                                   );
                                 }}
-                                className="p-1.5 bg-green-50 text-green-600 hover:bg-green-600 hover:text-white rounded transition-colors"
+                                className="p-1 bg-green-50 text-green-600 hover:bg-green-600 hover:text-white rounded transition-colors"
                               >
                                 <MessageCircle className="w-3.5 h-3.5" />
                               </button>
                             </AccessControl>
-
                             <AccessControl
                               code="CLIENT_ACTION_DELETE"
                               name="حذف العميل"
@@ -979,7 +1031,7 @@ const ClientsLog = ({ onOpenDetails, onEditClient }) => {
                               <button
                                 onClick={(e) => handleDelete(e, client.id)}
                                 title="حذف نهائي"
-                                className="p-1.5 bg-red-50 text-red-500 hover:bg-red-600 hover:text-white rounded transition-colors"
+                                className="p-1 bg-red-50 text-red-500 hover:bg-red-600 hover:text-white rounded transition-colors"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
                               </button>
@@ -990,41 +1042,21 @@ const ClientsLog = ({ onOpenDetails, onEditClient }) => {
                     );
                   })
                 )}
+                {/* 👈 رسالة التمرير اللانهائي */}
+                {visibleCount < filteredClients.length && (
+                  <tr>
+                    <td
+                      colSpan="15"
+                      className="py-3 text-center text-[10px] text-slate-400 font-bold bg-slate-50 border-t border-slate-200"
+                    >
+                      مرر لأسفل لتحميل المزيد... (معروض {visibleCount} من{" "}
+                      {filteredClients.length})
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
-
-          {/* 4. شريط الترقيم السفلي */}
-          {!isLoading && filteredClients.length > 0 && (
-            <div className="bg-slate-50 p-3 flex justify-between items-center border-t border-slate-200 shrink-0">
-              <div className="text-[11px] font-bold text-slate-500">
-                إظهار {(currentPage - 1) * itemsPerPage + 1} إلى{" "}
-                {Math.min(currentPage * itemsPerPage, filteredClients.length)}{" "}
-                من {filteredClients.length} سجل
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                  disabled={currentPage === 1}
-                  className="p-1.5 rounded-md bg-white border border-slate-300 text-slate-700 hover:bg-blue-50 hover:text-blue-600 disabled:opacity-50 transition-colors"
-                >
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-                <div className="text-[11px] font-bold text-slate-700 px-3 py-1 bg-white border border-slate-300 rounded-md">
-                  {currentPage} / {totalPages}
-                </div>
-                <button
-                  onClick={() =>
-                    setCurrentPage((p) => Math.min(totalPages, p + 1))
-                  }
-                  disabled={currentPage === totalPages}
-                  className="p-1.5 rounded-md bg-white border border-slate-300 text-slate-700 hover:bg-blue-50 hover:text-blue-600 disabled:opacity-50 transition-colors"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-          )}
         </div>
       </div>
 

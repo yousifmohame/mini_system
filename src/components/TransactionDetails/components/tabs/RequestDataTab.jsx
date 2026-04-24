@@ -3,26 +3,48 @@ import { useQuery } from "@tanstack/react-query";
 import api from "../../../../api/axios";
 import { toast } from "sonner";
 import {
-  Building,
-  User,
-  Inbox,
-  Mail,
-  Loader2,
-  RefreshCw,
-  AlertTriangle,
-  Bot,
-  ClipboardList,
-  PenLine,
-  Map,
-  FileSignature,
-  Copy,
-  Check,
   X,
   Save,
+  Loader2,
+  User,
+  AlertTriangle,
+  Building,
+  ClipboardList,
+  Inbox,
+  Mail,
+  RefreshCw,
+  PenLine,
+  Copy,
+  Map as MapIcon,
+  FileSignature,
   Link2,
-  PanelBottom,
-  PanelTop,
+  Bot
 } from "lucide-react";
+import { SearchableSelect } from "../TransactionSharedUI";
+import AccessControl from "../../../../components/AccessControl";
+
+// مكتبات التقويم الهجري
+import DatePicker from "react-multi-date-picker";
+import arabic from "react-date-object/calendars/arabic";
+import arabic_ar from "react-date-object/locales/arabic_ar";
+import DateObject from "react-date-object";
+
+// ==========================================
+// الدوال المساعدة للتواريخ (لتفادي مشكلة التوقيت المحلي)
+// ==========================================
+
+// تحويل النص المحفوظ بالباك إند (YYYY-MM-DD) إلى كائن تقويم هجري بشكل آمن جداً
+const getHijriDateObject = (gregorianDateStr) => {
+  if (!gregorianDateStr) return null;
+  try {
+    const [y, m, d] = gregorianDateStr.split("T")[0].split("-");
+    // استخدام منتصف النهار (12:00) لمنع الإزاحة الناتجة عن فروق التوقيت المحلي
+    const date = new Date(y, m - 1, d, 12, 0, 0); 
+    return new DateObject({ date, calendar: arabic, locale: arabic_ar });
+  } catch (e) {
+    return null;
+  }
+};
 
 export const RequestDataTab = ({
   tx,
@@ -43,7 +65,8 @@ export const RequestDataTab = ({
   const handleSaveSingleField = async (e) => {
     e?.preventDefault();
     if (updateTxMutation.isPending) return;
-    saveRequestDataEdits();
+    // 💡 تمرير النموذج كاملاً لضمان وصول أحدث قيمة للتاريخ قبل أن ينتهي تحديث الـ State
+    saveRequestDataEdits(requestDataForm); 
     setEditingField(null);
   };
 
@@ -85,11 +108,29 @@ export const RequestDataTab = ({
     const isEditingThis = editingField === field;
     const hasValue = value && value.toString().trim() !== "";
 
+    // معالجة اختيار التاريخ الهجري بأمان
+    const handleHijriPickerChange = (dateObj) => {
+      if (!dateObj) {
+        handleChange(field, "");
+        return;
+      }
+      // تحويل الكائن الهجري إلى تاريخ ميلادي محلي
+      const gDate = dateObj.toDate();
+      const year = gDate.getFullYear();
+      const month = String(gDate.getMonth() + 1).padStart(2, "0");
+      const day = String(gDate.getDate()).padStart(2, "0");
+      
+      // حفظ بصيغة (YYYY-MM-DD) الثابتة
+      const isoDate = `${year}-${month}-${day}`;
+      handleChange(field, isoDate);
+    };
+
     return (
       <div className="flex flex-col gap-1.5 group">
         <label className="text-[10px] font-black text-slate-500 group-focus-within:text-cyan-600 transition-colors">
           {label}
         </label>
+        
         {isEditingThis ? (
           <div className="flex flex-col gap-2 bg-gradient-to-br from-cyan-50/80 to-blue-50/80 p-2.5 rounded-xl border border-cyan-200/60 shadow-sm shadow-cyan-100/50 backdrop-blur-sm">
             {isSelect ? (
@@ -105,6 +146,28 @@ export const RequestDataTab = ({
                   </option>
                 ))}
               </select>
+            ) : type === "hijri-date" ? (
+              <div className="flex flex-col gap-1.5 w-full">
+                {/* 👇 التقويم الهجري */}
+                <DatePicker
+                  calendar={arabic}
+                  locale={arabic_ar}
+                  value={getHijriDateObject(value)}
+                  onChange={handleHijriPickerChange}
+                  format="YYYY/MM/DD"
+                  inputClass="w-full border border-cyan-300 rounded-lg p-2 text-xs font-bold outline-none bg-white/90 focus:ring-2 focus:ring-cyan-400/50 focus:border-cyan-400 transition-all text-center"
+                  placeholder="اختر التاريخ الهجري..."
+                  containerClassName="w-full"
+                />
+                
+                {/* عرض الميلادي للتأكيد */}
+                <div className="flex justify-between items-center px-1 text-[9px] font-bold">
+                  <span className="text-slate-600">الموافق للميلادي:</span>
+                  <span className={`font-mono ${value ? "text-blue-700" : "text-slate-400"}`}>
+                    {value ? value.split('T')[0] + " م" : "—"}
+                  </span>
+                </div>
+              </div>
             ) : (
               <input
                 type={type}
@@ -118,10 +181,11 @@ export const RequestDataTab = ({
                 }}
               />
             )}
-            <div className="flex gap-2">
+            
+            <div className="flex gap-2 mt-1">
               <button
                 onClick={handleSaveSingleField}
-                disabled={updateTxMutation.isPending}
+                disabled={updateTxMutation.isPending || (type === "hijri-date" && !value)}
                 className="flex-1 py-2 bg-gradient-to-r from-cyan-600 to-blue-600 text-white rounded-lg text-[10px] font-bold hover:from-cyan-700 hover:to-blue-700 disabled:opacity-50 transition-all shadow-sm hover:shadow-md flex items-center justify-center gap-1.5"
               >
                 {updateTxMutation.isPending && editingField === field ? (
@@ -141,11 +205,25 @@ export const RequestDataTab = ({
           </div>
         ) : (
           <div className="flex flex-col gap-2 bg-slate-50/60 border border-slate-200/60 rounded-xl p-2.5 min-h-[48px] hover:border-cyan-300/60 hover:bg-cyan-50/30 transition-all group-hover:shadow-sm">
-            <div className="text-xs font-black text-slate-800 break-all px-1 min-h-[20px] flex items-center">
-              {isSelect
-                ? options.find((o) => (o.id || o.name) === value)?.name || "—"
-                : value || "—"}
+            <div className="text-xs font-black text-slate-800 break-all px-1 min-h-[20px] flex flex-col justify-center items-center text-center">
+              {isSelect ? (
+                options.find((o) => (o.id || o.name) === value)?.name || "—"
+              ) : type === "hijri-date" ? (
+                hasValue ? (
+                  <div className="flex flex-col gap-0.5 mt-1 items-center">
+                    <span className="font-mono text-cyan-800 text-[13px] font-black">
+                      {getHijriDateObject(value)?.format("YYYY/MM/DD")} هـ
+                    </span>
+                    <span className="font-mono text-slate-400 text-[9px] font-bold">{value.split('T')[0]} م</span>
+                  </div>
+                ) : (
+                  <span className="text-center text-slate-400">—</span>
+                )
+              ) : (
+                value || "—"
+              )}
             </div>
+            
             <div className="flex items-center gap-1.5 border-t border-slate-200/60 pt-2 mt-auto">
               <button
                 onClick={() => setEditingField(field)}
@@ -154,7 +232,7 @@ export const RequestDataTab = ({
                 <PenLine className="w-3.5 h-3.5" /> تعديل
               </button>
               <button
-                onClick={() => hasValue && handleCopy(value, label)}
+                onClick={() => hasValue && handleCopy(type === "hijri-date" ? getHijriDateObject(value)?.format("YYYY/MM/DD") : value, label)}
                 disabled={!hasValue}
                 className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[9px] font-bold transition-all ${
                   hasValue
@@ -239,7 +317,7 @@ export const RequestDataTab = ({
         {/* سنة الخدمة/الطلب */}
         <div className="flex flex-col gap-1.5">
           <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">
-            السنة
+            السنة (هجري)
           </label>
           {isEditingYear ? (
             <div className="flex gap-1.5">
@@ -269,7 +347,7 @@ export const RequestDataTab = ({
               className="flex items-center justify-between w-full bg-white/80 border border-slate-200/60 rounded-lg p-2 text-left hover:border-cyan-400/60 hover:bg-cyan-50/40 transition-all group/btn"
             >
               <span className="font-mono text-xs font-black text-slate-800">
-                {yearValue || "—"}
+                {yearValue ? `${yearValue} هـ` : "—"}
               </span>
               <span className="text-[9px] font-bold text-cyan-600 bg-cyan-50/60 px-2 py-0.5 rounded-lg border border-cyan-200/60 flex items-center gap-1 group-hover/btn:bg-cyan-100/60 transition-colors">
                 <PenLine className="w-3 h-3" /> تعديل
@@ -410,7 +488,7 @@ export const RequestDataTab = ({
               <section className="bg-gradient-to-br from-cyan-50/40 to-blue-50/30 p-4 rounded-2xl border border-cyan-200/50 shadow-sm">
                 <h4 className="text-xs font-black text-cyan-900/90 flex items-center gap-2 border-b border-cyan-200/50 pb-2.5 mb-4">
                   <Building className="w-4.5 h-4.5 text-cyan-600" /> بيانات
-                  المعاملة
+                  المعاملة (هجري)
                 </h4>
 
                 {/* الخدمة */}
@@ -425,10 +503,10 @@ export const RequestDataTab = ({
                     />
                   </div>
                   <EditableField
-                    label="تاريخ الخدمة"
+                    label="تاريخ الخدمة (هجري)"
                     field="serviceDate"
                     value={requestDataForm.serviceDate}
-                    type="date"
+                    type="hijri-date"
                   />
                 </div>
 
@@ -444,10 +522,10 @@ export const RequestDataTab = ({
                     />
                   </div>
                   <EditableField
-                    label="تاريخ الطلب"
+                    label="تاريخ الطلب (هجري)"
                     field="requestDate"
                     value={requestDataForm.requestDate}
-                    type="date"
+                    type="hijri-date"
                   />
                 </div>
 
@@ -463,10 +541,10 @@ export const RequestDataTab = ({
                     />
                   </div>
                   <EditableField
-                    label="تاريخ الرخصة"
+                    label="تاريخ الرخصة (هجري)"
                     field="electronicLicenseDate"
                     value={requestDataForm.electronicLicenseDate}
-                    type="date"
+                    type="hijri-date"
                   />
                 </div>
 
@@ -489,10 +567,10 @@ export const RequestDataTab = ({
                         value={requestDataForm.oldLicenseHijriYear}
                       />
                       <EditableField
-                        label="تاريخ الإصدار"
+                        label="تاريخ الإصدار (هجري)"
                         field="oldLicenseDate"
                         value={requestDataForm.oldLicenseDate}
-                        type="date"
+                        type="hijri-date"
                       />
                     </div>
                   </div>
@@ -502,7 +580,7 @@ export const RequestDataTab = ({
               {/* التقرير المساحي */}
               <section className="bg-gradient-to-br from-amber-50/40 to-orange-50/30 p-4 rounded-2xl border border-amber-200/50 shadow-sm">
                 <h4 className="text-xs font-black text-amber-900/90 flex items-center gap-2 border-b border-amber-200/50 pb-2.5 mb-4">
-                  <Map className="w-4.5 h-4.5 text-amber-600" /> التقرير المساحي
+                  <MapIcon className="w-4.5 h-4.5 text-amber-600" /> التقرير المساحي
                 </h4>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-3">
                   <CombinedNumberYearGroup
@@ -527,10 +605,10 @@ export const RequestDataTab = ({
                     value={requestDataForm.surveyReportNumber}
                   />
                   <EditableField
-                    label="تاريخ التقرير"
+                    label="تاريخ التقرير (هجري)"
                     field="surveyReportDate"
                     value={requestDataForm.surveyReportDate}
-                    type="date"
+                    type="hijri-date"
                   />
                 </div>
               </section>
@@ -548,10 +626,10 @@ export const RequestDataTab = ({
                     value={requestDataForm.contractNumber}
                   />
                   <EditableField
-                    label="تاريخ الاعتماد"
+                    label="تاريخ الاعتماد (هجري)"
                     field="contractApprovalDate"
                     value={requestDataForm.contractApprovalDate}
-                    type="date"
+                    type="hijri-date"
                   />
                   <EditableField
                     label="المعتمد"
@@ -564,9 +642,8 @@ export const RequestDataTab = ({
               </section>
             </div>
 
-            {/* العمود الأيسر: معلومات إضافية (اختياري) */}
+            {/* العمود الأيسر: معلومات إضافية */}
             <div className="xl:col-span-4 flex flex-col gap-4">
-              {/* بطاقة ملخص سريع */}
               <div className="bg-white/80 p-4 rounded-2xl border border-slate-200/60 shadow-sm backdrop-blur-sm sticky top-0">
                 <h4 className="text-xs font-black text-slate-700 mb-3 flex items-center gap-2">
                   <Link2 className="w-4 h-4 text-cyan-500" /> ملخص سريع

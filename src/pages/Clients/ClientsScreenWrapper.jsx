@@ -4,79 +4,90 @@ import ClientsDashboard from "./ClientsDashboard";
 import CreateClientWizard from "./CreateClientWizard";
 import ClientsLog from "./ClientsLog";
 import ClientFileView from "./ClientFileView";
-// 👇 1. استيراد اللوحات الجديدة التي قمنا بإنشائها
 import ClientsRatingsPanel from "./ClientsRatingsPanel";
 import ClientsDocsPanel from "./ClientsDocsPanel";
 
 const ClientsScreenWrapper = () => {
-  const screenId = "300-MAIN";
+  const screenId = "300";
 
   const { activeTabPerScreen, setActiveTab, addTab, removeTab } = useAppStore();
   const activeTabId = activeTabPerScreen[screenId] || "DASHBOARD_CLIENTS";
 
-  // 👇 2. تحديث دالة التنقل لدعم التابات الجديدة
-  const handleNavigate = (targetId) => {
+  // 👇 تحديث دالة التنقل لفتح "تاب جديد" في كل مرة عبر توليد ID فريد
+  const handleNavigate = (targetId, extraData = null) => {
+    // توليد معرف فريد يعتمد على الوقت لضمان فتح تاب جديد دائماً
+    const uniqueTabId = `${targetId}_${Date.now()}`;
+
     switch (targetId) {
       case "NEW_CLIENT_TAB":
         addTab(screenId, {
-          id: "NEW_CLIENT_TAB",
+          id: uniqueTabId,
           title: "إنشاء عميل جديد",
           type: "wizard",
           closable: true,
         });
-        setActiveTab(screenId, "NEW_CLIENT_TAB");
+        setActiveTab(screenId, uniqueTabId);
         break;
       case "300-MAIN":
         addTab(screenId, {
-          id: "300-MAIN",
-          title: "دليل العملاء",
+          id: uniqueTabId,
+          title: extraData?.title || "دليل العملاء",
           type: "list",
           closable: true,
+          // تمرير أي فلاتر قادمة من لوحة التحكم (الداشبورد)
+          filter: extraData?.filter, 
         });
-        setActiveTab(screenId, "300-MAIN");
+        setActiveTab(screenId, uniqueTabId);
         break;
       case "CLIENTS_RATINGS":
         addTab(screenId, {
-          id: "CLIENTS_RATINGS",
+          id: uniqueTabId,
           title: "تقييمات وتصنيفات",
           type: "panel",
           closable: true,
         });
-        setActiveTab(screenId, "CLIENTS_RATINGS");
+        setActiveTab(screenId, uniqueTabId);
         break;
       case "CLIENTS_DOCS":
         addTab(screenId, {
-          id: "CLIENTS_DOCS",
+          id: uniqueTabId,
           title: "وثائق العملاء المركزية",
           type: "panel",
           closable: true,
         });
-        setActiveTab(screenId, "CLIENTS_DOCS");
+        setActiveTab(screenId, uniqueTabId);
         break;
       default:
+        // للرجوع لتابات ثابتة موجودة مسبقاً مثل الداشبورد
         setActiveTab(screenId, targetId);
     }
   };
 
   const renderContent = () => {
     // حالة: إنشاء عميل جديد
-    if (activeTabId === "NEW_CLIENT_TAB") {
+    // نستخدم startsWith لتجاهل الطابع الزمني المرفق بالـ ID
+    if (activeTabId?.startsWith("NEW_CLIENT_TAB")) {
       return (
         <CreateClientWizard
           onComplete={() => {
-            removeTab(screenId, "NEW_CLIENT_TAB");
+            removeTab(screenId, activeTabId);
             handleNavigate("300-MAIN");
+          }}
+          onBack={() => {
+            removeTab(screenId, activeTabId);
+            setActiveTab(screenId, "DASHBOARD_CLIENTS");
           }}
         />
       );
     }
 
     // حالة: دليل العملاء
-    if (activeTabId === "300-MAIN") {
+    if (activeTabId?.startsWith("300-MAIN")) {
       return (
         <ClientsLog
           onOpenDetails={(clientId, clientCode) => {
-            const tabId = `CLIENT-${clientId}`;
+            // فتح ملف العميل في تاب جديد أيضاً
+            const tabId = `CLIENT-${clientId}_${Date.now()}`;
             addTab(screenId, {
               id: tabId,
               title: `ملف: ${clientCode}`,
@@ -86,37 +97,57 @@ const ClientsScreenWrapper = () => {
             });
             setActiveTab(screenId, tabId);
           }}
+          onBack={() => {
+            // زر العودة يغلق التاب الحالي (دليل العملاء) ويرجع للداشبورد
+            removeTab(screenId, activeTabId);
+            setActiveTab(screenId, "DASHBOARD_CLIENTS");
+          }}
         />
       );
     }
 
     // حالة: ملف العميل الفردي
     if (activeTabId?.startsWith("CLIENT-")) {
-      const clientId = activeTabId.replace("CLIENT-", "");
+      // استخراج الـ ID الأصلي للعميل (نقوم بفصل الطابع الزمني)
+      // الصيغة الحالية: CLIENT-{id}_{timestamp}
+      const clientId = activeTabId.replace("CLIENT-", "").split("_")[0];
+      
       return (
         <ClientFileView
           clientId={clientId}
           onBack={() => {
+            // إغلاق تاب ملف العميل والعودة للصفحة الرئيسية
             removeTab(screenId, activeTabId);
-            setActiveTab(screenId, "300-MAIN");
+            setActiveTab(screenId, "DASHBOARD_CLIENTS"); 
           }}
         />
       );
     }
 
-    // 👇 3. إضافة الحالات الجديدة للوحات
-    if (activeTabId === "CLIENTS_RATINGS") {
+    // حالة: التقييمات
+    if (activeTabId?.startsWith("CLIENTS_RATINGS")) {
       return (
         <div className="p-6 h-full overflow-y-auto">
-          <ClientsRatingsPanel />
+          <ClientsRatingsPanel 
+             onBack={() => {
+               removeTab(screenId, activeTabId);
+               setActiveTab(screenId, "DASHBOARD_CLIENTS");
+             }}
+          />
         </div>
       );
     }
 
-    if (activeTabId === "CLIENTS_DOCS") {
+    // حالة: وثائق العملاء
+    if (activeTabId?.startsWith("CLIENTS_DOCS")) {
       return (
         <div className="p-6 h-full overflow-y-auto">
-          <ClientsDocsPanel />
+          <ClientsDocsPanel 
+             onBack={() => {
+               removeTab(screenId, activeTabId);
+               setActiveTab(screenId, "DASHBOARD_CLIENTS");
+             }}
+          />
         </div>
       );
     }

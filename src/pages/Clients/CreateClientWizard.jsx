@@ -26,7 +26,7 @@ import {
   AlertTriangle,
   MapPin,
   Image as ImageIcon,
-  FileText,
+  ArrowLeft,
   ScanSearch,
   Clock,
   Landmark,
@@ -299,7 +299,7 @@ const WIZARD_STEPS = [
 // ==========================================
 // المكون الرئيسي
 // ==========================================
-const CreateClientWizard = ({ onComplete }) => {
+const CreateClientWizard = ({ onComplete, onBack }) => {
   const queryClient = useQueryClient();
 
   const identityInputRef = useRef(null);
@@ -2581,6 +2581,14 @@ const CreateClientWizard = ({ onComplete }) => {
       dir="rtl"
     >
       <div className="max-w-4xl mx-auto">
+        <div className="flex items-center">
+          <button
+            onClick={onBack}
+            className="p-2 mb-4 bg-white border border-slate-200 shadow-sm hover:bg-slate-100 text-slate-700 rounded-lg transition-colors flex items-center gap-2 font-bold text-sm"
+          >
+            <ArrowLeft className="w-4 h-4" /> العودة للصفحة الرئيسية
+          </button>
+        </div>
         {/* شريط التقدم (الخطوات) */}
         <div className="bg-white rounded-xl p-5 mb-6 shadow-sm border border-slate-100 overflow-x-auto custom-scrollbar">
           <div className="flex items-center justify-between relative min-w-[600px] px-4">
