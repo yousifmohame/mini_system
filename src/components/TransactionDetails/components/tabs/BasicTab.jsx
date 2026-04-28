@@ -569,14 +569,17 @@ export const BasicTab = ({
           {isEditingBasic ? (
             <div className="flex flex-col gap-2 h-full">
               <textarea
+                // 👇 التصحيح هنا: نتحقق إذا كان الحقل موجوداً في الـ State حتى لو كان فارغاً
                 value={
-                  editFormData.generalNotes || tx.notes?.generalNotes || ""
+                  editFormData.generalNotes !== undefined
+                    ? editFormData.generalNotes
+                    : tx.notes?.generalNotes || ""
                 }
                 onChange={(e) =>
                   handleTextChange("generalNotes", e.target.value)
                 }
-                placeholder="اكتب الملاحظات..."
-                className="w-full flex-1 min-h-[80px] border border-amber-300 rounded-xl p-3 text-sm font-bold outline-none focus:border-amber-500 bg-white resize-none"
+                placeholder="اكتب أي ملاحظات أو توجيهات هامة تخص هذه المعاملة لتظهر لجميع الموظفين..."
+                className="w-full flex-1 min-h-[80px] border border-amber-300 rounded-xl p-3 text-sm font-bold outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-100 bg-white resize-none"
               />
               <div className="flex justify-between items-center bg-white p-2 rounded-lg border border-amber-200">
                 <label className="flex items-center gap-2 text-[10px] font-bold text-amber-700 cursor-pointer hover:text-amber-900 transition-colors px-2">
