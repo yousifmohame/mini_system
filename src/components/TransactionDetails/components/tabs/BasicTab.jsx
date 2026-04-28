@@ -63,7 +63,6 @@ export const BasicTab = ({
     queryFn: async () => (await api.get("/riyadh-streets/plans")).data,
   });
 
-  // تحويل المخططات لتناسب المكون SearchableSelect
   const plansOptions = plansData.map((p) => ({
     value: p.planNumber,
     label: p.planNumber,
@@ -85,7 +84,6 @@ export const BasicTab = ({
     onSuccess: (res) => {
       toast.success("تم تسجيل المخطط الجديد بنجاح");
       queryClient.invalidateQueries(["riyadh-plans"]);
-      // تعيين المخطط الجديد فوراً في فورم المعاملة
       setEditFormData((prev) => ({ ...prev, plan: res.data.planNumber }));
       setNewPlanName("");
       setIsQuickAddPlanOpen(false);
@@ -93,7 +91,6 @@ export const BasicTab = ({
     onError: () => toast.error("فشل إضافة المخطط، قد يكون مكرراً"),
   });
 
-  // حساب أيام الإنشاء وأيام التعديل
   const createdDate = new Date(tx.createdAt);
   const updatedDate = new Date(tx.updatedAt || tx.createdAt);
   const today = new Date();
@@ -118,7 +115,6 @@ export const BasicTab = ({
         ? "text-amber-600 bg-amber-50 border-amber-200"
         : "text-emerald-600 bg-emerald-50 border-emerald-200";
 
-  // حالة صورة الموقع
   const [siteImagePreview, setSiteImagePreview] = useState(
     tx.notes?.refs?.siteImage
       ? `${backendUrl || ""}${tx.notes.refs.siteImage}`
@@ -139,14 +135,11 @@ export const BasicTab = ({
     if (file) {
       setEditFormData((prev) => ({ ...prev, newSiteImage: file }));
       const reader = new FileReader();
-      reader.onloadend = () => {
-        setSiteImagePreview(reader.result);
-      };
+      reader.onloadend = () => setSiteImagePreview(reader.result);
       reader.readAsDataURL(file);
     }
   };
 
-  // 💡 دوال التعامل مع المصفوفة المتعددة للملاك أثناء التعديل
   const addOwnerRow = () => {
     setEditFormData((prev) => {
       const currentOwners = prev.additionalOwners || [];
@@ -173,7 +166,6 @@ export const BasicTab = ({
     });
   };
 
-  // 💡 تحضير مصفوفة القطع بشكل آمن
   let plotsArray = [];
   const sourcePlots = isEditingBasic
     ? editFormData.plots
@@ -190,7 +182,6 @@ export const BasicTab = ({
       .filter(Boolean);
   }
 
-  // 💡 تحضير الملاك للعرض
   const displayOwners = tx.ownerNames
     ? tx.ownerNames.split(" و ")
     : [tx.client || tx.owner];
@@ -248,7 +239,6 @@ export const BasicTab = ({
         </AccessControl>
       </div>
 
-      {/* 💡 الشريط العلوي: منشئ المعاملة وتفاصيل الوقت والتأخير */}
       <div className="flex flex-col lg:flex-row gap-4">
         <div className="flex-1 bg-gradient-to-l from-blue-50/80 to-white border border-blue-100 p-4 rounded-2xl flex flex-wrap items-center gap-6 shadow-sm">
           <div className="flex items-center gap-3 pr-6 border-l border-blue-100">
@@ -319,7 +309,7 @@ export const BasicTab = ({
         </div>
       </div>
 
-      {/* 💡 معلومات العميل الأساسية (يدعم تعدد الملاك) */}
+      {/* 💡 معلومات العميل الأساسية */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm col-span-1 md:col-span-2 flex flex-col">
           <div className="text-blue-800 text-[12px] font-black mb-4 flex items-center justify-between border-b border-gray-100 pb-2">
@@ -508,7 +498,7 @@ export const BasicTab = ({
         </div>
       </div>
 
-      {/* 💡 الاسم المتداول والملاحظات العامة */}
+      {/* 💡 الاسم المتداول والملاحظات */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm relative overflow-hidden flex flex-col">
           <div className="absolute top-0 right-0 w-1.5 h-full bg-blue-500"></div>
@@ -541,7 +531,7 @@ export const BasicTab = ({
               value={editFormData.internalName}
               onChange={(e) => handleTextChange("internalName", e.target.value)}
               className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm font-bold focus:border-blue-500 focus:ring-2 focus:ring-blue-100 outline-none transition-all bg-gray-50"
-              placeholder="مثال: فيلا الياسمين - مشروع أبو محمد..."
+              placeholder="مثال: فيلا الياسمين..."
             />
           ) : (
             <div className="flex items-center gap-3 mt-2">
@@ -576,7 +566,6 @@ export const BasicTab = ({
               </div>
             )}
           </div>
-
           {isEditingBasic ? (
             <div className="flex flex-col gap-2 h-full">
               <textarea
@@ -586,8 +575,8 @@ export const BasicTab = ({
                 onChange={(e) =>
                   handleTextChange("generalNotes", e.target.value)
                 }
-                placeholder="اكتب أي ملاحظات أو توجيهات هامة تخص هذه المعاملة لتظهر لجميع الموظفين..."
-                className="w-full flex-1 min-h-[80px] border border-amber-300 rounded-xl p-3 text-sm font-bold outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-100 bg-white resize-none"
+                placeholder="اكتب الملاحظات..."
+                className="w-full flex-1 min-h-[80px] border border-amber-300 rounded-xl p-3 text-sm font-bold outline-none focus:border-amber-500 bg-white resize-none"
               />
               <div className="flex justify-between items-center bg-white p-2 rounded-lg border border-amber-200">
                 <label className="flex items-center gap-2 text-[10px] font-bold text-amber-700 cursor-pointer hover:text-amber-900 transition-colors px-2">
@@ -614,7 +603,7 @@ export const BasicTab = ({
             <div className="flex-1 bg-white border border-amber-100 rounded-xl p-4 text-sm font-bold text-gray-700 whitespace-pre-wrap leading-relaxed">
               {tx.notes?.generalNotes || (
                 <span className="text-gray-400 italic font-normal text-xs">
-                  لا توجد ملاحظات عامة مسجلة لهذه المعاملة.
+                  لا توجد ملاحظات عامة مسجلة.
                 </span>
               )}
               {tx.notes?.generalNotesFileUrl && (
@@ -649,7 +638,6 @@ export const BasicTab = ({
         <div className="p-6 grid grid-cols-1 lg:grid-cols-12 gap-8">
           <div className="col-span-1 lg:col-span-8 space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {/* 🚀 حقل رقم المخطط المطور */}
               <div className="space-y-1.5">
                 <label className="text-gray-500 text-[10px] font-bold block">
                   رقم المخطط
@@ -670,7 +658,6 @@ export const BasicTab = ({
                       type="button"
                       onClick={() => setIsQuickAddPlanOpen(true)}
                       className="p-2.5 bg-blue-50 text-blue-600 rounded-lg border border-blue-100 hover:bg-blue-600 hover:text-white transition-all"
-                      title="إضافة مخطط جديد للسجل"
                     >
                       <Plus size={18} />
                     </button>
@@ -678,12 +665,12 @@ export const BasicTab = ({
                 ) : (
                   <div className="font-bold text-gray-800 font-mono text-base bg-gray-50 p-2.5 rounded-lg border border-gray-100 flex items-center gap-2">
                     <Layers size={14} className="text-blue-500" />
-                    {/* 🚀 تصحيح قراءة رقم المخطط ليظهر دائماً */}
                     {tx.plan || tx.planNumber || tx.notes?.refs?.plan || "—"}
                   </div>
                 )}
               </div>
 
+              {/* 💡 التعديل الجوهري للحي هنا 👈 */}
               <div className="space-y-1.5">
                 <label className="text-gray-500 text-[10px] font-bold block">
                   الحي والقطاع
@@ -692,12 +679,18 @@ export const BasicTab = ({
                   <SearchableSelect
                     options={districtsOptions}
                     value={editFormData.districtId}
-                    placeholder={editFormData.district || "تعديل الحي..."}
+                    placeholder={
+                      editFormData.district ||
+                      tx.districtNode?.name ||
+                      tx.districtName ||
+                      "تعديل الحي..."
+                    }
                     onChange={(val, opt) =>
                       setEditFormData({
                         ...editFormData,
                         districtId: val,
                         district: opt.label.split(" (")[0],
+                        districtName: opt.label.split(" (")[0], // إرسال صريح للباك إند
                         sector: opt.sectorName,
                       })
                     }
@@ -705,12 +698,17 @@ export const BasicTab = ({
                 ) : (
                   <div className="font-bold text-gray-800 text-sm bg-gray-50 p-2.5 rounded-lg border border-gray-100">
                     {safeText(
-                      tx.districtName ||
+                      tx.districtNode?.name || // الأولوية للحي المربوط بالـ ID
+                        tx.districtName ||
                         tx.district ||
                         tx.notes?.refs?.districtName,
                     )}{" "}
                     <span className="text-gray-400 font-normal">|</span>{" "}
-                    {safeText(tx.sector || tx.notes?.refs?.sector)}
+                    {safeText(
+                      tx.districtNode?.sector?.name ||
+                        tx.sector ||
+                        tx.notes?.refs?.sector,
+                    )}
                   </div>
                 )}
               </div>
@@ -724,7 +722,7 @@ export const BasicTab = ({
                     value={
                       editFormData.isOnAxis !== undefined
                         ? editFormData.isOnAxis
-                        : tx.notes?.refs?.isOnAxis || "لا"
+                        : tx.isOnAxis || tx.notes?.refs?.isOnAxis || "لا"
                     }
                     onChange={(e) =>
                       handleTextChange("isOnAxis", e.target.value)
@@ -736,9 +734,9 @@ export const BasicTab = ({
                   </select>
                 ) : (
                   <div
-                    className={`font-bold text-sm p-2.5 rounded-lg border ${tx.notes?.refs?.isOnAxis === "نعم" ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-gray-50 text-gray-700 border-gray-100"}`}
+                    className={`font-bold text-sm p-2.5 rounded-lg border ${(tx.isOnAxis || tx.notes?.refs?.isOnAxis) === "نعم" ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-gray-50 text-gray-700 border-gray-100"}`}
                   >
-                    {tx.notes?.refs?.isOnAxis === "نعم"
+                    {(tx.isOnAxis || tx.notes?.refs?.isOnAxis) === "نعم"
                       ? "يقع على المحاور التجارية"
                       : "طبيعي (داخل الحي)"}
                   </div>
@@ -792,7 +790,7 @@ export const BasicTab = ({
                 ) : (
                   <div className="font-bold text-gray-800 text-sm bg-gray-50 p-2.5 rounded-lg border border-gray-100 flex items-center gap-2">
                     <Globe className="w-4 h-4 text-gray-400" />{" "}
-                    {tx.notes?.refs?.streetName || "غير مسجل"}
+                    {tx.streetName || tx.notes?.refs?.streetName || "غير مسجل"}
                   </div>
                 )}
               </div>
@@ -802,7 +800,6 @@ export const BasicTab = ({
               <label className="text-gray-500 text-[10px] font-bold mb-3 block">
                 خرائط وروابط الموقع
               </label>
-
               {isEditingBasic ? (
                 <div className="space-y-3">
                   <input
@@ -813,7 +810,7 @@ export const BasicTab = ({
                       handleTextChange("mapsLink", e.target.value)
                     }
                     className="w-full border border-gray-300 rounded-lg p-3 text-sm font-mono outline-none focus:border-blue-500 bg-gray-50"
-                    placeholder="رابط Google Maps (https://maps.google.com/...)"
+                    placeholder="رابط Google Maps"
                   />
                   <input
                     type="text"
@@ -823,7 +820,7 @@ export const BasicTab = ({
                       handleTextChange("officialMapLink", e.target.value)
                     }
                     className="w-full border border-gray-300 rounded-lg p-3 text-sm font-mono outline-none focus:border-emerald-500 bg-gray-50"
-                    placeholder="رابط الخريطة الرسمية / الأمانة (إن وجد)"
+                    placeholder="رابط الخريطة الرسمية / الأمانة"
                   />
                 </div>
               ) : (
@@ -857,11 +854,14 @@ export const BasicTab = ({
                     </div>
                   )}
 
-                  {tx.notes?.refs?.officialMapLink && (
+                  {(tx.officialMapLink || tx.notes?.refs?.officialMapLink) && (
                     <div className="flex items-center gap-3 p-3 bg-white border border-gray-200 rounded-xl shadow-sm w-max">
                       <button
                         onClick={() =>
-                          window.open(tx.notes.refs.officialMapLink, "_blank")
+                          window.open(
+                            tx.officialMapLink || tx.notes.refs.officialMapLink,
+                            "_blank",
+                          )
                         }
                         className="flex items-center justify-center w-10 h-10 bg-emerald-50 text-emerald-600 rounded-lg hover:bg-emerald-600 hover:text-white transition-colors"
                         title="فتح الخريطة الرسمية"
@@ -896,7 +896,6 @@ export const BasicTab = ({
                   العدد: {plotsArray.length}
                 </span>
               </div>
-
               {isEditingBasic ? (
                 <div className="space-y-2">
                   <textarea
@@ -963,7 +962,6 @@ export const BasicTab = ({
                   </span>
                 </div>
               )}
-
               {isEditingBasic && (
                 <label className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex flex-col items-center justify-center cursor-pointer transition-opacity z-20">
                   <Upload className="w-6 h-6 text-white mb-1" />
@@ -988,9 +986,7 @@ export const BasicTab = ({
         <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex flex-col h-full">
           <div className="text-gray-800 text-sm font-black mb-4 flex items-center gap-2 border-b border-gray-100 pb-3">
             <Building2 className="w-4 h-4 text-purple-600" /> المكتب المشرف
-            (إشراف هندسي)
           </div>
-
           {isEditingBasic ? (
             <div className="space-y-3 flex-1 flex flex-col justify-center">
               <select
@@ -1012,12 +1008,6 @@ export const BasicTab = ({
                   </option>
                 ))}
               </select>
-              <div className="text-center text-[10px] text-gray-400 font-bold my-1">
-                أو
-              </div>
-              <button className="w-full border border-dashed border-purple-300 text-purple-600 bg-purple-50 hover:bg-purple-100 rounded-lg p-2.5 text-xs font-bold flex items-center justify-center gap-2 transition-colors">
-                <Plus className="w-3.5 h-3.5" /> إنشاء مكتب متعاون جديد سريعاً
-              </button>
             </div>
           ) : (
             <div className="flex-1 flex flex-col justify-center">
@@ -1051,10 +1041,8 @@ export const BasicTab = ({
 
         <div className="bg-white p-5 rounded-2xl border border-gray-200 shadow-sm flex flex-col h-full">
           <div className="text-gray-800 text-sm font-black mb-4 flex items-center gap-2 border-b border-gray-100 pb-3">
-            <Building className="w-4 h-4 text-cyan-600" /> المكتب المصمم (تصميم
-            المخططات)
+            <Building className="w-4 h-4 text-cyan-600" /> المكتب المصمم
           </div>
-
           {isEditingBasic ? (
             <div className="space-y-3 flex-1 flex flex-col justify-center">
               <select
@@ -1076,12 +1064,6 @@ export const BasicTab = ({
                   </option>
                 ))}
               </select>
-              <div className="text-center text-[10px] text-gray-400 font-bold my-1">
-                أو
-              </div>
-              <button className="w-full border border-dashed border-cyan-300 text-cyan-600 bg-cyan-50 hover:bg-cyan-100 rounded-lg p-2.5 text-xs font-bold flex items-center justify-center gap-2 transition-colors">
-                <Plus className="w-3.5 h-3.5" /> إنشاء مكتب متعاون جديد سريعاً
-              </button>
             </div>
           ) : (
             <div className="flex-1 flex flex-col justify-center">
@@ -1114,7 +1096,6 @@ export const BasicTab = ({
         </div>
       </div>
 
-      {/* 🚀 3. النافذة المنبثقة للإضافة السريعة للمخطط */}
       {isQuickAddPlanOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[210] flex items-center justify-center p-4 animate-in fade-in">
           <div className="bg-white rounded-2xl w-full max-w-sm shadow-2xl p-6 border border-slate-200 animate-in zoom-in-95">
@@ -1152,7 +1133,7 @@ export const BasicTab = ({
                   <Loader2 className="animate-spin" size={18} />
                 ) : (
                   <CheckCircle size={18} />
-                )}
+                )}{" "}
                 تأكيد الإضافة للسجل
               </button>
             </div>
@@ -1160,7 +1141,6 @@ export const BasicTab = ({
         </div>
       )}
 
-      {/* 💡 زر الحفظ العائم */}
       {isEditingBasic && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 animate-in slide-in-from-bottom-5">
           <button
@@ -1193,19 +1173,16 @@ export const BasicTab = ({
                   });
                 });
               }
-              
               const finalOwnerNamesString = finalNames.join(" و ");
 
-              // 🚀 التأكد من تضمين كافة الحقول (بما فيها generalNotes والروابط)
               const updatedData = {
-                ...editFormData, // ينقل generalNotes و mapsLink وغيرها
+                ...editFormData,
                 ownerNames: finalOwnerNamesString,
                 notes: {
-                    ...editFormData.notes,
-                    detailedOwnersList: detailedOwners,
+                  ...editFormData.notes,
+                  detailedOwnersList: detailedOwners,
                 },
-                // تمرير اسم المستخدم الحالي ليحفظ في الباك إند
-                updatedBy: currentUser?.name || "مدير النظام" 
+                updatedBy: currentUser?.name || "مدير النظام",
               };
 
               setEditFormData(updatedData);
@@ -1224,7 +1201,6 @@ export const BasicTab = ({
         </div>
       )}
 
-      {/* نافذة عرض الصورة الجوية */}
       {isSiteImageModalOpen && siteImagePreview && (
         <div
           className="fixed inset-0 z-[200] bg-black/90 flex items-center justify-center p-4 animate-in fade-in"
