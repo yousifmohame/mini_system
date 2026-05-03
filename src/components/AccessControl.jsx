@@ -30,7 +30,7 @@ const AccessControl = ({
 
     return (
       <div 
-        className={`relative group inline-block w-full transition-all border-2 rounded-md ${borderClass}`}
+        className={`relative group mt-5 inline-block w-full transition-all border-2 rounded-md ${borderClass}`}
         onClick={(e) => {
           e.preventDefault();   
           e.stopPropagation();  
